@@ -1,0 +1,125 @@
+{
+  "timestamp": "2026-03-27T08:35:00-03:00",
+  "secao": "Análise Visual/UX - Impacto do Operador",
+  "visual_consistency": {
+    "score": "6/10",
+    "problemas": [
+      {
+        "tela": "ShortageReport",
+        "problema": "Visual diferente do restante do sistema",
+        "detalhes": {
+          "bg_color_main": "predomínio slate no app principal",
+          "bg_color_shortage": "bg-gray-100 isolado",
+          "glass_effect": "presente em várias telas, ausente no ShortageReport",
+          "botao_voltar_main": "ícone/estilo moderno em layout",
+          "botao_voltar_shortage": "texto com underline",
+          "animacoes_entrada": "presentes em telas principais, ausentes aqui"
+        },
+        "impacto_operador": "Percepção de sistema fragmentado",
+        "impacto_confianca": "Baixa confiança em tela crítica de faltas",
+        "impacto_suporte": "Aumento potencial de tickets de dúvida operacional"
+      },
+      {
+        "tela": "Dialogs de Picking",
+        "problema": "Paleta sem semântica unificada",
+        "detalhes": {
+          "paleta_oficial_implícita": "slate/blue/emerald/amber/red",
+          "shortage_dialog": "uso predominante de orange sem regra documentada",
+          "batch_detail": "estética antiga em parte do fluxo supervisor"
+        },
+        "impacto_operador": "Sinais visuais de estado ficam ambíguos"
+      }
+    ]
+  },
+  "feedback_visual": {
+    "score": "3/10",
+    "problemas": [
+      {
+        "cenario": "SKU inválido ou transferência com erro",
+        "atual": "alert() / prompt() / confirm() em vários pontos",
+        "problema": "UX bloqueante e sensação de travamento",
+        "impacto": "CRÍTICO",
+        "observacao_codigo": "ocorrências em SessionSelect, Picking, Supervisor, BatchDetail, ShortageReport"
+      },
+      {
+        "cenario": "Carregamento de sessões e relatórios",
+        "atual": "texto + spinner simples",
+        "problema": "feedback fraco em momentos de espera",
+        "impacto": "ALTO"
+      },
+      {
+        "cenario": "Falha de impressão",
+        "atual": "há feedback no Picking, mas sem padrão global de notificação",
+        "problema": "erro não centralizado entre telas e fluxos",
+        "impacto": "ALTO"
+      },
+      {
+        "cenario": "Atualização de dados no supervisor",
+        "atual": "refresh manual e texto temporal",
+        "problema": "sem sinal consistente de freshness por KPI",
+        "impacto": "ALTO"
+      }
+    ]
+  },
+  "loading_states": {
+    "score": "2/10",
+    "analise": {
+      "skeleton_loading_global": "não implementado como padrão de design system",
+      "alternativa_atual": "texto de carregamento, spinner simples ou placeholders locais",
+      "impacto_percepcao": "sistema parece mais lento do que realmente é"
+    },
+    "exemplos": [
+      {
+        "pagina": "SessionSelect",
+        "estado_atual": "Gerando painéis... com spinner inline",
+        "esperado": "Skeleton de cards/listas"
+      },
+      {
+        "pagina": "ShortageReport",
+        "estado_atual": "texto Carregando...",
+        "esperado": "Skeleton de tabela e cabeçalho"
+      },
+      {
+        "pagina": "BatchDetail",
+        "estado_atual": "texto Carregando lote...",
+        "esperado": "Skeleton do header + cards KPI"
+      }
+    ]
+  },
+  "error_handling": {
+    "score": "2/10",
+    "problemas": [
+      {
+        "tipo": "Erros de entrada operacional",
+        "comportamento_atual": "alert/prompt/confirm nativos",
+        "comportamento_esperado": "Toast não bloqueante + CTA contextual"
+      },
+      {
+        "tipo": "Erro de rede/API",
+        "comportamento_atual": "throw Error no client sem camada visual global",
+        "comportamento_esperado": "padrão de notificação + retry + fallback"
+      },
+      {
+        "tipo": "Erros de impressão",
+        "comportamento_atual": "bom feedback no Picking, insuficiente como padrão cross-app",
+        "comportamento_esperado": "canal unificado de estado/erro de impressão em todo fluxo"
+      }
+    ]
+  },
+  "mobile_responsiveness": {
+    "score": "6/10",
+    "problemas": [
+      {
+        "dispositivo": "Tablet/mobile em supervisão por marketplace",
+        "problema": "sub-menu detalhado está só no desktop sidebar",
+        "impacto": "navegação de supervisão limitada no mobile"
+      },
+      {
+        "dispositivo": "telas pequenas",
+        "problema": "alguns componentes usam tipografia e blocos grandes sem adaptação fina",
+        "impacto": "densidade visual alta e leitura cansativa"
+      }
+    ]
+  },
+  "score_geral_visual_ux": "3.8/10"
+}

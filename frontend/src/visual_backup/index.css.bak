@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --nvs-bg: 248 250 252;
+  --nvs-surface: 255 255 255;
+  --nvs-text: 15 23 42;
+  --nvs-muted: 100 116 139;
+  --nvs-brand: 37 99 235;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Ensure scan input is always visually prominent */
+.scan-input {
+  @apply text-3xl p-4 border-4 border-blue-500 rounded-xl text-center tracking-widest focus:outline-none focus:border-blue-700 bg-white shadow-inner;
+  min-width: 0;
+}
+
+/* Status pill colors */
+/* Modern Glassmorphism & UI Utilities */
+.glass-panel {
+  @apply bg-white/70 backdrop-blur-md border border-white/20 shadow-[0_8px_32px_0_rgba(31,38,135,0.07)];
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-lg border border-white/40 shadow-xl hover:shadow-2xl transition-all duration-500;
+}
+
+.premium-gradient {
+  @apply bg-gradient-to-br from-blue-600 to-indigo-700 text-white;
+}
+
+.status-pending      { @apply bg-slate-100 text-slate-500 font-bold border border-slate-200/50; }
+.status-in_progress  { @apply bg-blue-50 text-blue-600 font-bold border border-blue-100; }
+.status-complete     { @apply bg-emerald-50 text-emerald-600 font-bold border border-emerald-100; }
+.status-partial      { @apply bg-amber-50 text-amber-600 font-bold border border-amber-100; }
+.status-out_of_stock { @apply bg-red-50 text-red-600 font-bold border border-red-100; }
+
+/* Animation Utilities for Premium UI */
+@keyframes animate-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-from-bottom {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-in {
+  animation: animate-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 0.5s;
+}
+
+.slide-in-from-bottom-6 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 0.7s;
+}
+
+.slide-in-from-bottom-10 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 1s;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 350ms; }

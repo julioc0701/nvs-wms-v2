@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-03-27T13:56:01.305Z",
+  "frontend": {
+    "url": "http://127.0.0.1:5174",
+    "ok": false,
+    "error": "fetch failed"
+  },
+  "backend": {
+    "url": "http://127.0.0.1:8001/api/health",
+    "ok": false,
+    "error": "fetch failed"
+  }
+}

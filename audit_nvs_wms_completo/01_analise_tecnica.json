@@ -1,0 +1,133 @@
+{
+  "titulo": "NVS·WMS v2 — Análise Técnica Completa",
+  "timestamp": "2026-03-27T08:30:00-03:00",
+  "escopo": {
+    "frontend": "React + Vite em JavaScript (JSX)",
+    "backend": "FastAPI + SQLAlchemy + SQLite",
+    "integracoes": [
+      "Print Agent local (HTTP 127.0.0.1:9100)",
+      "Fila de impressão persistente (print_jobs)"
+    ]
+  },
+  "stack": {
+    "frontend": {
+      "framework": "React 18",
+      "bundler": "Vite 5",
+      "routing": "react-router-dom 6",
+      "styling": "Tailwind CSS + utilitários custom",
+      "linguagem": "JavaScript (sem TypeScript no app src)"
+    },
+    "backend": {
+      "framework": "FastAPI 0.115",
+      "orm": "SQLAlchemy 2",
+      "database": "SQLite",
+      "parser": "pdfplumber + parsers próprios para ML/Shopee",
+      "upload": "python-multipart + aiofiles"
+    },
+    "print_agent": {
+      "runtime": "Python local no Windows",
+      "comunicacao": "HTTP local + polling opcional backend",
+      "resiliencia": "Lock, timeout, retry e atualização de status de job"
+    }
+  },
+  "arquitetura": {
+    "forcas": [
+      "Fluxo operacional de picking bem encapsulado por endpoints",
+      "Domínio rico no backend (sessão, itens, lote, eventos, print jobs)",
+      "Fallback de impressão: agente local e fila backend",
+      "Layouts visuais modernos em parte importante do sistema"
+    ],
+    "gargalos": [
+      "Frontend monolítico: páginas grandes com muita regra de negócio no componente",
+      "Acoplamento UI/fluxo operacional (muitos estados locais e branches)",
+      "Ausência de camada global para notificações, erro e loading padronizado",
+      "Sem code splitting por rota e sem lazy loading de páginas"
+    ]
+  },
+  "design_system": {
+    "score": "3/10",
+    "estado_atual": {
+      "tokens_formais": "não existe arquivo de tokens",
+      "componentes_base_reutilizaveis": "não existe biblioteca base (Button/Input/Toast/Skeleton)",
+      "padronizacao_visual": "parcial (há utilitários como glass-panel, mas sem governança)"
+    },
+    "evidencias": [
+      "index.css define utilitários visuais, porém sem estrutura de design tokens",
+      "App usa JSX puro em toda aplicação sem camada de componentização base",
+      "ShortageReport e BatchDetail usam estética diferente do restante do app"
+    ]
+  },
+  "componentes_e_reuso": {
+    "score": "6/10",
+    "pontos_positivos": [
+      "Layout principal centraliza navegação desktop/mobile",
+      "Dialogs separados por caso de uso (Shortage, WrongSku, UnknownBarcode)",
+      "API client centralizado para chamadas HTTP"
+    ],
+    "pontos_fracos": [
+      "Dialogs heterogêneos em estilo e UX (alguns modernos, outros com padrão antigo)",
+      "Páginas Supervisor e Picking extensas, difíceis de testar e evoluir",
+      "Múltiplos usos de prompt/confirm/alert no fluxo"
+    ]
+  },
+  "performance": {
+    "score": "5/10",
+    "achados": [
+      "Sem lazy import de rotas em App.jsx",
+      "Sem estratégia explícita de cache/revalidação no frontend",
+      "Sem indicadores de atualização em tempo real no dashboard",
+      "States de loading em texto/spinner simples em telas críticas"
+    ],
+    "observacao": "Base de performance funcional para operação atual, mas sem padrão enterprise de percepção e monitoramento."
+  },
+  "acessibilidade": {
+    "score": "2/10",
+    "achados": [
+      "Ausência recorrente de aria-label em botões ícone-only",
+      "Uso de elementos clicáveis não semânticos (div onClick) em pontos relevantes",
+      "Sem evidência de auditoria WCAG, testes keyboard-first e contraste formal",
+      "Sem foco visível e fluxo padronizado de anúncio de erro para leitores de tela"
+    ]
+  },
+  "qualidade_e_testes": {
+    "score": "4/10",
+    "achados": [
+      "Frontend sem suíte de testes (Vitest/RTL não configurados)",
+      "Lint existe como dependência, mas sem script de quality gate no package.json",
+      "Print-agent possui alguns scripts de teste, porém sem cobertura integrada do produto",
+      "Ausência de Error Boundary global no React"
+    ]
+  },
+  "seguranca_e_operacao": {
+    "score": "4/10",
+    "achados": [
+      "CORS aberto com allow_origins='*'",
+      "PIN padrão inicial '1234' para operadores seed",
+      "Endpoints administrativos expostos por rota HTTP (dependem de env para proteção)",
+      "Uso de prompt/alert pode induzir confirmação operacional sem rastreabilidade adequada"
+    ]
+  },
+  "achados_criticos_prioritarios": [
+    {
+      "prioridade": "P0",
+      "tema": "Feedback operacional inconsistente",
+      "impacto": "Operador perde confiança e abre suporte desnecessário"
+    },
+    {
+      "prioridade": "P0",
+      "tema": "Tratamento de erro não padronizado",
+      "impacto": "Falhas podem parecer travamento ou sumirem sem contexto claro"
+    },
+    {
+      "prioridade": "P1",
+      "tema": "Inconsistência visual entre telas críticas",
+      "impacto": "Queda de confiança no dado de shortage/supervisão"
+    },
+    {
+      "prioridade": "P1",
+      "tema": "Acessibilidade abaixo do mínimo enterprise",
+      "impacto": "Risco de usabilidade, compliance e escalabilidade"
+    }
+  ],
+  "score_geral_tecnico": "4.2/10"
+}

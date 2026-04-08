@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --nvs-bg: 243 246 252;
+  --nvs-surface: 255 255 255;
+  --nvs-text: 13 23 42;
+  --nvs-muted: 94 109 131;
+  --nvs-brand: 25 91 208;
+  --nvs-brand-soft: 219 234 254;
+  --nvs-ring: 191 219 254;
+}
+
+body {
+  @apply text-slate-900 antialiased;
+  font-family: 'Segoe UI Variable', 'IBM Plex Sans', 'Manrope', system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(14, 165, 233, 0.16), transparent 30%),
+    radial-gradient(circle at 90% 10%, rgba(59, 130, 246, 0.22), transparent 34%),
+    linear-gradient(180deg, #eef5ff 0%, #f7fbff 48%, #f8fafc 100%);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Ensure scan input is always visually prominent */
+.scan-input {
+  @apply text-3xl p-4 border-4 border-blue-500 rounded-xl text-center tracking-widest focus:outline-none focus:border-blue-700 bg-white shadow-inner;
+  min-width: 0;
+}
+
+/* Status pill colors */
+/* Modern Glassmorphism & UI Utilities */
+.glass-panel {
+  @apply bg-white/85 backdrop-blur-md border border-slate-200/70 shadow-[0_8px_24px_rgba(15,23,42,0.06)];
+}
+
+.glass-card {
+  @apply bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-[0_4px_14px_rgba(15,23,42,0.08)] hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] transition-all duration-300;
+}
+
+.premium-gradient {
+  @apply bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-600 text-white;
+}
+
+.status-pending      { @apply bg-slate-100 text-slate-500 font-bold border border-slate-200/50; }
+.status-in_progress  { @apply bg-blue-50 text-blue-600 font-bold border border-blue-100; }
+.status-complete     { @apply bg-emerald-50 text-emerald-600 font-bold border border-emerald-100; }
+.status-partial      { @apply bg-amber-50 text-amber-600 font-bold border border-amber-100; }
+.status-out_of_stock { @apply bg-red-50 text-red-600 font-bold border border-red-100; }
+
+.surface-card {
+  @apply bg-white border border-slate-200/80 rounded-2xl shadow-[0_2px_8px_rgba(15,23,42,0.05)];
+}
+
+.soft-focus-ring {
+  @apply focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500;
+}
+
+.premium-shell {
+  @apply min-h-screen;
+  background:
+    radial-gradient(1200px 500px at -10% -20%, rgba(56, 189, 248, 0.16), transparent 60%),
+    radial-gradient(800px 420px at 110% -10%, rgba(37, 99, 235, 0.2), transparent 65%);
+}
+
+.panel-elevated {
+  @apply bg-white border border-slate-200/80 rounded-2xl shadow-[0_14px_30px_rgba(15,23,42,0.08)];
+}
+
+.badge-soft {
+  @apply inline-flex items-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1 text-[11px] font-bold tracking-wide uppercase;
+}
+
+.section-kicker {
+  @apply text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500;
+}
+
+.section-title {
+  @apply text-2xl md:text-3xl font-black text-slate-900 tracking-tight;
+}
+
+.metric-tile {
+  @apply bg-white border border-slate-200 rounded-xl p-4 shadow-sm;
+}
+
+.metric-label {
+  @apply text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500;
+}
+
+.metric-value {
+  @apply text-3xl font-black text-slate-900 tabular-nums;
+}
+
+.chart-card {
+  @apply bg-white border border-slate-200 rounded-xl p-4 shadow-sm;
+}
+
+.action-rail {
+  @apply bg-white/80 backdrop-blur border border-slate-200 rounded-2xl p-3 shadow-sm;
+}
+
+.compact-density .panel-elevated {
+  border-radius: 1rem;
+}
+
+.compact-density .metric-tile {
+  padding: 0.75rem;
+}
+
+.compact-density .metric-value {
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.compact-density .section-kicker {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.compact-density .chart-card {
+  padding: 0.65rem;
+}
+
+.compact-density .action-rail {
+  padding: 0.55rem;
+  border-radius: 0.85rem;
+}
+
+.compact-density .action-rail-floating {
+  display: none !important;
+}
+
+.compact-density .compact-actions-inline {
+  display: flex !important;
+}
+
+/* Animation Utilities for Premium UI */
+@keyframes animate-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in-from-bottom {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-in {
+  animation: animate-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 0.5s;
+}
+
+.slide-in-from-bottom-6 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 0.7s;
+}
+
+.slide-in-from-bottom-10 {
+  animation-name: slide-in-from-bottom;
+  animation-duration: 1s;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 50ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 250ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 350ms; }

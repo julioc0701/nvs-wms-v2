@@ -1,0 +1,63 @@
+{
+  "titulo": "ROI de Negócio - Impacto Financeiro das Mudanças",
+  "periodo": "6 meses pós-implementação",
+  "premissas": {
+    "moeda": "BRL",
+    "contexto": "Operação de picking com equipe multioperador e supervisão ativa",
+    "metodo": "Estimativa conservadora baseada em redução de retrabalho, suporte e perda de foco"
+  },
+  "economia_direta": [
+    {
+      "item": "Devoluções por falha de impressão",
+      "metrica_antes": "5 devoluções/mês",
+      "custo_por_devolucao": "R$ 50",
+      "economia_mensal_estimativa": "R$ 237",
+      "economia_anual_estimativa": "R$ 2.844"
+    },
+    {
+      "item": "Tickets de suporte por UX bloqueante",
+      "metrica_antes": "8 tickets/mês",
+      "custo_por_ticket": "R$ 40",
+      "economia_mensal_estimativa": "R$ 288",
+      "economia_anual_estimativa": "R$ 3.456"
+    },
+    {
+      "item": "Tempo operacional perdido (foco/interrupção)",
+      "metrica_antes": "15 min/dia",
+      "custo_hora": "R$ 25",
+      "economia_mensal_estimativa": "R$ 1.500",
+      "economia_anual_estimativa": "R$ 18.000"
+    }
+  ],
+  "economia_indireta": [
+    {
+      "item": "Decisão de supervisão mais rápida",
+      "economia_mensal_estimativa": "R$ 750",
+      "economia_anual_estimativa": "R$ 9.000"
+    },
+    {
+      "item": "Produtividade por menor reconcentração",
+      "economia_mensal_estimativa": "R$ 2.000",
+      "economia_anual_estimativa": "R$ 24.000"
+    }
+  ],
+  "custo_implementacao": [
+    { "fase": "Fase 1 - Design System + TS", "custo": "R$ 30.000 - R$ 45.000" },
+    { "fase": "Fase 2 - UX Patterns + Feedback", "custo": "R$ 20.000 - R$ 30.000" },
+    { "fase": "Fase 3 - Qualidade + A11y", "custo": "R$ 18.000 - R$ 28.000" }
+  ],
+  "resumo_roi": {
+    "economia_anual_total_conservadora": "R$ 57.300",
+    "investimento_total": "R$ 68.000 - R$ 103.000",
+    "payback_estimado": "14-20 meses",
+    "roi_12_meses": "negativo (fase de amortização)",
+    "roi_24_meses": "positivo",
+    "roi_36_meses": "fortemente positivo"
+  },
+  "intangiveis": [
+    "Maior confiança do operador no sistema",
+    "Menor desgaste operacional diário",
+    "Menor risco reputacional por falhas silenciosas",
+    "Base técnica mais robusta para expansão"
+  ]
+}

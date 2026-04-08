@@ -1,0 +1,72 @@
+{
+  "titulo": "NVS·WMS v2 — AUDITORIA COMPLETA + PROPOSTA COMERCIAL",
+  "data": "2026-03-27T08:40:00-03:00",
+  "sessoes": [
+    "01_analise_tecnica.json",
+    "02_analise_visual_ux.json",
+    "03_antes_depois_conceitual.md",
+    "04_roi_business_analysis.json",
+    "05_proposta_comercial.md",
+    "06_executive_report.json"
+  ],
+  "resumo_scores": {
+    "visual_estetica": "8/10",
+    "design_system": "3/10",
+    "ux_patterns": "6/10",
+    "visual_consistency": "6/10",
+    "accessibility": "2/10",
+    "feedback_visual": "3/10",
+    "loading_states": "2/10",
+    "error_handling": "2/10",
+    "score_geral": "4.0/10"
+  },
+  "problemas_criticos": [
+    "Uso de alert/prompt/confirm no fluxo crítico",
+    "Loading sem padrão de percepção (sem skeleton global)",
+    "Inconsistência visual em telas críticas (shortage/batch detail)",
+    "Ausência de camada global de feedback/erro",
+    "Acessibilidade abaixo do nível enterprise"
+  ],
+  "oportunidades": [
+    "Toast system com padronização de mensagens operacionais",
+    "Skeleton loading nas principais jornadas",
+    "Error feedback consistente para impressão e API",
+    "Design system com tokens e componentes base",
+    "Programa de acessibilidade (WCAG 2.1 AA)"
+  ],
+  "recomendacoes": [
+    {
+      "prioridade": 1,
+      "acao": "Vitórias rápidas (baixo esforço, alto impacto)",
+      "impacto": "Reduz atrito operacional imediatamente"
+    },
+    {
+      "prioridade": 2,
+      "acao": "Fase 2 (UX + Feedback + Loading)",
+      "impacto": "Melhora percepção e produtividade da operação"
+    },
+    {
+      "prioridade": 3,
+      "acao": "Fase 1 (Design System + Base técnica)",
+      "impacto": "Garante consistência e escalabilidade"
+    },
+    {
+      "prioridade": 4,
+      "acao": "Fase 3 (A11y + Qualidade + Performance)",
+      "impacto": "Eleva maturidade para padrão enterprise"
+    }
+  ],
+  "roi_resumo": {
+    "economia_anual": "R$ 57.300",
+    "investimento": "R$ 68k-103k",
+    "payback": "14-20 meses",
+    "opcao_recomendada": "B (MVP rápido)"
+  },
+  "proximos_passos": [
+    "Apresentar proposta para stakeholders",
+    "Escolher opção de execução (A/B/C)",
+    "Definir equipe e governança de entrega",
+    "Executar quick wins na primeira semana",
+    "Acompanhar indicadores de impacto quinzenalmente"
+  ]
+}

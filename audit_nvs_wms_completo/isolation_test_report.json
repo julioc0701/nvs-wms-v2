@@ -1,0 +1,35 @@
+{
+  "executed_at": "2026-03-27T13:43:08.417Z",
+  "project": "C:\\Users\\CodexSandboxOffline\\.codex\\.sandbox\\cwd\\20d399203c99beb3\\nvs-wms-code-isolated",
+  "all_ok": true,
+  "checks": [
+    {
+      "ok": true,
+      "message": ".ISOLADO presente"
+    },
+    {
+      "ok": true,
+      "message": ".env.code presente"
+    },
+    {
+      "ok": true,
+      "message": "Portas isoladas configuradas (5174/8001)"
+    },
+    {
+      "ok": true,
+      "message": "Pasta data isolada presente"
+    },
+    {
+      "ok": true,
+      "message": "Nenhum hardcoded crítico detectado"
+    },
+    {
+      "ok": true,
+      "message": "Vite com variáveis dinâmicas"
+    },
+    {
+      "ok": true,
+      "message": "Print agent sem 5173 hardcoded"
+    }
+  ]
+}

@@ -1,0 +1,193 @@
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import novaesLogo from '../assets/logo-novaes-v3.png'
+import { 
+  Home, PackageSearch, Users, AlertCircle, LogOut, Database,
+  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2 
+} from 'lucide-react'
+import { cn } from '../lib/utils'
+
+export default function Layout() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
+
+  const isMaster = operator?.name === 'Master'
+  
+  // Detectar se estamos em uma sub-rota de supervisão de marketplace
+  // Formato esperado: /supervisor/ml/* ou /supervisor/shopee/*
+  const pathParts = location.pathname.split('/')
+  const isMarketplaceActive = pathParts[1] === 'supervisor' && (pathParts[2] === 'ml' || pathParts[2] === 'shopee')
+  const activeMarketplace = isMarketplaceActive ? pathParts[2] : null
+
+  const navItems = isMaster 
+    ? [
+        { label: 'Supervisão Full', path: '/supervisor', icon: PackageSearch },
+        { label: 'Base', path: '/master-data', icon: Database },
+        { label: 'Operadores', path: '/operators', icon: Users },
+      ]
+    : [
+        { label: 'Sessões', path: '/sessions?view=active', icon: Home },
+        { label: 'Listas Disponíveis', path: '/sessions?view=available', icon: ListTodo },
+        { label: 'Listas Concluídas', path: '/sessions?view=history', icon: CheckCircle2 },
+        { label: 'Faltantes', path: '/shortage-report', icon: AlertCircle },
+      ]
+
+  const subNavItems = isMarketplaceActive ? [
+    { label: 'Visão Geral',  path: `/supervisor/${activeMarketplace}/overview`, icon: LayoutDashboard },
+    { label: 'Listas e Lotes', path: `/supervisor/${activeMarketplace}/lists`,    icon: ListTodo },
+    { label: 'Processamento',  path: `/supervisor/${activeMarketplace}/tools`,    icon: Wrench },
+    { label: 'Relatório de Faltas', path: `/supervisor/${activeMarketplace}/shortage`, icon: AlertCircle },
+    { label: 'Sistema',        path: `/supervisor/${activeMarketplace}/settings`, icon: SettingsIcon },
+  ] : []
+
+  function handleLogout() {
+    sessionStorage.removeItem('operator')
+    navigate('/')
+  }
+
+  const isPickingPage = location.pathname.includes('/picking/')
+  const isLoginPage = location.pathname === '/'
+
+  // Segurança de rota
+  if (!operator && !isLoginPage) {
+      setTimeout(() => navigate('/'), 0)
+      return null
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900">
+      
+      {/* SIDEBAR DESKTOP */}
+      <aside className="hidden md:flex w-64 flex-col bg-white border-r border-slate-200 shadow-sm z-10 transition-all duration-300">
+        <div className="flex flex-col items-center px-6 py-8 border-b border-slate-100 gap-4 bg-gradient-to-b from-slate-50 to-white">
+          <div className="w-24 h-24 flex items-center justify-center group overflow-visible">
+             <img src={novaesLogo} alt="NVS Logo" className="w-full h-full object-contain drop-shadow-[0_15px_30px_rgba(59,130,246,0.2)] transition-transform duration-700 group-hover:scale-110" />
+          </div>
+          <div className="text-center">
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter leading-none">NVS<span className="text-blue-600 font-extrabold">·</span>WMS</h1>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2 px-3 py-1 bg-slate-100 rounded-full inline-block">Novaes Moto Peças</p>
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
+            // Se for Supervisão Full e houver um marketplace ativo, mantemos o pai ativo
+            const isParentActive = item.path === '/supervisor' && isMarketplaceActive
+            
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all duration-200",
+                  (isActive || isParentActive)
+                    ? "bg-blue-50 text-blue-700" 
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                )}
+              >
+                <Icon size={20} strokeWidth={(isActive || isParentActive) ? 2.5 : 2} />
+                {item.label}
+              </button>
+            )
+          })}
+
+          {/* SUB-MENU DINÂMICO (Onde estava o quadrado vermelho) */}
+          {isMarketplaceActive && (
+            <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Monitoramento {activeMarketplace.toUpperCase()}</p>
+              {subNavItems.map((sub) => {
+                const SubIcon = sub.icon
+                const isSubActive = location.pathname === sub.path
+                return (
+                  <button
+                    key={sub.path}
+                    onClick={() => navigate(sub.path)}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ml-2",
+                      isSubActive 
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-200" 
+                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    )}
+                  >
+                    <SubIcon size={16} strokeWidth={isSubActive ? 2.5 : 2} />
+                    {sub.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-slate-100">
+          <div className="flex items-center gap-3 px-3 py-3 rounded-lg bg-slate-50 border border-slate-100 mb-2">
+            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm uppercase">
+              {operator?.name?.charAt(0) || 'O'}
+            </div>
+            <div className="flex-1 overflow-hidden text-left">
+               <p className="text-sm font-semibold truncate text-slate-700">{operator?.name || 'Operador'}</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm font-medium text-slate-500 hover:text-red-600 transition-colors"
+          >
+            <LogOut size={18} />
+            Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* HEADER MOBILE */}
+      <header className="md:hidden flex h-14 bg-white border-b border-slate-200 items-center px-4 justify-between shadow-sm z-10 sticky top-0 transition-all duration-300">
+         <div className="flex items-center gap-2">
+           <img src={novaesLogo} className="w-8 h-8 rounded-lg shadow-sm border border-slate-100" />
+           <h1 className="text-lg font-black text-slate-800 tracking-tight">NVS<span className="text-blue-600">·</span></h1>
+         </div>
+         <div className="flex items-center gap-2">
+           <span className="text-sm font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded-md">{operator?.name}</span>
+           <button onClick={handleLogout} className="text-slate-400 hover:text-red-500 p-2">
+             <LogOut size={18} />
+           </button>
+         </div>
+      </header>
+
+      {/* RENDER PAGES HERE */}
+      <main className={cn(
+        "flex-1 flex flex-col bg-slate-50 overflow-auto relative",
+        // Padding bottom no mobile SE não for tela de picking
+        (!isPickingPage) && "pb-16 md:pb-0"
+      )}>
+        <Outlet />
+      </main>
+
+      {/* MOBILE BOTTOM NAVIGATION */}
+      {!isPickingPage && (
+        <nav className="md:hidden flex h-16 bg-white border-t border-slate-200 justify-around items-center px-2 pb-safe fixed bottom-0 w-full z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActive = location.pathname.startsWith(item.path)
+            return (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                  isActive ? "text-blue-600" : "text-slate-400 hover:text-slate-600"
+                )}
+              >
+                <div className={cn("p-1 rounded-full", isActive && "bg-blue-50")}>
+                  <Icon size={isActive ? 22 : 20} strokeWidth={isActive ? 2.5 : 2} />
+                </div>
+                <span className={cn("text-[10px] uppercase tracking-wide", isActive ? "font-bold" : "font-medium")}>
+                  {item.label}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
+      )}
+    </div>
+  )
+}

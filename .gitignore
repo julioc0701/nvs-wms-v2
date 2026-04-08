@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Database local (não subir dados para o GitHub)
+backend/warehouse.db
+backend/*.db
+
+# Frontend buildado (Railway faz o build automaticamente)
+backend/static/
+
+# Ambiente
+.env
+.env.*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/
