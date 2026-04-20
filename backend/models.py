@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import Integer, String, Text, Boolean, DateTime, Date, ForeignKey
+from sqlalchemy import Integer, String, Text, Boolean, DateTime, Date, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 
@@ -136,3 +136,195 @@ class PrintJob(Base):
     error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
     operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True)
     printer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class TinyOrderSync(Base):
+    """Tabela de Espelho Local para armazenar dados pesados do Tiny ERP (Marcadores, Ecommerce)"""
+    __tablename__ = "tiny_orders_sync"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # O id do pedido no Tiny
+    numero: Mapped[str] = mapped_column(String(50), nullable=True)
+    ecommerce: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    marcadores_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deposito: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    raw_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    items: Mapped[list["TinyOrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+
+
+class TinyOrderItem(Base):
+    """Tabela de Itens de cada Pedido Sincronizado do Tiny ERP para Análises Isoladas (Ex: Gemma 4)"""
+    __tablename__ = "tiny_order_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tiny_order_id: Mapped[str] = mapped_column(ForeignKey("tiny_orders_sync.id"), nullable=False)
+    id_produto: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    codigo: Mapped[str | None] = mapped_column(String(100), nullable=True)  # SKU do ERP
+    descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quantidade: Mapped[float | None] = mapped_column(Float, nullable=True)
+    valor_unitario: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    order: Mapped["TinyOrderSync"] = relationship(back_populates="items")
+
+
+class AgentMemory(Base):
+    """
+    Tabela de Memória de Agentes (MAS).
+    Armazena o histórico do loop de conversas, separando por perfis e retendo o raciocínio.
+    """
+    __tablename__ = "agent_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(100), nullable=False) # Identifica a "thread" aberta pelo usuário
+    agent_role: Mapped[str] = mapped_column(String(50), nullable=False)  # orquestrador, data_scientist, etc.
+    message_type: Mapped[str] = mapped_column(String(20), nullable=False) # system, user, assistant, tool
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    tool_call_id: Mapped[str | None] = mapped_column(String(100), nullable=True) # Se foi retorno de tool
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AgentRun(Base):
+    """
+    Trilhas resumidas de execução do ecossistema de agentes.
+    Serve para observabilidade, auditoria e depuração de falhas.
+    """
+    __tablename__ = "agent_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    request_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    user_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    orchestrator_role: Mapped[str] = mapped_column(String(50), nullable=False, default="orquestrador")
+    specialist_role: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tool_args_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tool_result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[str] = mapped_column(String(20), nullable=False, default="unknown")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="started")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    final_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class OrderOperational(Base):
+    """
+    Camada canônica para consultas operacionais rápidas.
+    Uma linha por pedido com status e datas já normalizados.
+    """
+    __tablename__ = "orders_operational"
+
+    order_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    numero: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    channel: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    order_date: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)  # YYYY-MM-DD
+    invoice_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    shipping_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    delivery_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    current_status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    status_bucket: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    is_operational_sale: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    total_value: Mapped[float] = mapped_column(Float, default=0.0)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    source_name: Mapped[str] = mapped_column(String(30), default="tiny_api")
+    last_source_update_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class SyncRun(Base):
+    """
+    Auditoria das execuções de sync para carga inicial, incremental e reconciliação.
+    """
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sync_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running", index=True)
+    window_start: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    window_end: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    orders_seen: Mapped[int] = mapped_column(Integer, default=0)
+    orders_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    orders_updated: Mapped[int] = mapped_column(Integer, default=0)
+    orders_failed: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class TinyPickingList(Base):
+    """Lista de Separação Mestre criada a partir de múltiplos pedidos do Tiny."""
+    __tablename__ = "tiny_picking_lists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pendente") # pendente, em_andamento, concluida
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    items: Mapped[list["TinyPickingListItem"]] = relationship(back_populates="list", cascade="all, delete-orphan")
+
+
+class TinyPickingListItem(Base):
+    """Itens consolidados de uma lista de separação do Tiny, agrupados por SKU."""
+    __tablename__ = "tiny_picking_list_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    list_id: Mapped[int] = mapped_column(ForeignKey("tiny_picking_lists.id"), nullable=False)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    qty_picked: Mapped[float] = mapped_column(Float, default=0.0) 
+    qty_shortage: Mapped[float] = mapped_column(Float, default=0.0)
+    notes: Mapped[str | None] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(String(100), index=True)
+    source_separation_ids: Mapped[str | None] = mapped_column(Text)
+    picked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True) # Controle de coleta
+    is_shortage: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    list: Mapped["TinyPickingList"] = relationship(back_populates="items")
+
+
+class TinySeparationItemCache(Base):
+    """Cache local de itens de separação do Tiny.
+    Aquecido em background quando a tela carrega — elimina as N chamadas ao Tiny
+    na hora de gerar a lista. TTL de 6h, apagado após virar lista."""
+    __tablename__ = "tiny_separation_item_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    separation_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    location: Mapped[str | None] = mapped_column(String(100))
+    cached_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TinySeparationStatus(Base):
+    """Espelho local do status de documentos de separação do Tiny.
+    O Tiny é somente-leitura — nunca escrevemos de volta.
+    Esta tabela registra localmente quando um documento foi incluído em uma lista de separação."""
+    __tablename__ = "tiny_separation_statuses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    separation_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True, unique=True)
+    status: Mapped[str] = mapped_column(String(30), default="em_separacao")  # em_separacao | concluida
+    list_id: Mapped[int | None] = mapped_column(ForeignKey("tiny_picking_lists.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Shortage(Base):
+    """Relatório de faltas/estoque zerado."""
+    __tablename__ = "shortages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sku: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    quantity: Mapped[float] = mapped_column(Float, default=1.0)
+    category: Mapped[str] = mapped_column(String(50), default="organico") # full | organico
+    list_id: Mapped[str | None] = mapped_column(String(100), nullable=True) # ID da lista ou sessão
+    operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True) # NOVO
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    operator: Mapped["Operator | None"] = relationship()

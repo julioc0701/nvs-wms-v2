@@ -76,7 +76,17 @@ if "/data/" in DATABASE_URL:
     else:
         print(f"--- DATABASE DEBUG: Data exists ({os.path.getsize(db_path)} bytes). skipping seed. ---")
 
+from sqlalchemy import event
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # DEBUG: Check table counts immediately on startup
@@ -113,7 +123,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -197,3 +207,114 @@ def init_db():
             conn.execute(text("ALTER TABLE sessions ADD COLUMN marketplace VARCHAR(20) NOT NULL DEFAULT 'ml'"))
             conn.commit()
             print("--- DATABASE MIGRATION: marketplace added to sessions ---")
+
+        sync_run_cols = [c["name"] for c in insp.get_columns("sync_runs")] if "sync_runs" in insp.get_table_names() else []
+        if "updated_at" not in sync_run_cols:
+            conn.execute(text("ALTER TABLE sync_runs ADD COLUMN updated_at DATETIME"))
+            conn.execute(text("UPDATE sync_runs SET updated_at = COALESCE(finished_at, started_at)"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: updated_at added to sync_runs ---")
+
+        # ── PICKING LIST SUPPORT MIGRATION ────────────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_picking_lists (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       VARCHAR(200) NOT NULL,
+                status     VARCHAR(20) NOT NULL DEFAULT 'pendente',
+                created_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_picking_list_items (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                list_id               INTEGER NOT NULL REFERENCES tiny_picking_lists(id),
+                sku                   VARCHAR(100) NOT NULL,
+                description           TEXT,
+                quantity              FLOAT NOT NULL,
+                location              VARCHAR(100),
+                source_separation_ids TEXT,
+                picked_at             DATETIME
+            )
+        """))
+        conn.commit()
+        print("--- DATABASE MIGRATION: Picking Lists tables verified/created ---")
+
+        try:
+            items_cols = [c["name"] for c in insp.get_columns("tiny_picking_list_items")]
+            if "picked_at" not in items_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN picked_at DATETIME"))
+                conn.commit()
+            
+            if "is_shortage" not in items_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN is_shortage BOOLEAN DEFAULT 0"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: is_shortage added to tiny_picking_list_items ---")
+
+            if "qty_picked" not in items_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN qty_picked FLOAT DEFAULT 0.0"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: qty_picked added to tiny_picking_list_items ---")
+
+            if "qty_shortage" not in items_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN qty_shortage FLOAT DEFAULT 0.0"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: qty_shortage added to tiny_picking_list_items ---")
+
+            if "notes" not in items_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN notes TEXT"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: notes added to tiny_picking_list_items ---")
+            
+            # MIGRATION PARA SHORTAGES (OPERADOR)
+            shortage_cols = [c["name"] for c in insp.get_columns("shortages")]
+            if "operator_id" not in shortage_cols:
+                conn.execute(text("ALTER TABLE shortages ADD COLUMN operator_id INTEGER REFERENCES operators(id)"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: operator_id added to shortages ---")
+        except Exception:
+            pass
+
+        # ── CACHE DE ITENS DE SEPARAÇÃO (warm-up em background, TTL 6h) ────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_separation_item_cache (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                separation_id VARCHAR(50) NOT NULL,
+                sku           VARCHAR(100) NOT NULL,
+                description   TEXT,
+                quantity      FLOAT NOT NULL,
+                location      VARCHAR(100),
+                cached_at     DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sep_cache_sep_id ON tiny_separation_item_cache (separation_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sep_cache_cached_at ON tiny_separation_item_cache (cached_at)"))
+        conn.commit()
+        print("--- DATABASE MIGRATION: tiny_separation_item_cache table verified/created ---")
+
+        # ── STATUS LOCAL DE SEPARAÇÕES (Tiny é somente-leitura, nunca escrevemos de volta) ──
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_separation_statuses (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                separation_id VARCHAR(50) NOT NULL UNIQUE,
+                status        VARCHAR(30) NOT NULL DEFAULT 'em_separacao',
+                list_id       INTEGER REFERENCES tiny_picking_lists(id),
+                created_at    DATETIME NOT NULL
+            )
+        """))
+        conn.commit()
+        print("--- DATABASE MIGRATION: tiny_separation_statuses table verified/created ---")
+
+        # ── RENOMEAR LISTAS SEM SEQUÊNCIA (L{N} - DD/MM/YYYY HH:MM) ─────────────
+        import re as _re
+        rows = conn.execute(text("SELECT id, name, created_at FROM tiny_picking_lists ORDER BY created_at ASC")).fetchall()
+        seq = 1
+        for row in rows:
+            list_id, name, created_at = row
+            # Extrai data/hora do nome antigo, seja qual for o formato
+            date_part = _re.sub(r'^(Lista\s*|L\d+\s*-\s*)', '', name).strip()
+            new_name = f"L{seq} - {date_part}" if date_part else f"L{seq} - {created_at}"
+            conn.execute(text("UPDATE tiny_picking_lists SET name = :n WHERE id = :id"), {"n": new_name, "id": list_id})
+            seq += 1
+        conn.commit()
+        if rows:
+            print(f"--- DATABASE MIGRATION: {len(rows)} picking list(s) renomeadas com sequencia L{{N}} ---")

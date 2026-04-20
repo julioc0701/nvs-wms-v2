@@ -6,7 +6,7 @@ import {
   Trash2, Package, CheckCircle, Clock, Trophy, Target, 
   UploadCloud, Database, AlertCircle, Printer, ArrowLeft,
   Settings, Folder, Copy, LayoutDashboard, ListTodo, Wrench, ArrowRight, Activity, Search, FileText, Key, Users, LogOut,
-  BarChart3, Gauge, TrendingUp
+  BarChart3, Gauge, TrendingUp, Plus, Minus, ChevronRight, Layers, LayoutGrid
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useFeedback } from '../components/ui/FeedbackProvider'
@@ -143,7 +143,7 @@ function ProgressHero({ sessions, shortageStats, compact = false }) {
 
         <div className="rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm">
           <p className="section-kicker text-red-600 mb-3">Relatório de Faltas</p>
-          <div className="grid grid-cols-3 gap-3 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div className="rounded-lg border border-red-200 bg-white px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Itens Faltantes</p>
               <p className="text-2xl font-black text-red-700 tabular-nums">{shortageStats.totalUnits}</p>
@@ -502,104 +502,209 @@ function SessionRow({ s, onDeleted }) {
   )
 }
 
-// ── Shortage Report (Embedded) ──────────────────────────────────────────────
-function ShortageSection({ marketplace }) {
+// ── Shortage Report (Embedded & Renewed) ──────────────────────────────────────────────
+function ShortageSection() {
+  const { notify } = useFeedback()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState({ full: true, organico: true })
+
+  const loadData = () => {
+    setLoading(true)
+    api.getShortages()
+      .then(setItems)
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    setLoading(true)
-    api.getShortageReport() // O backend retorna tudo, vamos filtrar se necessário
-      .then(res => {
-        if (marketplace) {
-          setItems(res.filter(i => i.marketplace === marketplace))
-        } else {
-          setItems(res)
-        }
-      })
-      .finally(() => setLoading(false))
-  }, [marketplace])
+    loadData()
+  }, [])
 
-  const totalShortage = items.reduce((s, i) => s + i.shortage_qty, 0)
+  const groupShortages = (items) => {
+    const groups = { full: [], organico: [] };
+    items.forEach(item => {
+      const cat = item.category?.toLowerCase() === 'organico' ? 'organico' : 'full';
+      groups[cat].push(item);
+    });
+    return groups;
+  };
+
+  const handleDeleteShortage = async (id) => {
+    if (!confirm('Deseja remover este registro de falta?')) return;
+    try {
+      if (typeof id === 'string' && id.startsWith('legacy_')) {
+        alert('Este é um registro legado de uma lista de picking ativa. Para remover, altere a quantidade na lista original.');
+        return;
+      }
+      await api.post(`/tiny/shortages/${id}/delete`, {});
+      notify('Registro de falta removido.', 'success');
+      loadData();
+    } catch (err) {
+      notify('Erro ao remover falta.', 'error');
+    }
+  };
+
+  const groups = groupShortages(items);
+  const fullGroup = groups.full
+  const organicGroup = groups.organico
+  const totalShortage = items.reduce((s, i) => s + (i.quantity || 0), 0)
+
+  if (loading) return (
+    <div className="flex justify-center py-20 text-slate-400 animate-pulse flex-col items-center gap-4">
+      <Database size={48} />
+      <span className="text-xs font-bold uppercase tracking-widest">Sincronizando Faltas...</span>
+    </div>
+  )
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
         <div>
-          <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <AlertCircle size={20} className="text-red-500" /> Relatório de Faltas
+          <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+             <AlertCircle size={24} className="text-red-500 shrink-0" /> Painel de Rupturas
           </h3>
-          <p className="text-xs font-medium text-slate-500 mt-1">
-            Itens com estoque zerado no momento do picking (Listas {marketplace?.toUpperCase() || 'Globais'})
-          </p>
+          <p className="text-slate-400 text-sm font-semibold mt-1">Monitoramento em tempo real de itens não localizados</p>
         </div>
-        <div className="text-right">
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Faltante</p>
-          <span className="text-2xl font-black text-red-600 tabular-nums">{totalShortage} UNID.</span>
+        <div className="bg-red-50 border border-red-100 px-5 sm:px-8 py-3 rounded-2xl text-right shrink-0">
+           <p className="text-[10px] font-black text-red-400 uppercase tracking-[0.2em] mb-1">Déficit Total</p>
+           <span className="text-3xl font-black text-red-600 tabular-nums">{totalShortage.toFixed(0)} <small className="text-sm">UN</small></span>
         </div>
       </div>
 
-      <div className="p-6">
-        {loading ? (
-          <div className="flex justify-center py-10 text-slate-400 animate-pulse"><Database size={32} /></div>
-        ) : items.length === 0 ? (
-          <div className="text-center py-16 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-400 italic">
-            ✓ Nenhuma falta registrada para este marketplace.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left border-collapse">
-              <thead>
-                <tr className="text-slate-500 border-b border-slate-100">
-                  <th className="pb-4 px-2 font-bold uppercase tracking-wider text-[10px]">SKU / Descrição</th>
-                  <th className="pb-4 px-2 font-bold uppercase tracking-wider text-[10px]">Lista</th>
-                  <th className="pb-4 px-2 font-bold uppercase tracking-wider text-[10px]">Anotações</th>
-                  <th className="pb-4 px-2 font-bold uppercase tracking-wider text-[10px] text-right">Qtd Faltante</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {items.map(item => (
-                  <tr key={`${item.sku}-${item.session_code}`} className="hover:bg-slate-50 transition-colors group">
-                    <td className="py-4 px-2">
-                      <p className="font-mono font-bold text-blue-700">{item.sku}</p>
-                      <p className="text-xs text-slate-500 mt-0.5 max-w-xs truncate">{item.description || '—'}</p>
-                    </td>
-                    <td className="py-4 px-2">
-                      <span className="font-mono text-[11px] font-bold bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 flex items-center gap-2 w-fit">
-                        <MarketplaceLogo marketplace={item.marketplace} size={12} /> {item.session_code}
-                      </span>
-                    </td>
-                    <td className="py-4 px-2">
-                       <div
-                          onClick={async () => {
-            const newNotes = await askPrompt({
-              title: `Editar observação - ${item.sku}`,
-              initialValue: item.notes || '',
-              placeholder: 'Digite a observação',
-              confirmText: 'Salvar',
-            })
-            if (newNotes === null) return
-            try {
-              await api.updateShortageNotes(item.sku, newNotes.trim() || null)
-              setItems(prev => prev.map(i => i.sku === item.sku ? { ...i, notes: newNotes.trim() || null } : i))
-            } catch (e) { notify('Erro: ' + e.message, 'error') }
-                          }}
-                          className="truncate max-w-[200px] cursor-pointer text-slate-500 hover:text-blue-600 transition-colors text-xs italic"
-                          title={item.notes || 'Clique para adicionar'}
-                        >
-                          {item.notes || '—'}
-                        </div>
-                    </td>
-                    <td className="py-4 px-2 text-right">
-                      <span className="font-black text-red-600 text-lg">-{item.shortage_qty}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <div className="grid grid-cols-1 gap-8">
+        <GroupCard 
+          title="Operação Full (Shopee/ML)"
+          subtitle="Itens faltantes nas listas de carregamento"
+          items={fullGroup}
+          isOpen={expanded.full}
+          onToggle={() => setExpanded(e => ({ ...e, full: !e.full }))}
+          onDelete={handleDeleteShortage}
+          icon={<LayoutGrid size={20} />}
+          color="blue"
+        />
+
+        <GroupCard 
+          title="Operação Orgânico (Tiny)"
+          subtitle="Itens faltantes nas separações avulsas"
+          items={organicGroup}
+          isOpen={expanded.organico}
+          onToggle={() => setExpanded(e => ({ ...e, organico: !e.organico }))}
+          onDelete={handleDeleteShortage}
+          icon={<Layers size={20} />}
+          color="emerald"
+        />
       </div>
+    </div>
+  )
+}
+
+function GroupCard({ title, subtitle, items, isOpen, onToggle, onDelete, icon, color }) {
+  const { notify } = useFeedback()
+  const total = items.reduce((s, i) => s + (i.quantity || 0), 0)
+
+  const copySku = (sku) => {
+    navigator.clipboard.writeText(sku);
+    notify('SKU copiado!', 'success');
+  };
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between px-2">
+        <div className="flex items-center gap-4">
+           <div className={`w-12 h-12 rounded-2xl bg-${color}-50 text-${color}-600 flex items-center justify-center border border-${color}-100 shadow-sm`}>
+              {icon}
+           </div>
+           <div>
+              <h4 className="text-lg font-black text-slate-800">{title}</h4>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{subtitle}</p>
+           </div>
+        </div>
+        <div className="flex items-center gap-4">
+           <div className="text-right mr-2">
+              <p className={`text-xl font-black text-${color}-600 tabular-nums`}>{total.toFixed(0)} <small className="text-[10px] uppercase opacity-60">un</small></p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase">{items.length} SKUs</p>
+           </div>
+           <button 
+             onClick={onToggle}
+             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+               isOpen ? 'bg-slate-800 text-white' : `bg-${color}-100 text-${color}-600 hover:bg-${color}-200`
+             }`}
+           >
+             {isOpen ? <Minus size={18} /> : <Plus size={18} />}
+           </button>
+        </div>
+      </div>
+
+      {isOpen && (
+        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-lg overflow-hidden animate-in zoom-in-95 duration-200">
+           {items.length === 0 ? (
+             <div className="p-12 text-center text-slate-400 italic text-sm">Nenhuma falta registrada nesta categoria.</div>
+           ) : (
+             <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-6 py-4">SKU / Descrição</th>
+                      <th className="px-6 py-4 text-center">Origem</th>
+                      <th className="px-6 py-4 text-center">Data</th>
+                      <th className="px-6 py-4 text-right">Quantidade</th>
+                      <th className="px-6 py-4 text-center">Operador</th>
+                      <th className="px-6 py-4 text-center">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {items.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group/row">
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col">
+                             <div className="flex items-center gap-2">
+                               <span className="font-mono font-black text-slate-700">{item.sku}</span>
+                               <button 
+                                 onClick={() => copySku(item.sku)}
+                                 className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-blue-50 hover:text-blue-500 opacity-0 group-hover/row:opacity-100 transition-all"
+                                 title="Copiar SKU"
+                               >
+                                 <Copy size={12} />
+                               </button>
+                             </div>
+                             <span className="text-[11px] text-slate-400 truncate max-w-xs">{item.description || '—'}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                           <span className="bg-slate-100 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 border border-slate-200">
+                              {item.list_id || 'Avulsa'}
+                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                           <span className="text-[11px] font-medium text-slate-400 tabular-nums">
+                              {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                           <span className="text-lg font-black text-red-500">-{item.quantity.toFixed(0)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                             {item.operator_name || 'Admin'}
+                           </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                           <button 
+                             onClick={() => onDelete(item.id)}
+                             className="w-10 h-10 rounded-xl bg-slate-50 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all flex items-center justify-center border border-slate-100"
+                             title="Remover Falta"
+                           >
+                             <Trash2 size={16} />
+                           </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+             </div>
+           )}
+        </div>
+      )}
     </div>
   )
 }
@@ -650,7 +755,7 @@ export default function Supervisor() {
   }
 
   function refresh() {
-    Promise.all([api.getSessions(), api.getPrinters(), api.listBatches(), api.getShortageReport()]).then(([s, p, b, sh]) => {
+    Promise.all([api.getSessions(), api.getPrinters(), api.listBatches(), api.getShortages()]).then(([s, p, b, sh]) => {
       setSessions(s); setPrinters(p); setBatches(b)
       setShortageItems(Array.isArray(sh) ? sh : [])
       setLastRefresh(new Date())
@@ -716,11 +821,10 @@ export default function Supervisor() {
 
   const visibleBatches = batches.filter(b => normalizeMarket(b.marketplace) === normalizeMarket(marketplaceView))
   const visibleSessions = sessions.filter(s => normalizeMarket(s.marketplace) === normalizeMarket(marketplaceView))
-  const visibleShortages = shortageItems.filter(i => normalizeMarket(i.marketplace) === normalizeMarket(marketplaceView))
   const shortageStats = {
-    totalUnits: visibleShortages.reduce((sum, i) => sum + (i.shortage_qty || 0), 0),
-    skuCount: new Set(visibleShortages.map(i => i.sku)).size,
-    sessionCount: new Set(visibleShortages.map(i => i.session_code)).size,
+    totalUnits: shortageItems.reduce((sum, i) => sum + (i.quantity || 0), 0),
+    skuCount: new Set(shortageItems.map(i => i.sku)).size,
+    sessionCount: new Set(shortageItems.map(i => i.list_id)).size,
   }
 
   return (
@@ -847,7 +951,7 @@ export default function Supervisor() {
               )}
 
               {tab === 'shortage' && (
-                <ShortageSection marketplace={marketplaceView} />
+                <ShortageSection />
               )}
 
               {tab === 'lists' && (() => {
@@ -1062,10 +1166,6 @@ export default function Supervisor() {
                         {excelResult && <p className={cn("text-center text-sm font-bold", excelResult.ok ? "text-emerald-600" : "text-red-600")}>{excelResult.msg}</p>}
                       </form>
                     </ToolCard>
-                    
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Removido Pesquisa Master e Relatório Faltas daqui pois agora estão na barra lateral principal */}
-                    </div>
                   </div>
                 </div>
               )}

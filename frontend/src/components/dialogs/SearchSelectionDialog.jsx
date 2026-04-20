@@ -12,9 +12,9 @@ export default function SearchSelectionDialog({ candidates, onSelect, onCancel }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-3xl shadow-2xl w-full w-[min(95vw,42rem)] overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-6 bg-gray-50 border-b border-gray-200">
-          <h2 className="text-3xl font-bold text-gray-800">Selecione o Item</h2>
+          <h2 className="text-xl sm:text-3xl font-bold text-gray-800">Selecione o Item</h2>
           <p className="text-gray-500">Múltiplos itens encontrados para sua busca.</p>
         </div>
 
@@ -75,7 +75,7 @@ export default function SearchSelectionDialog({ candidates, onSelect, onCancel }
         <div className="p-4 bg-gray-50 border-t border-gray-200">
           <button
             onClick={onCancel}
-            className="w-full py-4 text-xl font-bold text-gray-500 hover:bg-gray-200 rounded-2xl transition-colors"
+            className="w-full py-4 min-h-[44px] text-xl font-bold text-gray-500 hover:bg-gray-200 rounded-2xl transition-colors active:scale-95"
           >
             CANCELAR
           </button>

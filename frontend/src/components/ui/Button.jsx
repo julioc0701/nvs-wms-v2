@@ -10,7 +10,7 @@ export default function Button({ className, variant = 'subtle', children, ...pro
   return (
     <button
       className={cn(
-        'inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors',
+        'inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl transition-colors min-h-[44px] active:scale-95',
         variants[variant],
         className
       )}

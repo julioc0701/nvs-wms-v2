@@ -116,4 +116,65 @@ export const api = {
     return req('GET', url);
   },
   getBatchesForRanking: () => req('GET', '/stats/batches-for-ranking'),
+
+  // Tiny ERP
+  listTinyPedidos: (token = null, pagina = 1, status = null, data_inicial = null, data_final = null, force_refresh = false) => {
+    let url = `/tiny/pedidos?pagina=${pagina}`;
+    if (token) url += `&token=${encodeURIComponent(token)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (data_inicial) url += `&data_inicial=${encodeURIComponent(data_inicial)}`;
+    if (data_final) url += `&data_final=${encodeURIComponent(data_final)}`;
+    if (force_refresh) url += `&force_refresh=true`;
+    return req('GET', url);
+  },
+  getTinyPedido: (pedidoId, token = null) => {
+    let url = `/tiny/pedidos/${pedidoId}`;
+    if (token) url += `?token=${encodeURIComponent(token)}`;
+    return req('GET', url);
+  },
+  triggerTinyFullSync: (lookbackDays = 60) =>
+    req('POST', `/tiny/sync/full?lookback_days=${encodeURIComponent(lookbackDays)}`),
+  triggerTinyIncrementalSync: (lookbackDays = 3) =>
+    req('POST', `/tiny/sync/incremental?lookback_days=${encodeURIComponent(lookbackDays)}`),
+  triggerTinyReconcileSync: (lookbackDays = 30) =>
+    req('POST', `/tiny/sync/reconcile?lookback_days=${encodeURIComponent(lookbackDays)}`),
+  getTinySyncStatus: () => req('GET', '/tiny/sync/status'),
+  getTinySeparacoes: (pagina = 1, data_inicial = null, data_final = null) => {
+    let url = `/tiny/separacoes?pagina=${pagina}`;
+    if (data_inicial) url += `&data_inicial=${encodeURIComponent(data_inicial)}`;
+    if (data_final) url += `&data_final=${encodeURIComponent(data_final)}`;
+    return req('GET', url);
+  },
+  
+  // Tiny Picking Lists (Consolidação)
+  warmSeparationCache: (separationIds) => req('POST', '/tiny/separation-cache/warm', { separation_ids: separationIds }),
+  getSeparationStatuses: () => req('GET', '/tiny/separation-statuses'),
+  revertSeparationStatuses: (separationIds) => req('POST', '/tiny/separation-statuses/revert', { separation_ids: separationIds }),
+  createPickingList: (name, separationIds) => req('POST', '/tiny/picking-lists', { name, separation_ids: separationIds }),
+  getPickingLists: () => req('GET', '/tiny/picking-lists'),
+  getPickingListDetails: (listId) => req('GET', `/tiny/picking-lists/${listId}`),
+  
+  // New Tiny Picking Actions
+  resolveBarcode: (code) => req('GET', `/tiny/resolve-barcode/${encodeURIComponent(code)}`),
+  linkBarcode: (barcode, sku) => req('POST', '/tiny/link-barcode', { barcode, sku }),
+  pickItem: (itemId, body = {}) => req('POST', `/tiny/picking-items/${itemId}/pick`, body),
+  unpickItem: (itemId) => req('POST', `/tiny/picking-items/${itemId}/unpick`, {}),
+  clearShortage: (itemId) => req('POST', `/tiny/picking-items/${itemId}/clear-shortage`, {}),
+  
+  // Diagnóstico: envia log do frontend para o backend
+  sendLog: (level, message, context = {}) => {
+    req('POST', '/admin/frontend-log', { level, message, context }).catch(() => {})
+  },
+
+  // Relatório de Faltas (v2)
+  reportShortage: (data) => req('POST', '/tiny/report-shortage', data),
+  getShortages: () => req('GET', '/tiny/shortages'),
+  
+  // App Health & Gemma AI Control Panel
+  getHealth: () => req('GET', '/health'),
+  chatWithGemma: (messages) => req('POST', '/v2/ai/chat', { messages }),
+  
+  // Generic Helpers
+  get: (path) => req('GET', path),
+  post: (path, body) => req('POST', path, body)
 }

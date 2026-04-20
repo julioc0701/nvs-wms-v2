@@ -9,6 +9,11 @@ import Supervisor from './pages/Supervisor'
 import MasterData from './pages/MasterData'
 import ShortageReport from './pages/ShortageReport'
 import BatchDetail from './pages/BatchDetail'
+import OlistOrders from './pages/OlistOrders'
+import GemmaDashboard from './pages/GemmaDashboard'
+import SeparacaoOlist from './pages/SeparacaoOlist'
+import PickingListsHistory from './pages/PickingListsHistory'
+import PickingListDetail from './pages/PickingListDetail'
 
 export default function App() {
   return (
@@ -23,8 +28,12 @@ export default function App() {
           <Route path="/supervisor" element={<Supervisor />} />
           <Route path="/supervisor/:marketplace/:tab" element={<Supervisor />} />
           <Route path="/supervisor/batch/:batchId" element={<BatchDetail />} />
+          <Route path="/olist-orders" element={<GemmaDashboard />} />
           <Route path="/operators" element={<OperatorsManagement />} />
           <Route path="/master-data" element={<MasterData />} />
+          <Route path="/separacao" element={<SeparacaoOlist />} />
+          <Route path="/separacao/listas" element={<PickingListsHistory />} />
+          <Route path="/separacao/listas/:listId" element={<PickingListDetail />} />
           <Route path="/shortage-report" element={<ShortageReport />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />

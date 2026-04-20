@@ -12,9 +12,9 @@ export default function TransferConfirmDialog({ sku, ownerName, onConfirm, onCan
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 w-full w-[min(95vw,28rem)] shadow-2xl overflow-y-auto max-h-[90vh]">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shrink-0">
             <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 3h5v5" />
               <path d="M8 21H3v-5" />

@@ -246,6 +246,24 @@ export default function Picking() {
   async function handleShortageConfirm(qtyFound, notes) {
     setDialog(null)
     const res = await api.shortage(sessionId, item.sku, qtyFound, operator.id, notes)
+    
+    // REGISTRA NO RELATÓRIO DE FALTAS
+    try {
+      const missing = item.qty_required - qtyFound
+      if (missing > 0) {
+        await api.reportShortage({
+          sku: item.sku,
+          qty: missing,
+          category: 'full',
+          list_id: sessionId,
+          description: item.description,
+          operator_id: operator.id
+        })
+      }
+    } catch (e) {
+      console.error('Erro ao reportar shortage no consolidado', e)
+    }
+
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
     if (res.item?.labels_ready) await autoPrintLabels(res.item)
     if (focusSku) goBackToItems()
@@ -285,6 +303,21 @@ export default function Picking() {
   async function _doOutOfStock(notes) {
     setDialog(null)
     const res = await api.outOfStock(sessionId, item.sku, operator.id, notes)
+    
+    // REGISTRA NO RELATÓRIO DE FALTAS (TOTAL)
+    try {
+      await api.reportShortage({
+        sku: item.sku,
+        qty: item.qty_required,
+        category: 'full',
+        list_id: sessionId,
+        description: item.description,
+        operator_id: operator.id
+      })
+    } catch (e) {
+      console.error('Erro ao reportar oos no consolidado', e)
+    }
+
     setSession(prev => prev ? { ...prev, progress: res.progress } : prev)
     if (res.item?.labels_ready) await autoPrintLabels(res.item)
     if (focusSku) goBackToItems()

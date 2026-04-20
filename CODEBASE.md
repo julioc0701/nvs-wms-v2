@@ -35,7 +35,8 @@ warehouse-picker/
 │   │   ├── labels.py            ← ZPL manual, mark-printed
 │   │   ├── seed.py              ← Endpoints de seed/migração de dados
 │   │   ├── stats.py             ← Ranking de operadores
-│   │   └── printers.py          ← CRUD de impressoras cadastradas
+│   │   ├── printers.py          ← CRUD de impressoras cadastradas
+│   │   └── tiny.py              ← INTEGRAÇÃO TINY (Separação, Sincronia, Picking)
 │   └── warehouse_v2.db          ← Banco LOCAL (seed para produção)
 │
 ├── frontend/
@@ -43,7 +44,8 @@ warehouse-picker/
 │       ├── App.jsx              ← Roteamento React
 │       ├── api/client.js        ← TODAS as chamadas de API centralizadas aqui
 │       └── pages/
-│           ├── Picking.jsx      ← ⭐ Tela principal (bipagem, impressão, dialogs)
+│           ├── Picking.jsx      ← ⭐ Tela principal (WMS Full/Orgânico)
+│           ├── PickingListDetail.jsx ← ⭐ NOVO: Separação Tiny (Lógica WMS)
 │           ├── SessionItems.jsx ← Lista de itens da sessão (visão geral)
 │           ├── SessionSelect.jsx← Seleção/upload de sessões
 │           ├── Login.jsx        ← Login do operador (badge ou PIN)
@@ -77,6 +79,8 @@ warehouse-picker/
 | `operators` | id, name, badge, pin_code | Operadores da expedição |
 | `sessions` | id, session_code, operator_id, status | Ordens de separação (aberta/em progresso/completa) |
 | `picking_items` | id, session_id, sku, qty_required, qty_picked, shortage_qty, status, labels_printed | Itens de cada sessão |
+| `tiny_picking_lists` | id, name, status, created_at | Listas de separação do Tiny |
+| `tiny_picking_list_items` | id, list_id, sku, qty_picked, qty_shortage, is_shortage | Itens consolidados Tiny |
 | `barcodes` | id, barcode, sku, description, is_primary | Master Data EAN→SKU (**sem UNIQUE no barcode** — um EAN pode ter múltiplos SKUs) |
 | `print_jobs` | id, session_id, sku, zpl_content, status (PENDING/PRINTING/PRINTED/ERROR) | Fila de impressão para o agente |
 | `labels` | id, session_id, sku, label_index, zpl_content, printed | Labels geradas (legado) |
@@ -100,6 +104,14 @@ warehouse-picker/
 | POST | `/{id}/force-complete` | Força conclusão manual de item |
 | POST | `/{id}/reset-item` | Zera um item da sessão |
 | GET | `/find-by-barcode` | Encontra sessão por código de barras |
+
+### Integração Tiny `/api/tiny`
+| Método | Rota | O que faz |
+|---|---|---|
+| GET | `/separacoes` | Lista pedidos/separações do Tiny |
+| POST | `/generate-picking` | Consolida pedidos em lista de separação |
+| POST | `/picking-items/{id}/pick` | Altera quantidade coletada (Lógica WMS) |
+| POST | `/picking-items/{id}/shortage` | Registra falta e observação |
 
 ### Códigos de Barras `/api/barcodes`
 | Método | Rota | O que faz |

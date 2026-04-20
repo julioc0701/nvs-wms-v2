@@ -125,7 +125,7 @@ function SessionRow({ s, onDeleted }) {
           {loadingItems ? (
             <p className="text-center text-gray-400">Carregando itens...</p>
           ) : (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto"><table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="text-gray-400 text-left border-b border-gray-200">
                   <th className="pb-2 font-medium">SKU</th>
@@ -182,6 +182,7 @@ function SessionRow({ s, onDeleted }) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
@@ -278,7 +279,7 @@ export default function BatchDetail() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { v: active,    label: 'Em Andamento', color: 'bg-blue-50 border-blue-200 text-blue-700',   icon: '🔵' },
               { v: available, label: 'Disponíveis',  color: 'bg-slate-50 border-slate-200 text-slate-600',   icon: '⚪' },

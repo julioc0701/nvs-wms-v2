@@ -62,7 +62,7 @@ function EditModal({ product, onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onKeyDown={e => e.key === 'Escape' && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div>
@@ -194,7 +194,7 @@ function NewProductModal({ onClose, onSaved }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onKeyDown={e => e.key === 'Escape' && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-xl font-bold">Novo Produto</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-2xl leading-none">&times;</button>
@@ -374,9 +374,9 @@ export default function MasterData() {
       )}
 
       {/* Header */}
-      <div className="bg-white shadow px-6 py-4 flex items-center justify-between">
+      <div className="bg-white shadow px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Master Data — Produtos Cadastrados</h1>
+          <h1 className="text-xl sm:text-2xl font-bold">Master Data — Produtos Cadastrados</h1>
           <p className="text-gray-500 text-sm mt-0.5">
             {loading ? 'Carregando...' : `${total} produtos cadastrados no total`}
           </p>
@@ -445,7 +445,8 @@ export default function MasterData() {
               }
             </div>
           ) : (
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+          <table className="w-full min-w-[600px] text-sm">
               <thead>
                 <tr className="text-gray-500 uppercase text-xs tracking-wide border-b bg-gray-50">
                   <th className="text-left px-5 py-3 font-semibold w-[18%]">SKU</th>
@@ -506,6 +507,7 @@ export default function MasterData() {
                 ))}
               </tbody>
             </table>
+          </div>
           )}
         </div>
 

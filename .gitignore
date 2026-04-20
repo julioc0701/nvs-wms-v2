@@ -12,6 +12,23 @@ frontend/dist/
 # Database local (não subir dados para o GitHub)
 backend/warehouse.db
 backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+*.db-shm
+*.db-wal
+
+# Logs
+backend/logs/
+*.log
+
+# Arquivos temporários / debug
+backend/scratch/
+backend/audit_shortages.py
+backend/debug_db.py
+backend/migrate_db.py
+backend/migrate_picking.py
+test_db.py
+test_startup.py
 
 # Frontend buildado (Railway faz o build automaticamente)
 backend/static/

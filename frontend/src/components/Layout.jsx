@@ -2,7 +2,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import novaesLogo from '../assets/logo-novaes-v3.png'
 import { 
   Home, PackageSearch, Users, AlertCircle, LogOut, Database,
-  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2 
+  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -16,12 +16,16 @@ export default function Layout() {
   // Detectar se estamos em uma sub-rota de supervisão de marketplace
   // Formato esperado: /supervisor/ml/* ou /supervisor/shopee/*
   const pathParts = location.pathname.split('/')
+  const isSeparacaoActive = pathParts[1] === 'separacao'
   const isMarketplaceActive = pathParts[1] === 'supervisor' && (pathParts[2] === 'ml' || pathParts[2] === 'shopee')
   const activeMarketplace = isMarketplaceActive ? pathParts[2] : null
 
-  const navItems = isMaster 
+  const navItems = isMaster
     ? [
         { label: 'Supervisão Full', path: '/supervisor', icon: PackageSearch },
+        { label: 'Separação', path: '/separacao', icon: ClipboardList },
+        { label: 'Faltas', path: '/shortage-report', icon: AlertCircle },
+        { label: 'ERP Olist', path: '/olist-orders', icon: Database },
         { label: 'Base', path: '/master-data', icon: Database },
         { label: 'Operadores', path: '/operators', icon: Users },
       ]
@@ -30,14 +34,18 @@ export default function Layout() {
         { label: 'Listas Disponíveis', path: '/sessions?view=available', icon: ListTodo },
         { label: 'Listas Concluídas', path: '/sessions?view=history', icon: CheckCircle2 },
         { label: 'Faltantes', path: '/shortage-report', icon: AlertCircle },
+        { label: 'Separação', path: '/separacao', icon: ClipboardList },
       ]
 
+  // Sub-menus baseados na rota ativa
   const subNavItems = isMarketplaceActive ? [
     { label: 'Visão Geral',  path: `/supervisor/${activeMarketplace}/overview`, icon: LayoutDashboard },
     { label: 'Listas e Lotes', path: `/supervisor/${activeMarketplace}/lists`,    icon: ListTodo },
     { label: 'Processamento',  path: `/supervisor/${activeMarketplace}/tools`,    icon: Wrench },
-    { label: 'Relatório de Faltas', path: `/supervisor/${activeMarketplace}/shortage`, icon: AlertCircle },
     { label: 'Sistema',        path: `/supervisor/${activeMarketplace}/settings`, icon: SettingsIcon },
+  ] : isSeparacaoActive ? [
+    { label: 'Notas (Tiny)',   path: '/separacao', icon: ClipboardList },
+    { label: 'Listas Geradas', path: '/separacao/listas', icon: ListTodo },
   ] : []
 
   function handleLogout() {
@@ -55,10 +63,10 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row font-sans text-slate-900">
+    <div className="min-h-screen flex flex-col lg:flex-row font-sans text-slate-900">
       
       {/* SIDEBAR DESKTOP */}
-      <aside className="hidden md:flex w-72 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-10 transition-all duration-300 text-slate-200">
+      <aside className="hidden lg:flex w-72 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-10 transition-all duration-300 text-slate-200">
         <div className="flex flex-col items-center px-6 py-8 border-b border-slate-800 gap-4">
           <div className="w-24 h-24 flex items-center justify-center group overflow-visible">
              <img src={novaesLogo} alt="NVS Logo" className="w-full h-full object-contain drop-shadow-[0_15px_30px_rgba(59,130,246,0.2)] transition-transform duration-700 group-hover:scale-110" />
@@ -93,10 +101,12 @@ export default function Layout() {
             )
           })}
 
-          {/* SUB-MENU DINÂMICO (Onde estava o quadrado vermelho) */}
-          {isMarketplaceActive && (
+          {/* SUB-MENU DINÂMICO */}
+          {(isMarketplaceActive || isSeparacaoActive) && (
             <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Monitoramento {activeMarketplace.toUpperCase()}</p>
+              <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
+                {isMarketplaceActive ? `Monitoramento ${activeMarketplace.toUpperCase()}` : "Gestão de Separação"}
+              </p>
               {subNavItems.map((sub) => {
                 const SubIcon = sub.icon
                 const isSubActive = location.pathname === sub.path
@@ -140,7 +150,7 @@ export default function Layout() {
       </aside>
 
       {/* HEADER MOBILE */}
-      <header className="md:hidden flex h-14 bg-slate-900 border-b border-slate-800 items-center px-4 justify-between shadow-sm z-10 sticky top-0 transition-all duration-300">
+      <header className="lg:hidden flex h-14 bg-slate-900 border-b border-slate-800 items-center px-4 justify-between shadow-sm z-10 sticky top-0 transition-all duration-300">
          <div className="flex items-center gap-2">
            <img src={novaesLogo} className="w-8 h-8 rounded-lg shadow-sm border border-slate-100" />
            <h1 className="text-lg font-black text-white tracking-tight">NVS<span className="text-cyan-300">·</span></h1>
@@ -153,18 +163,43 @@ export default function Layout() {
          </div>
       </header>
 
+      {/* MOBILE SUB-NAV BAR — só aparece quando há sub-rotas e não é picking */}
+      {!isPickingPage && subNavItems.length > 0 && (
+        <div className="lg:hidden sticky top-14 z-10 bg-slate-800/95 border-b border-slate-700 flex overflow-x-auto gap-1 px-3 py-2 backdrop-blur-sm shrink-0">
+          {subNavItems.map((sub) => {
+            const SubIcon = sub.icon
+            const isSubActive = location.pathname === sub.path
+            return (
+              <button
+                key={sub.path}
+                onClick={() => navigate(sub.path)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors shrink-0 min-h-[36px] active:scale-95",
+                  isSubActive
+                    ? "bg-cyan-500 text-slate-950"
+                    : "text-slate-300 hover:bg-slate-700"
+                )}
+              >
+                <SubIcon size={14} />
+                {sub.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {/* RENDER PAGES HERE */}
       <main className={cn(
         "flex-1 flex flex-col overflow-auto relative",
         // Padding bottom no mobile SE não for tela de picking
-        (!isPickingPage) && "pb-16 md:pb-0"
+        (!isPickingPage) && "pb-16 lg:pb-0"
       )}>
         <Outlet />
       </main>
 
       {/* MOBILE BOTTOM NAVIGATION */}
       {!isPickingPage && (
-        <nav className="md:hidden flex h-16 bg-slate-900 border-t border-slate-800 justify-around items-center px-2 pb-safe fixed bottom-0 w-full z-20 shadow-[0_-4px_10px_-1px_rgba(2,6,23,0.35)]">
+        <nav className="lg:hidden flex h-16 bg-slate-900 border-t border-slate-800 justify-around items-center px-2 pb-safe fixed bottom-0 w-full z-20 shadow-[0_-4px_10px_-1px_rgba(2,6,23,0.35)]">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname.startsWith(item.path)
@@ -173,14 +208,14 @@ export default function Layout() {
                 key={item.path}
                 onClick={() => navigate(item.path)}
                 className={cn(
-                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                  "flex flex-col items-center justify-center w-full h-full gap-1 transition-colors min-w-0 overflow-hidden px-0.5",
                   isActive ? "text-cyan-300" : "text-slate-400 hover:text-slate-200"
                 )}
               >
-                <div className={cn("p-1 rounded-full", isActive && "bg-cyan-500/20")}>
+                <div className={cn("p-1 rounded-full shrink-0", isActive && "bg-cyan-500/20")}>
                   <Icon size={isActive ? 22 : 20} strokeWidth={isActive ? 2.5 : 2} />
                 </div>
-                <span className={cn("text-[10px] uppercase tracking-wide", isActive ? "font-bold" : "font-medium")}>
+                <span className={cn("text-[10px] uppercase tracking-wide w-full text-center truncate", isActive ? "font-bold" : "font-medium")}>
                   {item.label}
                 </span>
               </button>
