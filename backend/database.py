@@ -16,6 +16,8 @@ if "/data/" in DATABASE_URL:
         db_path = DATABASE_URL.replace("sqlite:///", "")
 
     db_path = os.path.abspath(db_path)
+    # Always ensure the target directory exists (critical when no Railway volume yet)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     print(f"--- DATABASE DEBUG: Final target path is '{db_path}' ---")
 
     raw_force_seed = str(os.getenv("FORCE_SEED", "false")).strip().lower()
