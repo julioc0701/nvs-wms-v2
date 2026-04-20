@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Instalar dependências do frontend (camada em cache)
 COPY frontend/package*.json ./frontend/
-RUN npm --prefix frontend ci
+RUN npm --prefix frontend ci --legacy-peer-deps
 
 # Copiar e buildar o frontend
 COPY frontend/ ./frontend/
