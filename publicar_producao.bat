@@ -1,20 +1,21 @@
 @echo off
-title Publicar em Producao (Railway)
+title Publicar NVS-WMS v2 em Producao (Railway)
 echo =======================================================
-echo          SISTEMA DE PUBLICACAO PARA PRODUCAO
+echo       PUBLICACAO NVS-WMS v2  →  RAILWAY
 echo =======================================================
 echo.
-echo  Atençao: O seu servidor Railway esta configurado para 
-echo  rodar APENAS o que for enviado para a branch 'nvs-production'.
+echo  Projeto  : virtuous-unity (Railway)
+echo  Repo     : github.com/julioc0701/nvs-wms-v2
+echo  Branch   : main  (Railway faz deploy automatico ao receber push)
+echo  URL      : https://nvs-wms-v2-production.up.railway.app
 echo.
 echo  Passos que este script fara:
-echo  1. Salvar qualquer mudanca pendente na sua branch atual (main).
-echo  2. Enviar a sua branch atual para o GitHub (como backup).
-echo  3. Pegar esse codigo aprovado e injetar na branch 'nvs-production'.
-echo  4. Enviar a branch 'nvs-production' para a nuvem, O QUE VAI DISPARAR O NOVO BUILD NO RAILWAY.
+echo   1. Salvar todas as mudancas pendentes (git add + commit)
+echo   2. Enviar para o GitHub (branch main)
+echo   3. Railway detecta o push e inicia o novo build automaticamente
 echo.
 
-set /p confirm="> Voce testou localmente e quer PUBLICAR as mudancas agora [S/N]? "
+set /p confirm="> Voce testou localmente e quer PUBLICAR as mudancas agora? [S/N]: "
 if /I NOT "%confirm%"=="S" (
     echo.
     echo Publicacao cancelada.
@@ -23,29 +24,31 @@ if /I NOT "%confirm%"=="S" (
 )
 
 echo.
-echo [1/4] Salvando o codigo atual...
+echo [1/2] Salvando e versionando o codigo...
 git add .
-git commit -m "Auto-save antes de publicar" 
+git commit -m "deploy: publicar producao v2"
+if %errorlevel% neq 0 (
+    echo Nenhuma mudanca pendente para commitar — OK, seguindo com push.
+)
 
 echo.
-echo [2/4] Atualizando backup da branch principal (main)...
+echo [2/2] Enviando para o GitHub (branch main)...
 git push origin main
-
-echo.
-echo [3/4] Preparando a branch de producao...
-git checkout -B nvs-production 
-
-echo.
-echo [4/4] Enviando para o Railway (Isto inicia um novo Deploy!)...
-git push origin nvs-production --force
-
-echo.
-echo Retornando para o ambiente de desenvolvimento (main)...
-git checkout main
+if %errorlevel% neq 0 (
+    echo.
+    echo ERRO: Falha no git push. Verifique sua conexao e credenciais.
+    pause
+    exit /b 1
+)
 
 echo.
 echo =======================================================
-echo  PUBLICACAO CONCLUIDA COM SUCESSO!
-echo  O Railway comecara a gerar a nova versao em instantes.
+echo  PUBLICACAO INICIADA COM SUCESSO!
+echo.
+echo  Railway esta buildando a nova versao agora.
+echo  Acompanhe em: https://railway.com/project/d377de82-4ee6-42b7-8196-8f5f99915f4b
+echo.
+echo  URL da aplicacao:
+echo  https://nvs-wms-v2-production.up.railway.app
 echo =======================================================
 pause
