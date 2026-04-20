@@ -46,6 +46,20 @@ if "/data/" in DATABASE_URL:
                 conn_check.close()
             except Exception as e:
                 print(f"--- DATABASE DEBUG: Could not inspect existing DB: {e} ---")
+                # DB malformado — apaga para recomeçar limpo
+                try:
+                    conn_check.close()
+                except Exception:
+                    pass
+                try:
+                    os.remove(db_path)
+                    for _ext in ['-wal', '-shm']:
+                        _f = db_path + _ext
+                        if os.path.exists(_f):
+                            os.remove(_f)
+                    print(f"--- DATABASE DEBUG: DB malformado removido. Iniciando fresh. ---")
+                except Exception as del_e:
+                    print(f"--- DATABASE DEBUG: Falha ao remover DB malformado: {del_e} ---")
     else:
         print("--- DATABASE DEBUG: Target file does NOT exist. Will seed. ---")
 

@@ -186,6 +186,20 @@ async def restore_db(secret: str = "", file: UploadFile = File(...)):
         with open(tmp_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
         size = os.path.getsize(tmp_path)
+        # Checkpoint e troca para journal_mode=DELETE para eliminar WAL/SHM
+        try:
+            import sqlite3 as _sq
+            _c = _sq.connect(tmp_path)
+            _c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            _c.execute("PRAGMA journal_mode=DELETE")
+            _c.close()
+        except Exception:
+            pass
+        # Remove WAL/SHM antigos do destino (incompatíveis com o novo DB)
+        for _ext in ['-wal', '-shm']:
+            _old = db_path + _ext
+            if os.path.exists(_old):
+                os.remove(_old)
         # Atomic replace
         shutil.move(tmp_path, db_path)
         return {"status": "ok", "message": f"DB restored ({size} bytes). Restart service to reload connections."}
