@@ -1,6 +1,6 @@
 import os
 import time
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
@@ -160,6 +160,38 @@ def download_db(secret: str = ""):
         filename="warehouse_v3_local_prod.db"
     )
 
+
+
+@app.post("/api/admin/restore-db")
+async def restore_db(secret: str = "", file: UploadFile = File(...)):
+    """Recebe um arquivo .db e substitui o banco de produção. Requer DOWNLOAD_SECRET."""
+    import os, shutil
+    from database import DATABASE_URL
+
+    expected = os.getenv("DOWNLOAD_SECRET", "")
+    if not expected or secret != expected:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    if DATABASE_URL.startswith("sqlite:////"):
+        db_path = DATABASE_URL.replace("sqlite:////", "/")
+    else:
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+    db_path = os.path.abspath(db_path)
+
+    tmp_path = db_path + ".upload_tmp"
+    try:
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        with open(tmp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        size = os.path.getsize(tmp_path)
+        # Atomic replace
+        shutil.move(tmp_path, db_path)
+        return {"status": "ok", "message": f"DB restored ({size} bytes). Restart service to reload connections."}
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/admin/logs")
