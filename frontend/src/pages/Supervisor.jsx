@@ -748,9 +748,12 @@ export default function Supervisor() {
 
   function checkAgent() {
     setAgentInfo(null)
-    fetch('http://localhost:6543/status', { signal: AbortSignal.timeout(2000) })
-      .then(r => r.json())
-      .then(d => setAgentInfo({ ok: d.status === 'ok', printer: d.printer, allPrinters: d.all_printers || [] }))
+    api.getZebraAgentStatus()
+      .then(d => setAgentInfo({
+        ok: d.has_agent,
+        printer: d.connected.length > 0 ? d.connected.join(', ') : null,
+        allPrinters: d.connected,
+      }))
       .catch(() => setAgentInfo({ ok: false, printer: null, allPrinters: [] }))
   }
 

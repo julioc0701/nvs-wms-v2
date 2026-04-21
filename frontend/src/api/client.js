@@ -86,6 +86,9 @@ export const api = {
   resolveBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
   listBarcodes: (search = '') => req('GET', `/barcodes/?search=${encodeURIComponent(search)}&limit=2000`),
 
+  // Zebra Agent Status (via backend — funciona em HTTPS/produção)
+  getZebraAgentStatus: () => req('GET', '/zebra/agent-status'),
+
   // Print Jobs (fila de impressão via backend — funciona em PRD)
   createPrintJob: (sessionId, sku, zplContent, operatorId) =>
     req('POST', '/print-jobs', { session_id: sessionId, sku, zpl_content: zplContent, operator_id: operatorId }),
