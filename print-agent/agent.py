@@ -1,17 +1,24 @@
 """
-# Agente Local de Impressão Zebra — NVS v2.0
-====================================================
-Este script atua como um servidor HTTP local para receber ZPL e enviar para a Zebra via USB.
-Também realiza polling de jobs pendentes no backend (Railway).
+Agente Local de Impressão Zebra — NVS v3.0 (WebSocket)
+=======================================================
+Conecta ao backend Railway via WebSocket OUTBOUND.
+Recebe print jobs por push, imprime, confirma resultado pelo mesmo canal.
 
-Versão 2.0: Resiliência Industrial
-- Gerenciamento de Spooler com AbortDocPrinter em caso de erro.
-- Conexão persistente por lote de etiquetas (abre/fecha porta uma única vez).
-- Lock com timeout para evitar deadlocks permanentes.
-- Separação inteligente de blocos ZPL (Regex ^XA...^XZ).
-- Logging profissional e tratamento robusto de erros de rede.
+Sem HTTP server local. Sem polling REST.
+
+Protocolo de mensagens (JSON):
+  → hello          : identifica a máquina ao conectar
+  ← connected      : ACK do servidor
+  ← print_job      : job a imprimir {"id":N,"sku":"...","zpl_content":"..."}
+  → print_result   : resultado {"job_id":N,"status":"ok"|"error","printer":"...","message":"..."}
+  → ping / ← pong  : heartbeat a cada 30s
+  ← fix_spooler    : comando remoto para limpar fila Windows
+  → fix_spooler_result
+  ← refresh_printer: redetecta impressora
+  → printer_info
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -22,11 +29,17 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
-import urllib.request
-import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 
-# Configuração de Logging
+try:
+    import websockets
+    import websockets.exceptions
+except ImportError:
+    print("\n  [ERRO] Dependência 'websockets' não encontrada.")
+    print("  Execute:  pip install websockets>=12.0\n")
+    sys.exit(1)
+
+# ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="  %(asctime)s [%(levelname)s] %(message)s",
@@ -34,41 +47,48 @@ logging.basicConfig(
 )
 log = logging.getLogger("zebra-agent")
 
-# Constantes e Configurações
-AGENT_VERSION   = "2.0"
-AGENT_PORT      = int(os.getenv("PRINT_AGENT_PORT", "9100"))
-PRINTER_NAME    = os.getenv("PRINTER_NAME", "")   # vazio = auto-deteccao
-ENABLE_POLLING  = os.getenv("ENABLE_POLLING", "0").strip() == "1"
-BACKEND_URL     = os.getenv("BACKEND_URL", "http://localhost:8001/api").strip()
-POLL_INTERVAL   = int(os.getenv("POLL_INTERVAL", "5"))
+# ── Configuração ───────────────────────────────────────────────────────────
+AGENT_VERSION  = "3.0"
+PRINTER_NAME   = os.getenv("PRINTER_NAME", "")
+MACHINE_ID     = os.getenv("MACHINE_ID", socket.gethostname())
+BACKEND_URL    = os.getenv("BACKEND_URL", "http://localhost:8003/api").strip()
+RECONNECT_BASE = float(os.getenv("RECONNECT_BASE", "1"))   # segundos
+RECONNECT_MAX  = float(os.getenv("RECONNECT_MAX", "60"))   # teto do backoff
+
+
+def _build_ws_url(backend_url: str, machine_id: str) -> str:
+    """
+    Deriva a URL WebSocket a partir de BACKEND_URL.
+    http://localhost:8003/api  →  ws://localhost:8003/ws/zebra-agent/MAQUINA_1
+    https://app.railway.app/api → wss://app.railway.app/ws/zebra-agent/MAQUINA_1
+    """
+    base = re.sub(r"/api/?$", "", backend_url.rstrip("/"))
+    ws_base = base.replace("https://", "wss://").replace("http://", "ws://")
+    return f"{ws_base}/ws/zebra-agent/{machine_id}"
+
+
+# BACKEND_WS_URL substitui o auto-derivado se definido explicitamente no env
+WS_URL = os.getenv("BACKEND_WS_URL") or _build_ws_url(BACKEND_URL, MACHINE_ID)
 
 PRINTER_LOCK         = threading.Lock()
 PRINTER_LOCK_TIMEOUT = 30  # segundos
 
-def _load_allowed_origins() -> set[str]:
-    raw = os.getenv(
-        "ALLOWED_ORIGINS",
-        "http://localhost:5174,http://localhost:5175,http://127.0.0.1:5174,http://127.0.0.1:5175",
-    )
-    return {origin.strip() for origin in raw.split(",") if origin.strip()}
+# ThreadPoolExecutor dedicado para operações de impressão bloqueantes (win32print)
+_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zebra-print")
 
-
-ALLOWED_ORIGINS = _load_allowed_origins()
-
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-
-# ---------------------------------------------------------------------------
-# Cache e Detecção de Impressoras
-# ---------------------------------------------------------------------------
+# ── Cache de Impressoras ───────────────────────────────────────────────────
 _cached_printer: str | None = None
 _cached_all_printers: list[str] = []
+
 
 def _detect_printers() -> tuple[str | None, list[str]]:
     if platform.system() != "Windows":
         return None, []
     try:
         import win32print
-        raw = win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)
+        raw = win32print.EnumPrinters(
+            win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS
+        )
         all_names = [entry[2] for entry in raw if entry[2]]
     except Exception:
         all_names = []
@@ -81,57 +101,14 @@ def _detect_printers() -> tuple[str | None, list[str]]:
                 break
     return zebra, all_names
 
+
 def refresh_printer_cache() -> None:
     global _cached_printer, _cached_all_printers
     _cached_printer, _cached_all_printers = _detect_printers()
 
-# ---------------------------------------------------------------------------
-# Gestão de Porta e Processo
-# ---------------------------------------------------------------------------
-def _port_in_use(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(1)
-        return s.connect_ex(("127.0.0.1", port)) == 0
 
-def _is_our_agent(port: int) -> bool:
-    try:
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/status")
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            data = json.loads(resp.read())
-            return data.get("agent") == "warehouse-picker-zebra"
-    except Exception:
-        return False
+# ── Envio ZPL (inalterado da v2.0) ────────────────────────────────────────
 
-def _kill_process_on_port(port: int) -> bool:
-    try:
-        result = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True, timeout=8)
-        pattern = re.compile(rf"[\s:]0*{port}\s.*?LISTENING\s+(\d+)", re.IGNORECASE)
-        for line in result.stdout.splitlines():
-            m = pattern.search(line)
-            if m:
-                pid = m.group(1)
-                if pid != "0":
-                    subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
-                    time.sleep(1)
-                    return not _port_in_use(port)
-    except Exception:
-        pass
-    return False
-
-def _check_startup_port() -> None:
-    if not _port_in_use(AGENT_PORT):
-        return
-    if _is_our_agent(AGENT_PORT):
-        print(f"\n  [INFO] O agente ja esta rodando na porta {AGENT_PORT}.\n")
-        sys.exit(0)
-    print(f"\n  [!] Porta {AGENT_PORT} ocupada. Tentando liberar...\n")
-    if not _kill_process_on_port(AGENT_PORT):
-        print(f"  ERRO: Nao foi possivel liberar a porta {AGENT_PORT}.")
-        sys.exit(1)
-
-# ---------------------------------------------------------------------------
-# Lógica de Envio ZPL (Refatorada v2.0)
-# ---------------------------------------------------------------------------
 def _split_zpl(zpl: str) -> list[bytes]:
     """Extrai blocos ^XA...^XZ completos do ZPL (case-insensitive)."""
     blocks = re.findall(r"(\^XA.*?\^XZ)", zpl, re.IGNORECASE | re.DOTALL)
@@ -139,6 +116,7 @@ def _split_zpl(zpl: str) -> list[bytes]:
         return [b.encode("utf-8") for b in blocks]
     stripped = zpl.strip()
     return [stripped.encode("utf-8")] if stripped else []
+
 
 def _send_via_win32print(blocks: list[bytes], printer_name: str) -> str:
     import win32print
@@ -152,36 +130,48 @@ def _send_via_win32print(blocks: list[bytes], printer_name: str) -> str:
                 win32print.StartPagePrinter(hp)
                 written = win32print.WritePrinter(hp, zpl_bytes)
                 if written != len(zpl_bytes):
-                    raise RuntimeError(f"Erro no Spooler: escreveu {written}/{len(zpl_bytes)} bytes")
+                    raise RuntimeError(
+                        f"Erro no Spooler: escreveu {written}/{len(zpl_bytes)} bytes"
+                    )
                 win32print.EndPagePrinter(hp)
                 win32print.EndDocPrinter(hp)
                 doc_started = False
             except Exception:
                 if doc_started:
-                    try: win32print.AbortDocPrinter(hp)
-                    except: pass
+                    try:
+                        win32print.AbortDocPrinter(hp)
+                    except Exception:
+                        pass
                 raise
             if len(blocks) > 1 and i < len(blocks) - 1:
+                import time
                 time.sleep(0.05)
         return "win32print"
     finally:
         win32print.ClosePrinter(hp)
 
+
 def _send_via_copy(blocks: list[bytes], printer_name: str) -> str:
+    import time
     unc = f"\\\\localhost\\{printer_name}"
     for i, zpl_bytes in enumerate(blocks):
         with tempfile.NamedTemporaryFile(mode="wb", suffix=".zpl", delete=False) as tmp:
             tmp.write(zpl_bytes)
             tmp_path = tmp.name
         try:
-            res = subprocess.run(["cmd", "/c", "copy", "/B", tmp_path, unc], capture_output=True, text=True, timeout=15)
+            res = subprocess.run(
+                ["cmd", "/c", "copy", "/B", tmp_path, unc],
+                capture_output=True, text=True, timeout=15,
+            )
             if res.returncode != 0:
                 raise RuntimeError(f"Falha copy /B: {res.stderr or res.stdout}")
         finally:
-            if os.path.exists(tmp_path): os.unlink(tmp_path)
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
         if len(blocks) > 1 and i < len(blocks) - 1:
             time.sleep(0.05)
     return "copy/B"
+
 
 def do_print(zpl: str, printer_name: str | None = None) -> dict:
     name = printer_name or _cached_printer
@@ -191,7 +181,6 @@ def do_print(zpl: str, printer_name: str | None = None) -> dict:
     if not name:
         return {"status": "error", "message": "Zebra nao encontrada."}
 
-    # Lock com Timeout para evitar travamentos infinitos
     if not PRINTER_LOCK.acquire(timeout=PRINTER_LOCK_TIMEOUT):
         return {"status": "error", "message": f"Impressora ocupada (timeout {PRINTER_LOCK_TIMEOUT}s)."}
 
@@ -200,12 +189,12 @@ def do_print(zpl: str, printer_name: str | None = None) -> dict:
         if not blocks:
             return {"status": "error", "message": "ZPL vazio ou invalido."}
 
-        log.info(f"Enviando {len(blocks)} etiquetas para '{name}'...")
+        log.info(f"  Enviando {len(blocks)} etiqueta(s) para '{name}'...")
         try:
             method = _send_via_win32print(blocks, name)
         except (ImportError, Exception):
             method = _send_via_copy(blocks, name)
-        
+
         return {"status": "ok", "printer": name, "method": method, "count": len(blocks)}
     except Exception as e:
         log.error(f"Falha na impressao: {e}")
@@ -213,35 +202,39 @@ def do_print(zpl: str, printer_name: str | None = None) -> dict:
     finally:
         PRINTER_LOCK.release()
 
+
 def fix_spooler() -> dict:
     if platform.system() != "Windows":
         return {"status": "error", "message": "Apenas Windows suportado."}
-    
-    log.info("Iniciando limpeza forçada do spooler (solicitado via API)...")
+
+    log.info("Iniciando limpeza forçada do spooler (solicitado via servidor)...")
     try:
-        # 1. Para spooler (forçado)
         subprocess.run(["net", "stop", "spooler", "/y"], capture_output=True, timeout=15)
-        subprocess.run(["taskkill", "/F", "/IM", "spoolsv.exe", "/T"], capture_output=True, timeout=10)
-        
-        # 2. Limpa arquivos temporários
-        spool_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'Spool', 'Printers')
+        subprocess.run(
+            ["taskkill", "/F", "/IM", "spoolsv.exe", "/T"], capture_output=True, timeout=10
+        )
+        spool_path = os.path.join(
+            os.environ.get("SystemRoot", "C:\\Windows"), "System32", "Spool", "Printers"
+        )
         if os.path.exists(spool_path):
             import shutil
             for filename in os.listdir(spool_path):
                 file_path = os.path.join(spool_path, filename)
                 try:
-                    if os.path.isfile(file_path): os.unlink(file_path)
-                    elif os.path.isdir(file_path): shutil.rmtree(file_path)
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
                 except Exception as e:
                     log.warning(f"Nao foi possivel deletar {filename}: {e}")
-        
-        # 3. Reinicia o serviço
+
         subprocess.run(["net", "start", "spooler"], capture_output=True, timeout=15)
-        
-        # 4. Tenta colocar impressoras ONLINE via PowerShell
-        ps_cmd = "Get-Printer | Where-Object {$_.JobCount -gt 0 -or $_.PrinterStatus -eq 'Offline'} | Set-Printer -IsOffline $false"
+        ps_cmd = (
+            "Get-Printer | Where-Object {$_.JobCount -gt 0 -or $_.PrinterStatus -eq 'Offline'}"
+            " | Set-Printer -IsOffline $false"
+        )
         subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, timeout=15)
-        
+
         refresh_printer_cache()
         log.info("Limpeza do spooler concluída com sucesso.")
         return {"status": "ok", "message": "Spooler reiniciado e fila limpa com sucesso."}
@@ -249,134 +242,162 @@ def fix_spooler() -> dict:
         log.error(f"Erro ao limpar spooler: {e}")
         return {"status": "error", "message": str(e)}
 
-# ---------------------------------------------------------------------------
-# Servidor HTTP
-# ---------------------------------------------------------------------------
-class PrintHandler(BaseHTTPRequestHandler):
-    def _send_json(self, code: int, data: dict):
-        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self._cors_headers()
-        self.end_headers()
-        try: self.wfile.write(body)
-        except: pass
 
-    def _cors_headers(self):
-        origin = self.headers.get("Origin", "")
-        if origin in ALLOWED_ORIGINS:
-            self.send_header("Access-Control-Allow-Origin", origin)
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+# ── WebSocket Client ───────────────────────────────────────────────────────
 
-    def do_OPTIONS(self):
-        self.send_response(204)
-        self._cors_headers()
-        self.end_headers()
+async def _do_print_async(zpl: str) -> dict:
+    """Executa do_print() na thread pool para não bloquear o event loop asyncio."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_executor, do_print, zpl)
 
-    def do_GET(self):
-        if self.path == "/status":
-            self._send_json(200, {"status": "ok", "agent": "warehouse-picker-zebra", "version": AGENT_VERSION, "printer": _cached_printer})
-        elif self.path == "/refresh":
-            refresh_printer_cache()
-            self._send_json(200, {"status": "ok", "printer": _cached_printer})
-        elif self.path == "/fix-spooler":
-            res = fix_spooler()
-            self._send_json(200 if res["status"] == "ok" else 500, res)
-        elif self.path == "/health":
-            self._send_json(200, {"status": "ok", "version": AGENT_VERSION})
-        elif self.path == "/test":
-            res = do_print("^XA^FO50,50^A0N,50,50^FDTeste NVS v2.0^FS^XZ")
-            self._send_json(200 if res["status"] == "ok" else 500, res)
-        else:
-            self._send_json(404, {"error": "not found"})
 
-    def do_POST(self):
-        if self.path == "/print":
-            length = int(self.headers.get("Content-Length", 0))
-            raw = self.rfile.read(length)
-            zpl = raw.decode("utf-8", errors="replace").strip()
-            if "application/json" in self.headers.get("Content-Type", ""):
-                try: zpl = json.loads(raw).get("zpl", "").strip()
-                except: pass
-            if not zpl:
-                self._send_json(400, {"status": "error", "message": "ZPL vazio"})
-                return
-            res = do_print(zpl)
-            self._send_json(200 if res["status"] == "ok" else 500, res)
-        else:
-            self._send_json(404, {"error": "not found"})
+async def _do_fix_spooler_async() -> dict:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_executor, fix_spooler)
 
-    def log_message(self, fmt, *args): pass
 
-# ---------------------------------------------------------------------------
-# Polling Loop e Backend
-# ---------------------------------------------------------------------------
-def _backend_request(method: str, path: str, body: dict | None = None):
-    url = f"{BACKEND_URL}{path}"
-    data = json.dumps(body).encode("utf-8") if body else None
-    req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+async def _heartbeat(ws) -> None:
+    """Envia ping JSON a cada 30s para manter a conexão Railway viva."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await ws.send(json.dumps({"type": "ping"}))
+        except Exception:
+            return  # conexão já caiu — encerra task
 
-def _safe_patch(job_id: int, body: dict):
-    try: _backend_request("PATCH", f"/print-jobs/{job_id}", body)
-    except Exception as e: log.warning(f"Nao foi possivel atualizar status do job {job_id}: {e}")
 
-def _process_job(job: dict):
-    job_id = job["id"]
-    sku = job.get("sku", "?")
+async def _handle_message(ws, raw: str) -> None:
     try:
-        # Reserva
-        _backend_request("PATCH", f"/print-jobs/{job_id}", {"status": "PRINTING"})
-        # Download
-        full_job = _backend_request("GET", f"/print-jobs/{job_id}")
-        zpl = full_job.get("zpl_content", "")
-        if not zpl:
-            _safe_patch(job_id, {"status": "ERROR", "error_msg": "ZPL vazio"})
-            return
-        
-        log.info(f"JOB {job_id} [{sku}] — Iniciando impressao...")
-        res = do_print(zpl)
-        
-        if res["status"] == "ok":
-            _safe_patch(job_id, {"status": "PRINTED", "printer_name": res.get("printer")})
-            log.info(f"JOB {job_id} — OK")
-        else:
-            _safe_patch(job_id, {"status": "ERROR", "error_msg": res.get("message")})
-    except urllib.error.HTTPError as e:
-        if e.code != 400: log.error(f"Erro HTTP no Job {job_id}: {e}")
-    except Exception as e:
-        log.error(f"Erro ao processar Job {job_id}: {e}")
-        _safe_patch(job_id, {"status": "PENDING", "error_msg": "Falha no download/processamento"})
+        msg = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        log.warning(f"Mensagem inválida recebida: {str(raw)[:80]}")
+        return
 
-def _polling_loop():
-    log.info(f"Polling ativo ({POLL_INTERVAL}s) -> {BACKEND_URL}")
+    msg_type = msg.get("type", "")
+
+    if msg_type == "connected":
+        log.info("Servidor confirmou conexão. Aguardando jobs...")
+
+    elif msg_type == "print_job":
+        job_id = msg.get("id") or msg.get("job_id")
+        sku    = msg.get("sku", "?")
+        zpl    = msg.get("zpl_content", "")
+
+        log.info(f"JOB {job_id} [{sku}] recebido → imprimindo...")
+        result = await _do_print_async(zpl)
+
+        await ws.send(json.dumps({
+            "type":    "print_result",
+            "job_id":  job_id,
+            "status":  result["status"],
+            "printer": result.get("printer", _cached_printer or ""),
+            "message": result.get("message", ""),
+        }))
+
+        if result["status"] == "ok":
+            log.info(
+                f"JOB {job_id} [{sku}] → OK  "
+                f"({result.get('count', 1)} etiqueta(s) via {result.get('method', '?')})"
+            )
+        else:
+            log.error(f"JOB {job_id} [{sku}] → ERRO: {result.get('message')}")
+
+    elif msg_type == "fix_spooler":
+        log.info("Comando fix_spooler recebido do servidor...")
+        result = await _do_fix_spooler_async()
+        await ws.send(json.dumps({"type": "fix_spooler_result", **result}))
+
+    elif msg_type == "refresh_printer":
+        refresh_printer_cache()
+        log.info(f"Cache de impressora atualizado: {_cached_printer or 'NENHUMA'}")
+        await ws.send(json.dumps({
+            "type":         "printer_info",
+            "printer":      _cached_printer,
+            "all_printers": _cached_all_printers,
+        }))
+
+    elif msg_type == "pong":
+        pass  # heartbeat reply — sem ação
+
+    else:
+        log.debug(f"Mensagem desconhecida: {msg_type}")
+
+
+async def _run_session(ws) -> None:
+    """
+    Gerencia uma sessão WebSocket completa:
+    1. Envia hello com identificação da máquina.
+    2. Inicia heartbeat em background.
+    3. Loop de mensagens até desconexão.
+    """
+    await ws.send(json.dumps({
+        "type":          "hello",
+        "machine_id":    MACHINE_ID,
+        "hostname":      socket.gethostname(),
+        "printer":       _cached_printer or "NENHUMA",
+        "all_printers":  _cached_all_printers,
+        "agent_version": AGENT_VERSION,
+    }))
+
+    heartbeat_task = asyncio.create_task(_heartbeat(ws))
+    try:
+        async for raw in ws:
+            await _handle_message(ws, raw)
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def agent_main() -> None:
+    """Loop principal com reconexão automática e backoff exponencial."""
+    delay = RECONNECT_BASE
+    log.info(f"Agente iniciando | Machine: {MACHINE_ID} | WS: {WS_URL}")
+
     while True:
         try:
-            jobs = _backend_request("GET", "/print-jobs/pending")
-            for job in jobs: _process_job(job)
-        except Exception as e:
-            log.debug(f"Falha de polling: {e}")
-            time.sleep(10)
-        time.sleep(POLL_INTERVAL)
+            async with websockets.connect(
+                WS_URL,
+                ping_interval=None,  # heartbeat próprio via ping JSON
+                close_timeout=5,
+                open_timeout=15,
+            ) as ws:
+                log.info("Conectado ao backend.")
+                delay = RECONNECT_BASE  # reset backoff ao conectar com sucesso
+                await _run_session(ws)
 
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
+        except websockets.exceptions.ConnectionClosedOK:
+            log.info("Conexão encerrada pelo servidor. Reconectando...")
+
+        except websockets.exceptions.ConnectionClosedError as exc:
+            log.warning(f"Conexão fechada com erro (code={exc.code}). Reconectando em {delay:.0f}s...")
+
+        except (OSError, ConnectionRefusedError) as exc:
+            log.warning(f"Backend indisponível: {exc}. Tentando em {delay:.0f}s...")
+
+        except Exception as exc:
+            log.error(f"Erro inesperado [{type(exc).__name__}]: {exc}. Tentando em {delay:.0f}s...")
+
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, RECONNECT_MAX)
+
+
+# ── Startup ────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 60)
-    print(f"  Agente Zebra NVS v{AGENT_VERSION} — Industrial Edition")
+    print(f"  Agente Zebra NVS v{AGENT_VERSION} — WebSocket Edition")
+    print(f"  Machine ID  : {MACHINE_ID}")
+    print(f"  Backend WS  : {WS_URL}")
     print("=" * 60)
-    _check_startup_port()
+
     refresh_printer_cache()
     log.info(f"Impressora: {_cached_printer or '[!] NAO DETECTADA'}")
-    
-    if ENABLE_POLLING:
-        threading.Thread(target=_polling_loop, daemon=True).start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", AGENT_PORT), PrintHandler)
-    try: server.serve_forever()
-    except: sys.exit(0)
+    try:
+        asyncio.run(agent_main())
+    except KeyboardInterrupt:
+        print("\n  Agente encerrado.")
+        _executor.shutdown(wait=False)
+        sys.exit(0)

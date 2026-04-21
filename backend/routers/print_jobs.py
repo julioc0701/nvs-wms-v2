@@ -1,10 +1,10 @@
 """
 Fila de impressão — print_jobs
 ================================
-GET  /print-jobs/pending          → agente local: busca jobs PENDING
-PATCH /print-jobs/{id}            → agente local: atualiza status
-GET  /print-jobs?session_id=&sku= → frontend: consulta status do job atual
-POST /print-jobs                  → frontend: cria job com ZPL gerado
+GET   /print-jobs/pending          → agente local: busca jobs PENDING  (fallback polling)
+PATCH /print-jobs/{id}             → agente local: atualiza status      (fallback polling)
+GET   /print-jobs?session_id=&sku= → frontend: consulta status do job atual
+POST  /print-jobs                  → frontend: cria job e tenta push WS imediato
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,7 +17,7 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# Agente: busca jobs pendentes
+# Agente (fallback polling): busca jobs pendentes
 # ---------------------------------------------------------------------------
 
 @router.get("/pending")
@@ -47,7 +47,7 @@ def get_pending_jobs(db: DBSession = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
-# Agente: atualiza status do job
+# Agente (fallback polling): atualiza status do job
 # ---------------------------------------------------------------------------
 
 class UpdateJobBody(BaseModel):
@@ -108,7 +108,7 @@ def get_job_status(
 
 
 # ---------------------------------------------------------------------------
-# Frontend: cria job com ZPL gerado dinamicamente
+# Frontend: cria job — tenta push WebSocket imediato, fallback para fila DB
 # ---------------------------------------------------------------------------
 
 class CreateJobBody(BaseModel):
@@ -116,10 +116,11 @@ class CreateJobBody(BaseModel):
     sku: str
     zpl_content: str
     operator_id: int | None = None
+    machine_id: str | None = None  # roteamento WS (opcional; None = qualquer agente)
 
 
 @router.post("")
-def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
+async def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
     if not body.zpl_content.strip():
         raise HTTPException(400, "ZPL vazio")
 
@@ -153,6 +154,27 @@ def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
     db.add(job)
     db.commit()
     db.refresh(job)
+
+    # ── Tenta push imediato via WebSocket ──────────────────────────────────
+    # Importação local para evitar importação circular em startup
+    from services.zebra_connection import zebra_manager
+
+    pushed = await zebra_manager.push_job(
+        {
+            "id":          job.id,
+            "sku":         job.sku,
+            "zpl_content": job.zpl_content,
+        },
+        machine_id=body.machine_id,
+    )
+
+    if pushed:
+        # Marca como PRINTING agora; agente confirma com PRINTED/ERROR depois
+        job.status = "PRINTING"
+        db.commit()
+        db.refresh(job)
+    # Se pushed=False: job fica PENDING, agente com polling irá buscar (fallback)
+
     return _job_dict(job)
 
 
@@ -162,13 +184,13 @@ def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
 
 def _job_dict(job: PrintJob) -> dict:
     return {
-        "id": job.id,
-        "session_id": job.session_id,
-        "sku": job.sku,
-        "status": job.status,
-        "zpl_content": job.zpl_content,
+        "id":           job.id,
+        "session_id":   job.session_id,
+        "sku":          job.sku,
+        "status":       job.status,
+        "zpl_content":  job.zpl_content,
         "printer_name": job.printer_name,
-        "error_msg": job.error_msg,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "printed_at": job.printed_at.isoformat() if job.printed_at else None,
+        "error_msg":    job.error_msg,
+        "created_at":   job.created_at.isoformat() if job.created_at else None,
+        "printed_at":   job.printed_at.isoformat()  if job.printed_at  else None,
     }
