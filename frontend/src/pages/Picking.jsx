@@ -431,7 +431,7 @@ export default function Picking() {
     } catch (err) { setPrintError(err?.message || 'Erro'); setPrintStatus('error') }
   }
 
-  async function handlePrint() { if (item) await autoPrintLabels(item); focusInput() }
+  function handlePrint() { if (item) setDialog({ type: 'reprint_qty', data: { qty: item.qty_required } }) }
   function handleForcePrint() { if (item) setDialog({ type: 'reprint_qty', data: { qty: item.qty_required } }) }
   async function handleReprintConfirm(qty) { setDialog(null); if (item && qty > 0) await autoPrintLabels(item, true, qty); focusInput() }
 
