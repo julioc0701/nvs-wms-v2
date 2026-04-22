@@ -689,23 +689,36 @@ async def resolve_barcode(barcode: str, db: Session = Depends(get_db)):
 
 @router.post("/link-barcode")
 async def link_barcode(request: dict, db: Session = Depends(get_db)):
-    """Vincula um novo código de barras a um SKU no banco do WMS."""
-    barcode = request.get("barcode")
-    sku = request.get("sku")
-    
-    if not barcode or not sku:
+    """Vincula um novo código de barras a um SKU no banco do WMS.
+
+    Um mesmo código de barras pode ser vinculado a múltiplos SKUs diferentes.
+    A verificação de duplicata usa o par (barcode, sku), não só o barcode.
+    """
+    barcode_val = (request.get("barcode") or "").strip().upper()
+    sku_val = (request.get("sku") or "").strip().upper()
+
+    if not barcode_val or not sku_val:
         raise HTTPException(status_code=400, detail="Barcode e SKU são obrigatórios")
-    
-    existing = db.query(Barcode).filter(Barcode.barcode == barcode).first()
+
+    # Verifica se o par exato (barcode, sku) já existe — evita duplicata
+    existing = db.query(Barcode).filter(
+        Barcode.barcode == barcode_val,
+        Barcode.sku == sku_val,
+    ).first()
     if existing:
-        if existing.sku == sku:
-            return {"message": "Vínculo já existe", "sku": sku}
-        raise HTTPException(status_code=409, detail=f"Este código já está vinculado ao SKU: {existing.sku}")
-    
-    new_mapping = Barcode(barcode=barcode, sku=sku, added_at=datetime.utcnow())
-    db.add(new_mapping)
-    db.commit()
-    return {"message": "Vínculo criado com sucesso", "sku": sku}
+        return {"message": "Vínculo já existe", "sku": sku_val}
+
+    # Permite mesmo barcode para SKUs diferentes (mesmo comportamento do picking)
+    from sqlalchemy.exc import IntegrityError
+    try:
+        new_mapping = Barcode(barcode=barcode_val, sku=sku_val, is_primary=False)
+        db.add(new_mapping)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Erro de integridade ao vincular barcode")
+
+    return {"message": "Vínculo criado com sucesso", "sku": sku_val}
 
 @router.post("/picking-items/{item_id}/pick")
 async def register_item_pick(item_id: int, request: PickRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):

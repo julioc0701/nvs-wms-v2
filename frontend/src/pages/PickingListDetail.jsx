@@ -204,43 +204,38 @@ export default function PickingListDetail() {
         return
       }
 
-      // ── INPUT INTERNO DO MODAL: bipa e incrementa ────────────────────────
-      // Prioridade 1: código bate com o item aberto
-      let foundItem = null
-      if (selectedItem && selectedItem.sku.trim().toUpperCase() === resolvedSku) {
-        foundItem = currentItems.find(i => i.id === selectedItem.id)
-      }
-      // Prioridade 2: item pendente na lista
-      if (!foundItem) {
-        foundItem = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && !currentPickedIds.has(i.id))
-      }
+      // ── INPUT INTERNO DO MODAL: SKU da tela é soberano ──────────────────
+      // Prioridade absoluta: o selectedItem é o contexto — sempre.
+      if (selectedItem) {
+        const selectedSku = selectedItem.sku.trim().toUpperCase()
 
-      if (foundItem) {
-        const pickRes = await api.pickItem(foundItem.id, { mode: 'unit' })
-        if (pickRes.status === 'success') {
-          const updated = pickRes.item
-          updateItemInState(updated)
-          if (updated.qty_picked >= updated.quantity) {
-            setScanStatus({ type: 'success', msg: `COLETADO (TOTAL): ${resolvedSku}` })
-          } else {
-            setScanStatus({ type: 'success', msg: `COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${resolvedSku}` })
+        if (resolvedSku === selectedSku) {
+          // Barcode já vinculado ao SKU correto → pick direto
+          const pickRes = await api.pickItem(selectedItem.id, { mode: 'unit' })
+          if (pickRes.status === 'success') {
+            const updated = pickRes.item
+            updateItemInState(updated)
+            if (updated.qty_picked >= updated.quantity) {
+              setScanStatus({ type: 'success', msg: `COLETADO (TOTAL): ${selectedSku}` })
+            } else {
+              setScanStatus({ type: 'success', msg: `COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${selectedSku}` })
+            }
+            sndSuccess.play().catch(() => {})
           }
-          sndSuccess.play().catch(() => {})
-        }
-      } else {
-        const alreadyDone = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && currentPickedIds.has(i.id))
-        if (alreadyDone) {
-          setScanStatus({ type: 'warning', msg: `JÁ CONCLUÍDO: ${resolvedSku}` })
-          sndError.play().catch(() => {})
-        } else if (res.found || currentItems.some(i => i.sku.trim().toUpperCase() === resolvedSku)) {
-          setScanStatus({ type: 'error', msg: `SKU ${resolvedSku} INDISPONÍVEL` })
-          sndError.play().catch(() => {})
         } else {
-          // Código desconhecido: confirmar vínculo ao SKU ativo
-          setLinkingItem({ barcode: code, targetSku: selectedItem?.sku, targetId: selectedItem?.id })
+          // Barcode não reconhecido para este SKU (desconhecido OU vinculado a outro SKU)
+          // → mesmo fluxo do picking: perguntar se deseja vincular ao SKU da tela
+          setLinkingItem({ barcode: code, targetSku: selectedItem.sku, targetId: selectedItem.id })
           setScanStatus({ type: null, msg: null })
         }
+        setTimeout(() => setScanStatus({ type: null, msg: null }), 3000)
+        internalInputRef.current?.focus()
+        return
       }
+
+      // Sem selectedItem aberto (fallback — não deve ocorrer neste path)
+      setScanStatus({ type: 'error', msg: 'Nenhum item selecionado' })
+      sndError.play().catch(() => {})
     } catch (err) {
       setScanStatus({ type: 'error', msg: 'Erro de comunicação' })
       sndError.play().catch(() => {})
@@ -256,14 +251,31 @@ export default function PickingListDetail() {
 
   const handleLinkNewBarcode = async (sku) => {
     if (!linkingItem) return
+    const targetId = linkingItem.targetId
     try {
       await api.linkBarcode(linkingItem.barcode, sku)
-      notify(`Código vinculado ao SKU ${sku}`, 'success')
       setLinkingItem(null)
-      setBarcode(linkingItem.barcode)
-      setTimeout(() => setScanStatus({ type: 'success', msg: 'Vínculo ok! Bipe agora.' }), 100)
+
+      // Após vincular, incrementa o item imediatamente (mesmo comportamento do picking)
+      if (targetId) {
+        const pickRes = await api.pickItem(targetId, { mode: 'unit' })
+        if (pickRes.status === 'success') {
+          const updated = pickRes.item
+          updateItemInState(updated)
+          if (updated.qty_picked >= updated.quantity) {
+            setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (TOTAL): ${sku}` })
+          } else {
+            setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${sku}` })
+          }
+          sndSuccess.play().catch(() => {})
+        }
+      } else {
+        notify(`Código vinculado ao SKU ${sku}`, 'success')
+        setScanStatus({ type: 'success', msg: `VINCULADO: ${sku}` })
+      }
+      setTimeout(() => internalInputRef.current?.focus(), 100)
     } catch (err) {
-      notify('Erro ao vincular.', 'error')
+      notify('Erro ao vincular: ' + (err?.message || 'erro'), 'error')
     }
   }
 
