@@ -131,13 +131,36 @@ async def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
         PrintJob.status == "ERROR",
     ).delete()
 
-    # Bloqueia duplicata em andamento
+    # Job PENDING existente: re-push via WS (agente pode ter voltado online)
+    from services.zebra_connection import zebra_manager
+
+    pending = (
+        db.query(PrintJob)
+        .filter(
+            PrintJob.session_id == body.session_id,
+            PrintJob.sku == body.sku,
+            PrintJob.status == "PENDING",
+        )
+        .first()
+    )
+    if pending:
+        pushed = await zebra_manager.push_job(
+            {"id": pending.id, "sku": pending.sku, "zpl_content": pending.zpl_content},
+            machine_id=body.machine_id,
+        )
+        if pushed:
+            pending.status = "PRINTING"
+            db.commit()
+            db.refresh(pending)
+        return _job_dict(pending)
+
+    # Job PRINTING existente: já em andamento, não duplicar
     active = (
         db.query(PrintJob)
         .filter(
             PrintJob.session_id == body.session_id,
             PrintJob.sku == body.sku,
-            PrintJob.status.in_(["PENDING", "PRINTING"]),
+            PrintJob.status == "PRINTING",
         )
         .first()
     )
@@ -156,9 +179,6 @@ async def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
     db.refresh(job)
 
     # ── Tenta push imediato via WebSocket ──────────────────────────────────
-    # Importação local para evitar importação circular em startup
-    from services.zebra_connection import zebra_manager
-
     pushed = await zebra_manager.push_job(
         {
             "id":          job.id,
@@ -173,7 +193,7 @@ async def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
         job.status = "PRINTING"
         db.commit()
         db.refresh(job)
-    # Se pushed=False: job fica PENDING, agente com polling irá buscar (fallback)
+    # Se pushed=False: job fica PENDING (agente offline — irá processar ao reconectar)
 
     return _job_dict(job)
 
