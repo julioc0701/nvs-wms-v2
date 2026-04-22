@@ -179,7 +179,9 @@ export default function PickingListDetail() {
         return
       }
 
-      const res = await api.resolveBarcode(code)
+      // No modo interno, passa o SKU da tela como focus para o backend priorizar
+      const focusSku = source === 'internal' ? selectedItem?.sku : null
+      const res = await api.resolveBarcode(code, focusSku)
       const resolvedSku = res.sku.trim().toUpperCase()
       const currentItems = itemsRef.current
       const currentPickedIds = pickedIdsRef.current
@@ -217,6 +219,7 @@ export default function PickingListDetail() {
             updateItemInState(updated)
             if (updated.qty_picked >= updated.quantity) {
               setScanStatus({ type: 'success', msg: `COLETADO (TOTAL): ${selectedSku}` })
+              setTimeout(() => setSelectedItem(null), 700)
             } else {
               setScanStatus({ type: 'success', msg: `COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${selectedSku}` })
             }
@@ -264,6 +267,7 @@ export default function PickingListDetail() {
           updateItemInState(updated)
           if (updated.qty_picked >= updated.quantity) {
             setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (TOTAL): ${sku}` })
+            setTimeout(() => setSelectedItem(null), 700)
           } else {
             setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${sku}` })
           }

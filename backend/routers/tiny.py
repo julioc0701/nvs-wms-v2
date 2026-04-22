@@ -679,9 +679,25 @@ async def get_picking_list_details(list_id: int, db: Session = Depends(get_db)):
     }
 
 @router.get("/resolve-barcode/{barcode}")
-async def resolve_barcode(barcode: str, db: Session = Depends(get_db)):
-    """Verifica se um código de barras pertence a um SKU (via WMS)."""
+async def resolve_barcode(barcode: str, focus_sku: str | None = None, db: Session = Depends(get_db)):
+    """Verifica se um código de barras pertence a um SKU (via WMS).
+
+    focus_sku: se fornecido, prioriza o vínculo com esse SKU específico.
+    Permite que o mesmo barcode vinculado a múltiplos SKUs resolva corretamente
+    conforme o contexto de bipagem (SKU da tela).
+    """
     code = barcode.strip().upper()
+
+    # Se focus_sku informado, checa primeiro se existe o par (barcode, focus_sku)
+    if focus_sku:
+        focused = db.query(Barcode).filter(
+            Barcode.barcode == code,
+            Barcode.sku == focus_sku.strip().upper(),
+        ).first()
+        if focused:
+            return {"sku": focused.sku, "found": True, "source": "wms_mapping"}
+
+    # Fallback: primeiro registro encontrado
     mapping = db.query(Barcode).filter(Barcode.barcode == code).first()
     if mapping:
         return {"sku": mapping.sku, "found": True, "source": "wms_mapping"}

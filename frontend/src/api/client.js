@@ -162,7 +162,12 @@ export const api = {
   getPickingListDetails: (listId) => req('GET', `/tiny/picking-lists/${listId}`),
   
   // New Tiny Picking Actions
-  resolveBarcode: (code) => req('GET', `/tiny/resolve-barcode/${encodeURIComponent(code)}`),
+  resolveBarcode: (code, focusSku = null) => {
+    const url = focusSku
+      ? `/tiny/resolve-barcode/${encodeURIComponent(code)}?focus_sku=${encodeURIComponent(focusSku)}`
+      : `/tiny/resolve-barcode/${encodeURIComponent(code)}`
+    return req('GET', url)
+  },
   linkBarcode: (barcode, sku) => req('POST', '/tiny/link-barcode', { barcode, sku }),
   pickItem: (itemId, body = {}) => req('POST', `/tiny/picking-items/${itemId}/pick`, body),
   unpickItem: (itemId) => req('POST', `/tiny/picking-items/${itemId}/unpick`, {}),
