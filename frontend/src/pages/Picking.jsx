@@ -28,8 +28,6 @@ const STATUS_LABEL = {
   out_of_stock: '✗ Sem estoque',
 }
 
-const PRINT_AGENT_BASE = 'http://127.0.0.1:9100'
-const PRINT_AGENT_URL = `${PRINT_AGENT_BASE}/print`
 
 function buildZplBlock(mlCode, description, sku) {
   const safeDesc = (description || '').replace(/\^/g, ' ').replace(/~/g, ' ').substring(0, 120)
@@ -422,15 +420,7 @@ export default function Picking() {
     fullZpl = fullZpl.replace(/\^FO(\d+),/g, (match, x) => `^FO${Math.max(0, parseInt(x, 10) - 15)},`)
 
     try {
-      if (window.location.protocol !== 'https:') {
-        try {
-          await fetch(PRINT_AGENT_URL, {
-            method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: fullZpl, mode: 'no-cors', signal: AbortSignal.timeout(1500),
-          })
-          await api.markPrinted(sessionId, pickedItem.sku)
-          setPrintStatus('done'); return
-        } catch (directErr) {}
-      }
+      // Agente v3 usa WebSocket puro — createPrintJob funciona tanto em HTTP quanto HTTPS
       await api.createPrintJob(sessionId, pickedItem.sku, fullZpl, operator?.id)
       setPrintStatus('done')
     } catch (err) { console.error('Erro ao processar impressão:', err); setPrintError(err?.message || 'Erro'); setPrintStatus('error') }
@@ -444,16 +434,11 @@ export default function Picking() {
     if (!window.confirm('Isso irá reiniciar o serviço de impressão do Windows e limpar a fila. Deseja continuar?')) return
     setFixingSpooler(true)
     try {
-      const res = await fetch(`${PRINT_AGENT_BASE}/fix-spooler`, { method: 'GET' })
-      const data = await res.json()
-      if (data.status === 'ok') {
-        notify('Sucesso: Spooler reiniciado e fila limpa. Tente imprimir novamente.', 'success')
-        setPrintStatus(null) 
-      } else {
-        notify('Erro ao limpar spooler: ' + data.message, 'error')
-      }
+      await api.fixSpoolerViaAgent()
+      notify('Comando enviado ao agente. Aguarde alguns segundos e tente imprimir novamente.', 'success')
+      setPrintStatus(null)
     } catch (err) {
-      notify('Não foi possível comunicar com o agente. Verifique se o ZebraAgent está aberto.', 'error')
+      notify('Não foi possível comunicar com o agente: ' + (err?.message || 'erro'), 'error')
     } finally {
       setFixingSpooler(false)
       focusInput()

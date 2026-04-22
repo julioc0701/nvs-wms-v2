@@ -86,8 +86,12 @@ export const api = {
   resolveBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
   listBarcodes: (search = '') => req('GET', `/barcodes/?search=${encodeURIComponent(search)}&limit=2000`),
 
-  // Zebra Agent Status (via backend — funciona em HTTPS/produção)
+  // Zebra Agent Status + Commands (via backend — funciona em HTTPS/produção)
   getZebraAgentStatus: () => req('GET', '/zebra/agent-status'),
+  fixSpoolerViaAgent: (machineId = null) => {
+    const url = machineId ? `/zebra/fix-spooler?machine_id=${encodeURIComponent(machineId)}` : '/zebra/fix-spooler'
+    return req('POST', url)
+  },
 
   // Print Jobs (fila de impressão via backend — funciona em PRD)
   createPrintJob: (sessionId, sku, zplContent, operatorId) =>

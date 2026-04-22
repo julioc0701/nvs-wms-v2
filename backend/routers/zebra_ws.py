@@ -175,3 +175,29 @@ def agent_status():
         "total":       len(machines),
         "has_agent":   bool(machines),
     }
+
+
+@router.post("/api/zebra/fix-spooler", tags=["zebra-ws"])
+async def fix_spooler_via_ws(machine_id: str | None = None):
+    """
+    Envia comando fix_spooler para o agente conectado via WebSocket.
+    Retorna imediatamente — o resultado chega pelo canal WS (log do agente).
+    """
+    if machine_id and machine_id in zebra_manager._connections:
+        targets = [(machine_id, zebra_manager._connections[machine_id])]
+    else:
+        targets = list(zebra_manager._connections.items())
+
+    if not targets:
+        from fastapi import HTTPException
+        raise HTTPException(503, "Nenhum agente conectado.")
+
+    mid, ws = targets[0]
+    try:
+        await ws.send_json({"type": "fix_spooler"})
+        log.info(f"[WS] fix_spooler enviado para '{mid}'")
+        return {"ok": True, "machine_id": mid}
+    except Exception as exc:
+        zebra_manager.unregister(mid)
+        from fastapi import HTTPException
+        raise HTTPException(503, f"Falha ao enviar comando: {exc}")
