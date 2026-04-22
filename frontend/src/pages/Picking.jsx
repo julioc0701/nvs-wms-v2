@@ -886,27 +886,27 @@ function ReprintQtyDialog({ item, defaultQty, onConfirm, onCancel }) {
         </div>
         
         <div className="mx-6 flex flex-col gap-3">
-          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Tamanho da tiragem livre</label>
-          <div className="flex items-center gap-3">
-            <button 
+          <label className="text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Quantidade de etiquetas</label>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            value={qtyInput}
+            onChange={e => setQtyInput(e.target.value)}
+            onFocus={e => e.target.select()}
+            autoFocus
+            className="w-full text-center text-6xl font-black border-none bg-slate-100 text-slate-800 focus:bg-slate-200 rounded-2xl py-6 outline-none shadow-inner transition-colors [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <button
               onClick={() => add(-1)}
-              className="h-16 w-16 shrink-0 rounded-2xl bg-slate-100 border border-slate-300 text-3xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all"
+              className="py-5 rounded-2xl bg-slate-100 border border-slate-200 text-3xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all"
             >
-              -
+              −
             </button>
-            <input 
-              type="number" 
-              inputMode="numeric"
-              min={1} 
-              value={qtyInput} 
-              onChange={e => setQtyInput(e.target.value)} 
-              onFocus={e => e.target.select()} 
-              autoFocus
-              className="flex-1 text-center text-6xl font-black border-none bg-slate-100 focus:bg-slate-200 rounded-2xl py-6 outline-none shadow-inner transition-colors" 
-            />
-            <button 
+            <button
               onClick={() => add(1)}
-              className="h-16 w-16 shrink-0 rounded-2xl bg-slate-100 border border-slate-300 text-3xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all"
+              className="py-5 rounded-2xl bg-slate-100 border border-slate-200 text-3xl font-black text-slate-700 hover:bg-slate-200 active:scale-95 transition-all"
             >
               +
             </button>
