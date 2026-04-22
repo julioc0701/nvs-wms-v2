@@ -68,18 +68,18 @@ function buildShopeeZplBlock(mlCode, description, sku) {
   }
   return '^XA^CI28\n' +
     '^LH0,0\n' +
-    `^FO10,5^A0N,16,16^FD${nameLine}^FS\n` +
-    `^FO90,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
-    `^FO10,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
-    `^FO10,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
-    `^FO10,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
+    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO10,155^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO10,177^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,199^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
     '^CI28\n' +
     '^LH0,0\n' +
-    `^FO350,5^A0N,16,16^FD${nameLine}^FS\n` +
-    `^FO430,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
-    `^FO350,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
-    `^FO350,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
-    `^FO350,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
+    `^FO350,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO430,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO350,155^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO350,177^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO350,199^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
     '^XZ'
 }
 
@@ -92,11 +92,11 @@ function buildShopeeZplBlockSingle(mlCode, description, sku) {
   }
   return '^XA^CI28\n' +
     '^LH0,0\n' +
-    `^FO10,5^A0N,16,16^FD${nameLine}^FS\n` +
-    `^FO90,25^BQN,2,3^FDQA,${mlCode}^FS\n` +
-    `^FO10,125^A0N,16,16^FDseller sku: ${sku}^FS\n` +
-    `^FO10,145^A0N,16,16^FDbarcode: ${mlCode}^FS\n` +
-    `^FO10,165^A0N,16,16^FDwhs skuid: ${mlCode}^FS\n` +
+    `^FO10,5^A0N,18,18^FD${nameLine}^FS\n` +
+    `^FO90,30^BQN,2,4^FDQA,${mlCode}^FS\n` +
+    `^FO10,155^A0N,18,18^FDseller sku: ${sku}^FS\n` +
+    `^FO10,177^A0N,18,18^FDbarcode: ${mlCode}^FS\n` +
+    `^FO10,199^A0N,18,18^FDwhs skuid: ${mlCode}^FS\n` +
     '^XZ'
 }
 

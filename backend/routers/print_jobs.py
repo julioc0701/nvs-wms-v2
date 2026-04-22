@@ -144,8 +144,11 @@ async def create_job(body: CreateJobBody, db: DBSession = Depends(get_db)):
         .first()
     )
     if pending:
+        # Atualiza o ZPL com o conteúdo atual (usuário pode ter mudado a quantidade)
+        pending.zpl_content = body.zpl_content
+        db.commit()
         pushed = await zebra_manager.push_job(
-            {"id": pending.id, "sku": pending.sku, "zpl_content": pending.zpl_content},
+            {"id": pending.id, "sku": pending.sku, "zpl_content": body.zpl_content},
             machine_id=body.machine_id,
         )
         if pushed:
