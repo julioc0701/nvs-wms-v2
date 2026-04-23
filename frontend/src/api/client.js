@@ -152,14 +152,26 @@ export const api = {
     if (data_final) url += `&data_final=${encodeURIComponent(data_final)}`;
     return req('GET', url);
   },
+  // Retorna em_separacao + concluida + enviada_erp + erro_envio_erp do DB local — sem filtro de data
+  getTrackedSeparacoes: () => req('GET', '/tiny/tracked-separacoes'),
+
+  // ERP Send
+  sendToErp: (separationIds, triggeredBy = 'manual') =>
+    req('POST', '/tiny/separation-statuses/enviar-erp', { separation_ids: separationIds, triggered_by: triggeredBy }),
+  getErpSendLogs: (sepId) => req('GET', `/tiny/erp-send-logs/${encodeURIComponent(sepId)}`),
   
   // Tiny Picking Lists (Consolidação)
   warmSeparationCache: (separationIds) => req('POST', '/tiny/separation-cache/warm', { separation_ids: separationIds }),
   getSeparationStatuses: () => req('GET', '/tiny/separation-statuses'),
   revertSeparationStatuses: (separationIds) => req('POST', '/tiny/separation-statuses/revert', { separation_ids: separationIds }),
+  deleteSeparationStatuses: (separationIds) => req('POST', '/tiny/separation-statuses/delete', { separation_ids: separationIds }),
   createPickingList: (name, separationIds) => req('POST', '/tiny/picking-lists', { name, separation_ids: separationIds }),
   getPickingLists: () => req('GET', '/tiny/picking-lists'),
+  getSeparacaoDetail: (sepId) => req('GET', `/tiny/separacao/${encodeURIComponent(sepId)}`),
   getPickingListDetails: (listId) => req('GET', `/tiny/picking-lists/${listId}`),
+  deletePickingList: (listId) => req('DELETE', `/tiny/picking-lists/${listId}`),
+  getProductImage: (sku) => req('GET', `/tiny/product-image/${encodeURIComponent(sku)}`),
+  warmProductImages: (skus) => req('POST', '/tiny/product-images/warm', { skus }),
   
   // New Tiny Picking Actions
   resolveBarcode: (code, focusSku = null) => {

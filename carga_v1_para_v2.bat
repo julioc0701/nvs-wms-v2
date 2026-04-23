@@ -11,18 +11,21 @@ echo.
 echo  Precisa de: curl instalado no PATH
 echo.
 
-set V1_URL=https://SEU-DOMINIO-V1.up.railway.app
+set V1_URL=https://nvs-producao.up.railway.app
 set V2_URL=https://nvs-wms-v2-production.up.railway.app
 
-set /p V1_URL="> URL da v1 (ex: https://xxx.up.railway.app): "
-set /p SECRET="> DOWNLOAD_SECRET (mesmo valor nas duas): "
+echo  v1: %V1_URL%
+echo  v2: %V2_URL%
+echo.
+set /p SECRET_V1="> DOWNLOAD_SECRET da v1 (eloquent-flexibility): "
+set /p SECRET_V2="> DOWNLOAD_SECRET da v2 (virtuous-unity): "
 
-if "%V1_URL%"=="" (echo ERRO: URL da v1 nao informada. & pause & exit /b 1)
-if "%SECRET%"=="" (echo ERRO: SECRET nao informado. & pause & exit /b 1)
+if "%SECRET_V1%"=="" (echo ERRO: SECRET da v1 nao informado. & pause & exit /b 1)
+if "%SECRET_V2%"=="" (echo ERRO: SECRET da v2 nao informado. & pause & exit /b 1)
 
 echo.
 echo [1/3] Baixando banco de dados da v1...
-curl -f -o v1_backup.db "%V1_URL%/api/admin/download-db?secret=%SECRET%"
+curl -f -o v1_backup.db "%V1_URL%/api/admin/download-db?secret=%SECRET_V1%"
 if %errorlevel% neq 0 (
     echo.
     echo ERRO: Falha ao baixar DB da v1.
@@ -43,7 +46,7 @@ if %SIZE% LSS 10000 (
 
 echo.
 echo [3/3] Enviando para a v2...
-curl -f -X POST "%V2_URL%/api/admin/restore-db?secret=%SECRET%" ^
+curl -f -X POST "%V2_URL%/api/admin/restore-db?secret=%SECRET_V2%" ^
      -F "file=@v1_backup.db"
 if %errorlevel% neq 0 (
     echo.

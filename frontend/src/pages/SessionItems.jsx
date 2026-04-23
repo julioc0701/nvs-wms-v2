@@ -25,7 +25,7 @@ const RESETTABLE = ['complete', 'partial', 'out_of_stock', 'in_progress']
 export default function SessionItems() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
+  const operator = JSON.parse(localStorage.getItem('operator') || 'null')
 
   const [session, setSession] = useState(null)
   const [items, setItems] = useState([])

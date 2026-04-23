@@ -3,7 +3,7 @@ from logger import get_logger
 log = get_logger("tiny")
 from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
-from models import TinyOrderSync, TinyOrderItem, TinyPickingList, TinyPickingListItem, Barcode, Shortage, PickingItem, TinySeparationStatus, TinySeparationItemCache
+from models import TinyOrderSync, TinyOrderItem, TinyPickingList, TinyPickingListItem, Barcode, Shortage, PickingItem, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog
 from pydantic import BaseModel
 import asyncio
 import json
@@ -19,10 +19,9 @@ router = APIRouter()
 TINY_TOKEN = os.getenv("TINY_API_TOKEN", "")
 
 # ── Feature gate: sync de status para a API Olist/Tiny ───────────────────────
-# false = local/testes (apenas loga DRY-RUN, não toca PRD)
 # true  = produção (chama a API Tiny e atualiza a situação da separação)
-# Para ativar: setar ENABLE_OLIST_SYNC=true nas env vars do Railway ao fazer deploy
-ENABLE_OLIST_SYNC = os.getenv("ENABLE_OLIST_SYNC", "false").lower() == "true"
+# false = local/testes (apenas loga DRY-RUN, não toca PRD)
+ENABLE_OLIST_SYNC = os.getenv("ENABLE_OLIST_SYNC", "true").lower() == "true"
 
 # Código de situação "Separado" na API do Tiny ERP v2.
 # ⚠️  VERIFICAR na documentação Tiny qual é o código correto antes de ir para PRD.
@@ -57,25 +56,28 @@ async def sync_background_orders(token: str, order_ids: list):
 
 from fastapi import Request
 
+WEBHOOK_ENABLED = os.getenv("ENABLE_TINY_WEBHOOK", "true").lower() == "true"
+
 @router.post("/webhook")
 async def receive_tiny_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Recebe notificação de eventos do Tiny ERP (ex: inserção/alteração de pedidos).
-    Ao invés de processar na frente e fazer o Tiny esperar, apenas anotamos o ID e o Robô invisível sincroniza tudo no Banco.
+    PAUSADO — ativar setando ENABLE_TINY_WEBHOOK=true nas env vars.
     """
+    if not WEBHOOK_ENABLED:
+        log.info("[WEBHOOK TINY] recebido mas PAUSADO (ENABLE_TINY_WEBHOOK=false)")
+        return {"status": "paused", "message": "Webhook desativado para testes"}
     try:
         body = await request.json()
         print(f"[WEBHOOK TINY] Novo evento recebido: {body.get('tipo', 'desconhecido')}")
-        
+
         dados = body.get("dados", {})
         pedido_id = dados.get("id")
-        
+
         if pedido_id:
-            # Aciona o robô imediatamente
             print(f"[WEBHOOK TINY] Agendando Sincronização do Pedido ID: {pedido_id}")
             background_tasks.add_task(sync_background_orders, TINY_TOKEN, [str(pedido_id)])
-            
-        # Tiny exige Resposta 200 pro Webhook não ser desativado
+
         return {"status": "success", "message": "Evento processado"}
     except Exception as e:
         print(f"[WEBHOOK TINY] Erro ao ler payload: {e}")
@@ -259,7 +261,189 @@ async def list_separacoes(
         origem_id = str(s.get("idOrigemVinc", ""))
         s["numero_pedido"] = synced.get(origem_id) or ""
 
+    # ── Upsert de headers de exibição ─────────────────────────────────────────
+    # Salva campos de display no DB local para que as abas em_separacao/separadas
+    # possam ser servidas sem depender do filtro de data do Tiny.
+    try:
+        for s in separacoes:
+            sep_id = str(s.get("id", ""))
+            if not sep_id:
+                continue
+            forma_envio = s.get("formaEnvio")
+            header_data = dict(
+                numero=s.get("numero"),
+                destinatario=s.get("destinatario"),
+                numero_ec=s.get("numeroPedidoEcommerce"),
+                data_emissao=s.get("dataEmissao"),
+                prazo_maximo=s.get("prazo_maximo"),
+                id_forma_envio=str(s.get("idFormaEnvio") or ""),
+                forma_envio_descricao=forma_envio.get("descricao") if isinstance(forma_envio, dict) else None,
+                numero_pedido=s.get("numero_pedido"),
+                updated_at=datetime.utcnow(),
+            )
+            existing_h = db.query(TinySeparationHeader).filter(
+                TinySeparationHeader.separation_id == sep_id
+            ).first()
+            if existing_h:
+                for k, v in header_data.items():
+                    setattr(existing_h, k, v)
+            else:
+                db.add(TinySeparationHeader(separation_id=sep_id, **header_data))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log.warning(f"SEPARACOES: falha ao upsert headers: {e}")
+
     return data
+
+
+async def _backfill_sep_headers_bg(sep_ids: List[str], token: Optional[str]):
+    """Busca separacao.obter.php para cada ID sem header e persiste os campos de exibição."""
+    db = SessionLocal()
+    try:
+        service = get_service(token)
+        BATCH_SIZE = 8
+        updated = 0
+        for i in range(0, len(sep_ids), BATCH_SIZE):
+            batch = sep_ids[i:i + BATCH_SIZE]
+            tasks = [service.get_separation_details(sid) for sid in batch]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for sid, res in zip(batch, results):
+                if isinstance(res, Exception):
+                    log.warning(f"BACKFILL_HEADERS sep_id={sid}: {res}")
+                    continue
+                sep = res.get("separacao", {})
+                if not sep:
+                    continue
+                forma_envio = sep.get("formaEnvio")
+                header_data = dict(
+                    numero=sep.get("numero"),
+                    destinatario=sep.get("destinatario"),
+                    numero_ec=sep.get("numeroPedidoEcommerce"),
+                    data_emissao=sep.get("dataEmissao"),
+                    prazo_maximo=sep.get("prazo_maximo"),
+                    id_forma_envio=str(sep.get("idFormaEnvio") or ""),
+                    forma_envio_descricao=forma_envio.get("descricao") if isinstance(forma_envio, dict) else None,
+                    updated_at=datetime.utcnow(),
+                )
+                existing_h = db.query(TinySeparationHeader).filter(
+                    TinySeparationHeader.separation_id == str(sid)
+                ).first()
+                if existing_h:
+                    for k, v in header_data.items():
+                        setattr(existing_h, k, v)
+                else:
+                    db.add(TinySeparationHeader(separation_id=str(sid), **header_data))
+                updated += 1
+            db.commit()
+            if i + BATCH_SIZE < len(sep_ids):
+                await asyncio.sleep(0.3)
+        log.info(f"BACKFILL_HEADERS concluído: {updated}/{len(sep_ids)} docs")
+    except Exception as e:
+        log.error(f"BACKFILL_HEADERS ERRO: {e}", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+@router.get("/tracked-separacoes")
+async def get_tracked_separacoes(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Documentos de separação rastreados localmente (em_separacao + concluida + enviada_erp + erro_envio_erp).
+    Enriquecidos com campos de exibição do cache de headers local.
+    Completamente independente de filtro de data do Tiny — retorna TUDO.
+    Se houver docs sem header, dispara backfill automático em background."""
+    statuses = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.status.in_(["em_separacao", "concluida", "enviada_erp", "erro_envio_erp"])
+    ).all()
+
+    if not statuses:
+        return {"separacoes": [], "backfill_triggered": False}
+
+    sep_ids = [s.separation_id for s in statuses]
+
+    headers = {
+        h.separation_id: h
+        for h in db.query(TinySeparationHeader).filter(
+            TinySeparationHeader.separation_id.in_(sep_ids)
+        ).all()
+    }
+
+    # Docs sem header ou com numero nulo → backfill automático em background
+    missing_ids = [
+        sid for sid in sep_ids
+        if sid not in headers or not headers[sid].numero
+    ]
+    backfill_triggered = False
+    if missing_ids and TINY_TOKEN:
+        log.info(f"TRACKED_SEP: {len(missing_ids)} docs sem header — backfill em background")
+        background_tasks.add_task(_backfill_sep_headers_bg, missing_ids, TINY_TOKEN)
+        backfill_triggered = True
+
+    list_ids = [s.list_id for s in statuses if s.list_id]
+    lists: dict = {}
+    if list_ids:
+        lists = {
+            l.id: l.name
+            for l in db.query(TinyPickingList).filter(TinyPickingList.id.in_(list_ids)).all()
+        }
+
+    # Último log de envio ERP por doc (para badges de sucesso/erro na aba Enviadas ERP)
+    erp_log_ids = [
+        s.separation_id for s in statuses
+        if s.status in ("enviada_erp", "erro_envio_erp")
+    ]
+    last_erp_logs: dict = {}
+    if erp_log_ids:
+        from sqlalchemy import func as sa_func
+        subq = (
+            db.query(
+                TinyErpSendLog.separation_id,
+                sa_func.max(TinyErpSendLog.sent_at).label("max_sent")
+            )
+            .filter(TinyErpSendLog.separation_id.in_(erp_log_ids))
+            .group_by(TinyErpSendLog.separation_id)
+            .subquery()
+        )
+        logs = (
+            db.query(TinyErpSendLog)
+            .join(subq, (TinyErpSendLog.separation_id == subq.c.separation_id) &
+                        (TinyErpSendLog.sent_at == subq.c.max_sent))
+            .all()
+        )
+        last_erp_logs = {l.separation_id: l for l in logs}
+
+    result = []
+    for s in statuses:
+        h = headers.get(s.separation_id)
+        last_log = last_erp_logs.get(s.separation_id)
+        result.append({
+            "id": s.separation_id,
+            "numero": h.numero if h else None,
+            "destinatario": h.destinatario if h else None,
+            "numeroPedidoEcommerce": h.numero_ec if h else None,
+            "dataEmissao": h.data_emissao if h else None,
+            "prazo_maximo": h.prazo_maximo if h else None,
+            "idFormaEnvio": h.id_forma_envio if h else None,
+            "numero_pedido": h.numero_pedido if h else None,
+            "local_status": s.status,
+            "list_id": s.list_id,
+            "list_name": lists.get(s.list_id) if s.list_id else None,
+            "last_erp_log": {
+                "status": last_log.status,
+                "triggered_by": last_log.triggered_by,
+                "error_message": last_log.error_message,
+                "sent_at": last_log.sent_at.isoformat(),
+            } if last_log else None,
+        })
+
+    return {"separacoes": result, "backfill_triggered": backfill_triggered}
+
 
 @router.post("/vacuum-30-days")
 async def trigger_vacuum(background_tasks: BackgroundTasks, api_token: Optional[str] = Query(None)):
@@ -580,6 +764,26 @@ async def revert_separation_statuses(req: RevertStatusRequest, db: Session = Dep
     return {"status": "success", "reverted": reverted}
 
 
+class DeleteStatusRequest(BaseModel):
+    separation_ids: List[str]
+
+@router.post("/separation-statuses/delete")
+async def delete_separation_statuses(req: DeleteStatusRequest, db: Session = Depends(get_db)):
+    """Remove registros de status local dos documentos de separação.
+    O documento some do nosso rastreamento — Tiny não é afetado."""
+    deleted = 0
+    for sep_id in req.separation_ids:
+        existing = db.query(TinySeparationStatus).filter(
+            TinySeparationStatus.separation_id == str(sep_id)
+        ).first()
+        if existing:
+            db.delete(existing)
+            deleted += 1
+    db.commit()
+    log.info(f"DELETE_STATUS {deleted} docs removidos: {req.separation_ids}")
+    return {"status": "success", "deleted": deleted}
+
+
 async def _push_separation_status_to_olist(sep_id: str):
     """Background task: empurra situação 'separado' para a API Tiny/Olist.
 
@@ -612,13 +816,22 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
     """Verifica se algum documento da lista teve todos os seus SKUs concluídos
     (picked ou shortage) e avança o status local para 'concluida'.
     Chamado após cada pick ou registro de falta.
-    Retorna lista de sep_ids recém-avançados para 'concluida' (para sync Olist)."""
+    Retorna lista de sep_ids recém-avançados para 'concluida' (para sync Olist).
+
+    Cobre dois cenários de quebra:
+    A) sep_id em source_separation_ids mas sem registro TinySeparationStatus → cria como 'concluida'
+    B) sep_id com status 'em_separacao' no banco mas sem itens em doc_items (cache vazio na criação)
+       → avança vacuously (zero itens = nada a coletar = concluído)
+    """
+    # Expira cache de sessão — garante valores frescos após o commit do pick
+    db.expire_all()
+
     # Todos os itens da lista
     items = db.query(TinyPickingListItem).filter(TinyPickingListItem.list_id == list_id).all()
     if not items:
-        return
+        return []
 
-    # Monta mapa: doc_id → [items que contêm esse doc]
+    # Monta mapa: sep_id → [items que contêm esse doc]
     from collections import defaultdict
     doc_items: dict = defaultdict(list)
     for it in items:
@@ -631,26 +844,90 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
 
     newly_concluded: list = []
 
+    # ── Cenário normal + Cenário A: sep_ids que aparecem em source_separation_ids ──
     for sep_id, its in doc_items.items():
-        # Doc é considerado completo quando todos os seus itens estão picked ou shortage
         all_done = all(
-            (it.qty_picked is not None and it.qty_picked >= it.quantity) or it.is_shortage
+            (it.qty_picked is not None and it.qty_picked >= it.quantity - 0.001) or it.is_shortage
             for it in its
         )
         if not all_done:
+            pending = [(it.sku, it.qty_picked, it.quantity) for it in its
+                       if not ((it.qty_picked is not None and it.qty_picked >= it.quantity - 0.001) or it.is_shortage)]
+            log.debug(f"SEP_PENDENTE sep_id={sep_id} itens_pendentes={pending}")
             continue
 
-        # Avança para "concluida" somente se ainda está em "em_separacao"
         record = db.query(TinySeparationStatus).filter(
             TinySeparationStatus.separation_id == sep_id
         ).first()
+
         if record and record.status == "em_separacao":
+            # Caso normal
             record.status = "concluida"
             newly_concluded.append(sep_id)
             log.info(f"DOC_CONCLUIDO sep_id={sep_id} list_id={list_id}")
+        elif not record:
+            # Cenário A: sem registro → cria direto como 'concluida'
+            db.add(TinySeparationStatus(
+                separation_id=sep_id,
+                status="concluida",
+                list_id=list_id,
+            ))
+            newly_concluded.append(sep_id)
+            log.warning(f"DOC_CONCLUIDO_SEM_REGISTRO sep_id={sep_id} list_id={list_id} — criado direto como concluida")
+        # se record.status == "concluida" já → nada a fazer
+
+    # ── Cenário B: sep_ids com em_separacao neste list_id mas sem nenhum item em doc_items ──
+    # (cache estava vazio quando a lista foi criada — vacuously done)
+    tracked = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.list_id == list_id,
+        TinySeparationStatus.status == "em_separacao",
+    ).all()
+    for record in tracked:
+        if record.separation_id not in doc_items:
+            record.status = "concluida"
+            newly_concluded.append(record.separation_id)
+            log.warning(f"DOC_CONCLUIDO_SEM_ITENS sep_id={record.separation_id} list_id={list_id} — sem itens em doc_items, avançado vacuamente")
 
     db.commit()
     return newly_concluded
+
+
+@router.get("/separacao/{sep_id}")
+async def get_separacao_detail(sep_id: str, token: Optional[str] = None, db: Session = Depends(get_db)):
+    """Retorna detalhes completos de uma separação (lazy — chamado ao clicar no documento).
+    Enriquece com progresso local de picking se existir lista associada."""
+    service = get_service(token)
+    data = await service.get_separation_details(sep_id)
+    sep = data.get("separacao", {})
+
+    # Enriquece com progresso local se houver lista associada
+    local_status = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.separation_id == str(sep_id)
+    ).first()
+
+    picking_progress = None
+    if local_status and local_status.list_id:
+        items = db.query(TinyPickingListItem).filter(
+            TinyPickingListItem.list_id == local_status.list_id
+        ).all()
+        # Filtra apenas itens que vieram desta separação
+        related = [it for it in items if it.source_separation_ids and str(sep_id) in it.source_separation_ids.split(",")]
+        if related:
+            total_qty = sum(it.quantity for it in related)
+            picked_qty = sum(it.qty_picked or 0 for it in related)
+            pct = round((picked_qty / total_qty * 100) if total_qty > 0 else 0)
+            picking_progress = {
+                "pct": pct,
+                "picked_qty": picked_qty,
+                "total_qty": total_qty,
+                "list_name": local_status.list_name if hasattr(local_status, 'list_name') else None,
+                "items": [
+                    {"sku": it.sku, "qty_picked": it.qty_picked or 0, "quantity": it.quantity, "is_shortage": it.is_shortage}
+                    for it in related
+                ]
+            }
+
+    return {"separacao": sep, "local_status": local_status.status if local_status else None, "picking_progress": picking_progress}
 
 
 @router.get("/picking-lists")
@@ -658,6 +935,106 @@ async def list_picking_lists(db: Session = Depends(get_db)):
     """Lista o histórico de listas de separação geradas."""
     lists = db.query(TinyPickingList).order_by(TinyPickingList.created_at.desc()).all()
     return lists
+
+@router.delete("/picking-lists/{list_id}")
+async def delete_picking_list(list_id: int, db: Session = Depends(get_db)):
+    """Exclui uma lista de separação e reverte os documentos para 'aguardando separação'."""
+    plist = db.query(TinyPickingList).filter(TinyPickingList.id == list_id).first()
+    if not plist:
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+
+    # Coleta todos os separation_ids associados aos itens desta lista
+    items = db.query(TinyPickingListItem).filter(TinyPickingListItem.list_id == list_id).all()
+    sep_ids: set[str] = set()
+    for it in items:
+        if it.source_separation_ids:
+            for sid in it.source_separation_ids.split(","):
+                sid = sid.strip()
+                if sid:
+                    sep_ids.add(sid)
+
+    # Reverte status local: apaga registros em_separacao/concluida para este list_id
+    for sep_id in sep_ids:
+        record = db.query(TinySeparationStatus).filter(
+            TinySeparationStatus.separation_id == sep_id
+        ).first()
+        if record and record.list_id == list_id:
+            db.delete(record)  # Remove override → volta a depender do Tiny (aguardando)
+
+    # Deleta itens e lista (cascade já cuida dos itens pelo relationship)
+    db.delete(plist)
+    db.commit()
+
+    log.info(f"DELETE_LIST list_id={list_id} sep_ids_revertidos={sep_ids}")
+    return {"status": "success", "deleted_list_id": list_id, "reverted_sep_ids": list(sep_ids)}
+
+
+@router.post("/picking-lists/{list_id}/recheck-statuses")
+async def recheck_list_statuses(list_id: int, db: Session = Depends(get_db)):
+    """Re-executa _check_and_advance_doc_statuses manualmente com diagnóstico completo.
+    Cobre Cenário A (sem registro) e Cenário B (em_separacao sem itens).
+    Útil para corrigir listas concluídas que ficaram com docs presos."""
+    plist = db.query(TinyPickingList).filter(TinyPickingList.id == list_id).first()
+    if not plist:
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+
+    # Snapshot antes de executar
+    db.expire_all()
+    items = db.query(TinyPickingListItem).filter(TinyPickingListItem.list_id == list_id).all()
+
+    from collections import defaultdict
+    doc_items: dict = defaultdict(list)
+    for it in items:
+        if not it.source_separation_ids:
+            continue
+        for sep_id in it.source_separation_ids.split(","):
+            sep_id = sep_id.strip()
+            if sep_id:
+                doc_items[sep_id].append(it)
+
+    # Snapshot de status antes
+    all_sep_ids = set(doc_items.keys())
+    tracked = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.list_id == list_id
+    ).all()
+    for r in tracked:
+        all_sep_ids.add(r.separation_id)
+
+    status_before = {}
+    for sep_id in all_sep_ids:
+        r = db.query(TinySeparationStatus).filter(TinySeparationStatus.separation_id == sep_id).first()
+        status_before[sep_id] = r.status if r else None
+
+    # Executa a lógica corrigida
+    newly_concluded = _check_and_advance_doc_statuses(list_id, db)
+
+    # Monta diagnóstico
+    diagnostic = []
+    for sep_id in all_sep_ids:
+        its = doc_items.get(sep_id, [])
+        pending = [
+            {"sku": it.sku, "qty_picked": it.qty_picked, "quantity": it.quantity}
+            for it in its
+            if not ((it.qty_picked is not None and it.qty_picked >= it.quantity - 0.001) or it.is_shortage)
+        ]
+        r = db.query(TinySeparationStatus).filter(TinySeparationStatus.separation_id == sep_id).first()
+        diagnostic.append({
+            "sep_id": sep_id,
+            "total_items": len(its),
+            "done_items": len(its) - len(pending),
+            "pending_items": pending,
+            "status_before": status_before.get(sep_id),
+            "status_after": r.status if r else "concluida",
+            "advanced": sep_id in newly_concluded,
+            "scenario": "B_sem_itens" if not its else ("A_sem_registro" if status_before.get(sep_id) is None else "normal"),
+        })
+
+    return {
+        "list_id": list_id,
+        "newly_concluded": newly_concluded,
+        "diagnostic": sorted(diagnostic, key=lambda x: (not x["advanced"], len(x["pending_items"]))),
+    }
+
 
 @router.get("/picking-lists/{list_id}")
 async def get_picking_list_details(list_id: int, db: Session = Depends(get_db)):
@@ -677,6 +1054,105 @@ async def get_picking_list_details(list_id: int, db: Session = Depends(get_db)):
         "created_at": plist.created_at,
         "items": items
     }
+
+# Cache em memória: sku.upper() → url (str) ou None (sem imagem)
+_product_image_cache: dict[str, str | None] = {}
+
+@router.get("/product-image/{sku}")
+async def get_product_image(sku: str, token: Optional[str] = None):
+    """Retorna a URL da primeira imagem do produto no Tiny.
+    Cache em memória por SKU — zero DB, zero custo extra em runtime."""
+    sku_key = sku.strip().upper()
+
+    if sku_key in _product_image_cache:
+        return {"sku": sku_key, "image_url": _product_image_cache[sku_key]}
+
+    service = get_service(token)
+
+    try:
+        # Passo 1: pesquisa pelo código/SKU
+        pesquisa = await service._post("produtos.pesquisa.php", {"pesquisa": sku_key})
+        produtos = pesquisa.get("produtos", [])
+        produto_id = None
+        for p in produtos:
+            prod = p.get("produto", {})
+            if str(prod.get("codigo", "")).upper() == sku_key:
+                produto_id = prod.get("id")
+                break
+        if not produto_id and produtos:
+            produto_id = produtos[0].get("produto", {}).get("id")
+
+        if not produto_id:
+            _product_image_cache[sku_key] = None
+            return {"sku": sku_key, "image_url": None}
+
+        # Passo 2: busca detalhes com anexos
+        obter = await service._post("produto.obter.php", {"id": produto_id})
+        produto = obter.get("produto", {})
+        anexos = produto.get("anexos", [])
+        image_url = anexos[0].get("anexo") if anexos else None
+
+        _product_image_cache[sku_key] = image_url
+        return {"sku": sku_key, "image_url": image_url}
+
+    except Exception as e:
+        log.warning(f"product-image/{sku_key}: {e}")
+        return {"sku": sku_key, "image_url": None}
+
+
+class WarmImagesRequest(BaseModel):
+    skus: List[str]
+
+@router.post("/product-images/warm")
+async def warm_product_images(req: WarmImagesRequest, background_tasks: BackgroundTasks, token: Optional[str] = None):
+    """Pre-aquece cache de imagens para uma lista de SKUs.
+    Executa em background — retorna imediatamente."""
+    missing = [s.strip().upper() for s in req.skus if s.strip().upper() not in _product_image_cache]
+    if missing:
+        background_tasks.add_task(_warm_images_bg, missing, token)
+    return {"warming": len(missing), "already_cached": len(req.skus) - len(missing)}
+
+
+async def _fetch_one_image(sku_key: str, service) -> None:
+    """Busca imagem de um SKU e armazena no cache."""
+    if sku_key in _product_image_cache:
+        return
+    try:
+        pesquisa = await service._post("produtos.pesquisa.php", {"pesquisa": sku_key})
+        produtos = pesquisa.get("produtos", [])
+        produto_id = None
+        for p in produtos:
+            prod = p.get("produto", {})
+            if str(prod.get("codigo", "")).upper() == sku_key:
+                produto_id = prod.get("id")
+                break
+        if not produto_id and produtos:
+            produto_id = produtos[0].get("produto", {}).get("id")
+        if not produto_id:
+            _product_image_cache[sku_key] = None
+            return
+        obter = await service._post("produto.obter.php", {"id": produto_id})
+        anexos = obter.get("produto", {}).get("anexos", [])
+        _product_image_cache[sku_key] = anexos[0].get("anexo") if anexos else None
+    except Exception as e:
+        log.warning(f"warm_images_bg/{sku_key}: {e}")
+        _product_image_cache[sku_key] = None
+
+
+async def _warm_images_bg(skus: List[str], token: Optional[str]):
+    """Busca imagens em batches paralelos de 3 — rápido e sem estourar rate limit Tiny."""
+    try:
+        service = get_service(token)
+    except Exception:
+        return
+    missing = [s for s in skus if s not in _product_image_cache]
+    BATCH = 3
+    for i in range(0, len(missing), BATCH):
+        batch = missing[i:i + BATCH]
+        await asyncio.gather(*[_fetch_one_image(sku, service) for sku in batch], return_exceptions=True)
+        if i + BATCH < len(missing):
+            await asyncio.sleep(0.15)  # 150ms entre batches
+
 
 @router.get("/resolve-barcode/{barcode}")
 async def resolve_barcode(barcode: str, focus_sku: str | None = None, db: Session = Depends(get_db)):
@@ -783,11 +1259,12 @@ async def register_item_pick(item_id: int, request: PickRequest, background_task
             db.commit()
             list_completed = True
 
-    concluded_ids = _check_and_advance_doc_statuses(list_id, db)
-
-    # Dispara sync para Olist em background para cada separação recém-concluída
-    for sep_id in concluded_ids:
-        background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+    try:
+        concluded_ids = _check_and_advance_doc_statuses(list_id, db)
+        for sep_id in (concluded_ids or []):
+            background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+    except Exception as e:
+        log.error(f"ERRO ao avançar status docs list_id={list_id}: {e}", exc_info=True)
 
     return {
         "status": "success",
@@ -892,9 +1369,12 @@ async def report_shortage(req: ShortageRequest, background_tasks: BackgroundTask
                 item.notes = req.notes
                 log.info(f"SHORTAGE OK item={req.item_id}")
                 db.commit()
-                concluded_ids = _check_and_advance_doc_statuses(item.list_id, db)
-                for sep_id in concluded_ids:
-                    background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+                try:
+                    concluded_ids = _check_and_advance_doc_statuses(item.list_id, db)
+                    for sep_id in (concluded_ids or []):
+                        background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+                except Exception as ce:
+                    log.error(f"ERRO ao avançar status docs (shortage) item={req.item_id}: {ce}", exc_info=True)
             else:
                 db.commit()
         else:
@@ -958,6 +1438,136 @@ async def get_shortages(db: Session = Depends(get_db)):
     consolidated.sort(key=lambda x: x["created_at"] if isinstance(x["created_at"], datetime) else datetime.utcnow(), reverse=True)
     
     return consolidated
+
+# ── ERP SEND: envio de documentos separados para o Tiny ─────────────────────
+
+class EnviarErpRequest(BaseModel):
+    separation_ids: List[str]
+    triggered_by: str = "manual"  # manual | auto
+
+
+async def _send_single_doc_to_erp(sep_id: str, triggered_by: str, db) -> dict:
+    """Envia um documento para o Tiny via separacao.alterar.situacao.php (situacao=2).
+    Atualiza TinySeparationStatus e grava log independente do resultado.
+    Retorna dict com {ok, status, message}."""
+    if not TINY_TOKEN:
+        msg = "TINY_API_TOKEN não configurado"
+        log.warning(f"[ERP_SEND] {sep_id}: {msg}")
+        _save_erp_log(db, sep_id, triggered_by, "error", None, msg)
+        _set_erp_status(db, sep_id, "erro_envio_erp")
+        db.commit()
+        return {"ok": False, "status": "error", "message": msg}
+
+    try:
+        svc = TinyService(token=TINY_TOKEN)
+        resp = await svc._post("separacao.alterar.situacao.php", {
+            "situacao": 2,
+            "idSeparacao": sep_id,
+        })
+        resp_json = json.dumps(resp, ensure_ascii=False) if isinstance(resp, dict) else str(resp)
+
+        # TinyService._post já desembala o "retorno" interno — resp é o objeto direto.
+        # Suporta tanto {"status":"OK"} (desembalado) quanto {"retorno":{"status":"OK"}} (embalado).
+        retorno = resp.get("retorno", resp) if isinstance(resp, dict) else {}
+        ok = str(retorno.get("status", "")).upper() == "OK"
+
+        if ok:
+            _set_erp_status(db, sep_id, "enviada_erp")
+            _save_erp_log(db, sep_id, triggered_by, "success", resp_json, None)
+            db.commit()
+            log.info(f"[ERP_SEND OK] sep_id={sep_id} triggered_by={triggered_by}")
+            return {"ok": True, "status": "success", "message": "Enviado com sucesso"}
+        else:
+            msg = f"Tiny retornou status não-OK: {resp_json[:300]}"
+            _set_erp_status(db, sep_id, "erro_envio_erp")
+            _save_erp_log(db, sep_id, triggered_by, "error", resp_json, msg)
+            db.commit()
+            log.warning(f"[ERP_SEND NOK] sep_id={sep_id}: {msg}")
+            return {"ok": False, "status": "error", "message": msg}
+
+    except Exception as e:
+        msg = str(e)
+        try:
+            _set_erp_status(db, sep_id, "erro_envio_erp")
+            _save_erp_log(db, sep_id, triggered_by, "error", None, msg)
+            db.commit()
+        except Exception:
+            pass
+        log.error(f"[ERP_SEND ERRO] sep_id={sep_id}: {msg}", exc_info=True)
+        return {"ok": False, "status": "error", "message": msg}
+
+
+def _set_erp_status(db, sep_id: str, new_status: str):
+    existing = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.separation_id == str(sep_id)
+    ).first()
+    if existing:
+        existing.status = new_status
+    else:
+        db.add(TinySeparationStatus(
+            separation_id=str(sep_id),
+            status=new_status,
+            list_id=None,
+            created_at=datetime.utcnow()
+        ))
+
+
+def _save_erp_log(db, sep_id: str, triggered_by: str, status: str, response_json, error_message):
+    db.add(TinyErpSendLog(
+        separation_id=str(sep_id),
+        triggered_by=triggered_by,
+        status=status,
+        response_json=response_json,
+        error_message=error_message,
+        sent_at=datetime.utcnow()
+    ))
+
+
+@router.post("/separation-statuses/enviar-erp")
+async def enviar_docs_erp(req: EnviarErpRequest, db: Session = Depends(get_db)):
+    """Envia documentos da aba 'Separadas' para o ERP Tiny (situacao=2).
+    Pode ser chamado manualmente (seleção do usuário) ou pelo scheduler automático.
+    Retorna resultado por documento."""
+    results = {}
+    for sep_id in req.separation_ids:
+        results[sep_id] = await _send_single_doc_to_erp(sep_id, req.triggered_by, db)
+
+    total = len(results)
+    success = sum(1 for r in results.values() if r["ok"])
+    log.info(f"[ERP_SEND BATCH] {success}/{total} enviados com sucesso (triggered_by={req.triggered_by})")
+    return {
+        "status": "done",
+        "total": total,
+        "success": success,
+        "failed": total - success,
+        "results": results,
+    }
+
+
+@router.get("/erp-send-logs/{sep_id}")
+async def get_erp_send_logs(sep_id: str, db: Session = Depends(get_db)):
+    """Histórico de logs de envio ERP para um documento específico."""
+    logs = (
+        db.query(TinyErpSendLog)
+        .filter(TinyErpSendLog.separation_id == sep_id)
+        .order_by(TinyErpSendLog.sent_at.desc())
+        .limit(50)
+        .all()
+    )
+    return {
+        "separation_id": sep_id,
+        "logs": [
+            {
+                "id": l.id,
+                "triggered_by": l.triggered_by,
+                "status": l.status,
+                "error_message": l.error_message,
+                "sent_at": l.sent_at.isoformat(),
+            }
+            for l in logs
+        ],
+    }
+
 
 @router.post("/shortages/{shortage_id}/delete")
 async def delete_shortage(shortage_id: int, db: Session = Depends(get_db)):

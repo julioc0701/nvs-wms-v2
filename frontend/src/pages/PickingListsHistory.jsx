@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import { useFeedback } from '../components/ui/FeedbackProvider'
-import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon } from 'lucide-react'
+import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
 
@@ -11,6 +11,21 @@ export default function PickingListsHistory() {
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(null) // list object
+
+  async function handleDelete(list) {
+    setLoading(true)
+    setConfirmDelete(null)
+    try {
+      await api.deletePickingList(list.id)
+      notify(`Lista "${list.name}" excluída. Pedidos devolvidos para aguardando separação.`, 'success')
+      await loadLists()
+    } catch (err) {
+      notify('Erro ao excluir lista.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function loadLists() {
     setLoading(true)
@@ -77,10 +92,10 @@ export default function PickingListsHistory() {
         ) : (
           <div className="space-y-2">
             {filtered.map(list => (
-              <button 
-                key={list.id} 
+              <div key={list.id} className="w-full flex items-center gap-2">
+              <button
                 onClick={() => navigate(`/separacao/listas/${list.id}`)}
-                className="w-full flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left"
+                className="flex-1 flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left"
               >
                 <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                    <ListIcon size={18} />
@@ -116,10 +131,35 @@ export default function PickingListsHistory() {
                    <ChevronRight size={18} />
                 </div>
               </button>
+              <button
+                onClick={() => setConfirmDelete(list)}
+                className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-100 text-slate-300 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shrink-0"
+              >
+                <Trash2 size={16} />
+              </button>
+              </div>
             ))}
           </div>
         )}
       </div>
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Trash2 size={32} />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Excluir lista?</h3>
+            <p className="text-slate-500 text-sm font-semibold mb-1">{confirmDelete.name}</p>
+            <p className="text-slate-400 text-xs mb-8 px-2">
+              A lista será excluída e os pedidos associados voltarão para <strong>aguardando separação</strong>.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 h-14 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button onClick={() => handleDelete(confirmDelete)} className="flex-1 h-14 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-red-600 text-white shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all">Sim, excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

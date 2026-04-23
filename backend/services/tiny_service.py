@@ -99,35 +99,47 @@ class TinyService:
         return primeira_resposta
 
     async def search_separations(self, pagina: int = 1, data_inicial: Optional[str] = None, data_final: Optional[str] = None) -> Dict[str, Any]:
-        """Busca separações focando nas situações pendentes (1, 4, 2) respeitando o filtro de data e evitando duplicatas."""
+        """Busca separações com situacao=1 (aguardando separação) no período informado.
+        Pagina automaticamente para garantir que TODOS os documentos sejam retornados.
+        Situações 4 e 2 são gerenciadas internamente pelo NVS — não precisamos buscá-las no Tiny."""
+        import asyncio
         from datetime import datetime, timedelta
-        
-        separacoes_dict = {} # Usar dicionário para evitar duplicatas por ID
-        situacoes_alvo = ["1", "4", "2"]
-        
+
+        separacoes_dict = {}  # dicionário para evitar duplicatas por ID
+        situacoes_alvo = ["1"]  # apenas aguardando separação
+
         if not data_inicial:
             data_inicial = (datetime.now() - timedelta(days=6)).strftime("%d/%m/%Y")
         if not data_final:
             data_final = datetime.now().strftime("%d/%m/%Y")
-            
+
         for sit in situacoes_alvo:
-            params = {
-                "pagina": 1,
-                "situacao": sit,
-                "dataInicial": data_inicial,
-                "dataFinal": data_final
-            }
-            try:
-                resp = await self._post("separacao.pesquisa.php", params)
-                items = resp.get("separacoes", [])
-                for item in items:
-                    data = item.get("separacao", item)
-                    sep_id = data.get("id")
-                    if sep_id:
-                        separacoes_dict[sep_id] = data
-            except Exception as e:
-                print(f"--- ERRO NA SITUACAO {sit}: {e} ---")
-        
+            pg = 1
+            while True:
+                try:
+                    resp = await self._post("separacao.pesquisa.php", {
+                        "pagina": pg,
+                        "situacao": sit,
+                        "dataInicial": data_inicial,
+                        "dataFinal": data_final
+                    })
+                    items = resp.get("separacoes", [])
+                    for item in items:
+                        data = item.get("separacao", item)
+                        sep_id = data.get("id")
+                        if sep_id:
+                            separacoes_dict[sep_id] = data
+
+                    numero_paginas = int(resp.get("numero_paginas", 1))
+                    log.debug(f"SEPARACOES sit={sit} pg={pg}/{numero_paginas} docs={len(items)}")
+                    if pg >= numero_paginas:
+                        break
+                    pg += 1
+                    await asyncio.sleep(0.3)  # respeita rate limit do Tiny
+                except Exception as e:
+                    log.warning(f"SEPARACOES sit={sit} pg={pg} erro: {e}")
+                    break
+
         return {
             "status": "OK",
             "separacoes": list(separacoes_dict.values())

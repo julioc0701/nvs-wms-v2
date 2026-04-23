@@ -139,7 +139,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -319,6 +319,43 @@ def init_db():
         """))
         conn.commit()
         print("--- DATABASE MIGRATION: tiny_separation_statuses table verified/created ---")
+
+        # ── HEADERS DE EXIBIÇÃO DE SEPARAÇÕES (cache para abas em_separacao/separadas) ──
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_separation_headers (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                separation_id         VARCHAR(50) NOT NULL UNIQUE,
+                numero                VARCHAR(50),
+                destinatario          VARCHAR(255),
+                numero_ec             VARCHAR(100),
+                data_emissao          VARCHAR(30),
+                prazo_maximo          VARCHAR(30),
+                id_forma_envio        VARCHAR(50),
+                forma_envio_descricao VARCHAR(100),
+                numero_pedido         VARCHAR(50),
+                updated_at            DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sep_headers_sep_id ON tiny_separation_headers (separation_id)"))
+        conn.commit()
+        print("--- DATABASE MIGRATION: tiny_separation_headers table verified/created ---")
+
+        # ── ERP SEND LOGS ─────────────────────────────────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tiny_erp_send_logs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                separation_id VARCHAR(50) NOT NULL,
+                triggered_by  VARCHAR(20) NOT NULL,
+                status        VARCHAR(20) NOT NULL,
+                response_json TEXT,
+                error_message TEXT,
+                sent_at       DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_erp_logs_sep_id ON tiny_erp_send_logs (separation_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_erp_logs_sent_at ON tiny_erp_send_logs (sent_at)"))
+        conn.commit()
+        print("--- DATABASE MIGRATION: tiny_erp_send_logs table verified/created ---")
 
         # ── RENOMEAR LISTAS SEM SEQUÊNCIA (L{N} - DD/MM/YYYY HH:MM) ─────────────
         import re as _re

@@ -107,7 +107,7 @@ export default function Picking() {
   const [searchParams] = useSearchParams()
   const focusSku = searchParams.get('sku')
   const navigate = useNavigate()
-  const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
+  const operator = JSON.parse(localStorage.getItem('operator') || 'null')
 
   const goBackToItems = useCallback(() => navigate(`/sessions/${sessionId}/items`), [sessionId, navigate])
 
@@ -497,7 +497,7 @@ export default function Picking() {
              <span className="text-sm font-bold tracking-wide">Voltar</span>
           </button>
           <button
-            onClick={() => { sessionStorage.removeItem('operator'); navigate('/') }}
+            onClick={() => { localStorage.removeItem('operator'); navigate('/') }}
             className="h-12 px-3 text-slate-200 hover:text-white hover:bg-slate-800 rounded-xl transition-colors shrink-0 inline-flex items-center gap-2 border border-slate-700"
             title="Trocar operador"
           >

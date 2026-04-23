@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, Optional
 
 from database import SessionLocal
-from models import OrderOperational, SyncRun, TinyOrderItem, TinyOrderSync
+from models import OrderOperational, SyncRun, TinyOrderItem, TinyOrderSync, TinySeparationStatus, TinyErpSendLog
 from mas_core.agent_protocol import ALLOWED_SALES_STATUS
 from services.tiny_service import TinyService
 
@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 OLIST_OPERATIONAL_BUCKET = {"faturado", "pronto para envio", "enviado", "entregue"}
 SYNC_LOCK = asyncio.Lock()
 SCHEDULER_TASK: asyncio.Task | None = None
+ERP_SYNC_TASK: asyncio.Task | None = None
 SCHEDULER_STOP = False
 
 
@@ -542,6 +543,92 @@ def get_sync_snapshot(limit: int = 10) -> Dict[str, Any]:
         db.close()
 
 
+import json as _json
+
+async def _auto_erp_send_tick(token: str) -> None:
+    """Ciclo único do job automático de envio ERP.
+    Busca todos os docs com status='concluida' e envia para o Tiny (situacao=2).
+    Falhas são logadas e o doc vai para 'erro_envio_erp' — nunca lança exceção."""
+    db = SessionLocal()
+    try:
+        pending = db.query(TinySeparationStatus).filter(
+            TinySeparationStatus.status == "concluida"
+        ).all()
+
+        if not pending:
+            return
+
+        log.info(f"[ERP_AUTO] {len(pending)} docs para enviar ao ERP")
+        svc = TinyService(token=token)
+
+        for s in pending:
+            sep_id = s.separation_id
+            try:
+                resp = await svc._post("separacao.alterar.situacao.php", {
+                    "situacao": 2,
+                    "idSeparacao": sep_id,
+                })
+                resp_json = _json.dumps(resp, ensure_ascii=False) if isinstance(resp, dict) else str(resp)
+                # TinyService._post já desembala o "retorno" — suporta ambos os formatos
+                retorno = resp.get("retorno", resp) if isinstance(resp, dict) else {}
+                ok = str(retorno.get("status", "")).upper() == "OK"
+
+                if ok:
+                    s.status = "enviada_erp"
+                    db.add(TinyErpSendLog(
+                        separation_id=sep_id,
+                        triggered_by="auto",
+                        status="success",
+                        response_json=resp_json,
+                        error_message=None,
+                        sent_at=datetime.utcnow(),
+                    ))
+                    log.info(f"[ERP_AUTO OK] sep_id={sep_id}")
+                else:
+                    msg = f"Tiny NOK: {resp_json[:300]}"
+                    s.status = "erro_envio_erp"
+                    db.add(TinyErpSendLog(
+                        separation_id=sep_id,
+                        triggered_by="auto",
+                        status="error",
+                        response_json=resp_json,
+                        error_message=msg,
+                        sent_at=datetime.utcnow(),
+                    ))
+                    log.warning(f"[ERP_AUTO NOK] sep_id={sep_id}: {msg}")
+            except Exception as exc:
+                msg = str(exc)
+                s.status = "erro_envio_erp"
+                db.add(TinyErpSendLog(
+                    separation_id=sep_id,
+                    triggered_by="auto",
+                    status="error",
+                    response_json=None,
+                    error_message=msg,
+                    sent_at=datetime.utcnow(),
+                ))
+                log.error(f"[ERP_AUTO ERRO] sep_id={sep_id}: {msg}")
+            finally:
+                db.commit()
+
+    except Exception as outer:
+        log.exception(f"[ERP_AUTO] Falha geral no tick: {outer}")
+    finally:
+        db.close()
+
+
+async def erp_sync_loop(token: str) -> None:
+    global SCHEDULER_STOP
+    interval_seconds = int(os.getenv("ERP_SYNC_INTERVAL_SECONDS", "300"))  # 5 min default
+    log.info(f"[ERP_AUTO] Loop iniciado — intervalo {interval_seconds}s")
+    while not SCHEDULER_STOP:
+        try:
+            await _auto_erp_send_tick(token)
+        except Exception as exc:
+            log.exception(f"[ERP_AUTO] Erro no loop: {exc}")
+        await asyncio.sleep(interval_seconds)
+
+
 async def scheduler_loop(token: str) -> None:
     global SCHEDULER_STOP
     interval_minutes = int(os.getenv("SYNC_INCREMENTAL_INTERVAL_MINUTES", "10"))
@@ -572,7 +659,7 @@ async def scheduler_loop(token: str) -> None:
 
 
 def start_local_scheduler(token: str) -> asyncio.Task | None:
-    global SCHEDULER_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, SCHEDULER_STOP
     if not token:
         log.warning("Scheduler local não iniciado: TINY_API_TOKEN ausente")
         return None
@@ -580,17 +667,19 @@ def start_local_scheduler(token: str) -> asyncio.Task | None:
         return SCHEDULER_TASK
     SCHEDULER_STOP = False
     SCHEDULER_TASK = asyncio.create_task(scheduler_loop(token))
-    log.info("Scheduler local de sync iniciado")
+    ERP_SYNC_TASK = asyncio.create_task(erp_sync_loop(token))
+    log.info("Scheduler local de sync + ERP auto-send iniciado")
     return SCHEDULER_TASK
 
 
 async def stop_local_scheduler() -> None:
-    global SCHEDULER_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, SCHEDULER_STOP
     SCHEDULER_STOP = True
-    if SCHEDULER_TASK and not SCHEDULER_TASK.done():
-        SCHEDULER_TASK.cancel()
-        try:
-            await SCHEDULER_TASK
-        except asyncio.CancelledError:
-            pass
+    for task in (SCHEDULER_TASK, ERP_SYNC_TASK):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     SCHEDULER_TASK = None

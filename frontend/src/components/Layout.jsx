@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import novaesLogo from '../assets/logo-novaes-v3.png'
 import { 
@@ -9,10 +10,20 @@ import { cn } from '../lib/utils'
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
+  const operator = JSON.parse(localStorage.getItem('operator') || 'null')
 
   const isMaster = operator?.name === 'Master'
-  
+  const isMobilePhone = window.innerWidth < 768
+
+  // Redireciona não-master no celular para /separacao/listas (fora da rota de separação)
+  useEffect(() => {
+    const isLogin = location.pathname === '/'
+    if (!isMaster && isMobilePhone && !isLogin) {
+      const inSeparacao = location.pathname.startsWith('/separacao')
+      if (!inSeparacao) navigate('/separacao/listas')
+    }
+  }, [location.pathname])
+
   // Detectar se estamos em uma sub-rota de supervisão de marketplace
   // Formato esperado: /supervisor/ml/* ou /supervisor/shopee/*
   const pathParts = location.pathname.split('/')
@@ -24,7 +35,7 @@ export default function Layout() {
     ? [
         { label: 'Supervisão Full', path: '/supervisor', icon: PackageSearch },
         { label: 'Separação', path: '/separacao', icon: ClipboardList },
-        { label: 'Faltas', path: '/shortage-report', icon: AlertCircle },
+        { label: 'Faltas', path: '/shortage-report', icon: AlertCircle, newTab: true },
         { label: 'ERP Olist', path: '/olist-orders', icon: Database },
         { label: 'Base', path: '/master-data', icon: Database },
         { label: 'Operadores', path: '/operators', icon: Users },
@@ -33,7 +44,7 @@ export default function Layout() {
         { label: 'Sessões', path: '/sessions?view=active', icon: Home },
         { label: 'Listas Disponíveis', path: '/sessions?view=available', icon: ListTodo },
         { label: 'Listas Concluídas', path: '/sessions?view=history', icon: CheckCircle2 },
-        { label: 'Faltantes', path: '/shortage-report', icon: AlertCircle },
+        { label: 'Faltantes', path: '/shortage-report', icon: AlertCircle, newTab: true },
         { label: 'Separação', path: '/separacao', icon: ClipboardList },
       ]
 
@@ -45,11 +56,19 @@ export default function Layout() {
     { label: 'Sistema',        path: `/supervisor/${activeMarketplace}/settings`, icon: SettingsIcon },
   ] : isSeparacaoActive ? [
     { label: 'Notas (Tiny)',   path: '/separacao', icon: ClipboardList },
-    { label: 'Listas Geradas', path: '/separacao/listas', icon: ListTodo },
+    { label: 'Listas Geradas', path: '/separacao/listas', icon: ListTodo, newTab: true },
   ] : []
 
+  const handleNav = (item) => {
+    if (item.newTab) {
+      window.open(item.path, '_blank', 'noopener')
+    } else {
+      navigate(item.path)
+    }
+  }
+
   function handleLogout() {
-    sessionStorage.removeItem('operator')
+    localStorage.removeItem('operator')
     navigate('/')
   }
 
@@ -87,7 +106,7 @@ export default function Layout() {
             return (
               <button
                 key={item.path}
-                onClick={() => navigate(item.path)}
+                onClick={() => handleNav(item)}
                 className={cn(
                   "flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200",
                   (isActive || isParentActive)
@@ -97,6 +116,7 @@ export default function Layout() {
               >
                 <Icon size={20} strokeWidth={(isActive || isParentActive) ? 2.5 : 2} />
                 {item.label}
+                {item.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
               </button>
             )
           })}
@@ -113,16 +133,17 @@ export default function Layout() {
                 return (
                   <button
                     key={sub.path}
-                    onClick={() => navigate(sub.path)}
+                    onClick={() => handleNav(sub)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ml-2",
-                      isSubActive 
+                      isSubActive
                         ? "bg-white text-slate-900 shadow-md border border-slate-200"
                         : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
                     )}
                   >
                     <SubIcon size={16} strokeWidth={isSubActive ? 2.5 : 2} />
                     {sub.label}
+                    {sub.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
                   </button>
                 )
               })}
@@ -200,7 +221,10 @@ export default function Layout() {
       {/* MOBILE BOTTOM NAVIGATION */}
       {!isPickingPage && (
         <nav className="lg:hidden flex h-16 bg-slate-900 border-t border-slate-800 justify-around items-center px-2 pb-safe fixed bottom-0 w-full z-20 shadow-[0_-4px_10px_-1px_rgba(2,6,23,0.35)]">
-          {navItems.map((item) => {
+          {((!isMaster && isMobilePhone)
+            ? [{ label: 'Listas', path: '/separacao/listas', icon: ListTodo }]
+            : navItems
+          ).map((item) => {
             const Icon = item.icon
             const isActive = location.pathname.startsWith(item.path)
             return (

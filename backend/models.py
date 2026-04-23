@@ -313,6 +313,40 @@ class TinySeparationStatus(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class TinySeparationHeader(Base):
+    """Cache local dos campos de exibição de documentos de separação do Tiny.
+    Populado/atualizado toda vez que /separacoes é chamado.
+    Permite que as abas 'em separação' e 'separadas' sirvam dados do DB local
+    sem depender de filtros de data da API do Tiny."""
+    __tablename__ = "tiny_separation_headers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    separation_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True, unique=True)
+    numero: Mapped[str | None] = mapped_column(String(50))
+    destinatario: Mapped[str | None] = mapped_column(String(255))
+    numero_ec: Mapped[str | None] = mapped_column(String(100))          # numeroPedidoEcommerce
+    data_emissao: Mapped[str | None] = mapped_column(String(30))
+    prazo_maximo: Mapped[str | None] = mapped_column(String(30))
+    id_forma_envio: Mapped[str | None] = mapped_column(String(50))
+    forma_envio_descricao: Mapped[str | None] = mapped_column(String(100))
+    numero_pedido: Mapped[str | None] = mapped_column(String(50))       # injetado pelo espelho local
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TinyErpSendLog(Base):
+    """Log de envios para o ERP Tiny via separacao.alterar.situacao.php.
+    Registra cada tentativa (manual ou automática) com o resultado completo."""
+    __tablename__ = "tiny_erp_send_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    separation_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    triggered_by: Mapped[str] = mapped_column(String(20), nullable=False)  # manual | auto
+    status: Mapped[str] = mapped_column(String(20), nullable=False)        # success | error
+    response_json: Mapped[str | None] = mapped_column(Text)                # resposta bruta do Tiny
+    error_message: Mapped[str | None] = mapped_column(Text)                # mensagem de erro legível
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class Shortage(Base):
     """Relatório de faltas/estoque zerado."""
     __tablename__ = "shortages"

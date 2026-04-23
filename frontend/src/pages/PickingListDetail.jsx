@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useFeedback } from '../components/ui/FeedbackProvider'
-import { 
-  ArrowLeft, Package, CheckCircle2, 
+import {
+  ArrowLeft, ArrowRight, Package, CheckCircle2,
   RefreshCcw, Search, ScanBarcode, X, Copy,
   AlertCircle, Clock, MapPin, Image as ImageIcon
 } from 'lucide-react'
@@ -25,6 +25,7 @@ export default function PickingListDetail() {
   const [pickedIds, setPickedIds] = useState(new Set())
   const [shortageIds, setShortageIds] = useState(new Set())
   const [activeTab, setActiveTab] = useState('produtos')
+  const [sepDiag, setSepDiag] = useState([]) // diagnóstico por separação
   
   // Estado para Bipagem e UX
   const [searchQuery, setSearchQuery] = useState('')
@@ -35,10 +36,13 @@ export default function PickingListDetail() {
   const [scanStatus, setScanStatus] = useState({ type: null, msg: null })
   const [linkingItem, setLinkingItem] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
+  const [itemImage, setItemImage] = useState(null)
+  const [imageLoading, setImageLoading] = useState(false)
   const [confirmUndo, setConfirmUndo] = useState(null)
   const [shortageDialog, setShortageDialog] = useState(null) // Para o fluxo de falta/parcial
   const [qtyDialog, setQtyDialog] = useState(null) // Modal de quantidade ao digitar SKU direto
   const [statusMenuOpen, setStatusMenuOpen] = useState(null)
+  const [isMobilePhone] = useState(() => window.innerWidth < 768)
 
   // Suporte ao ESC para fechar modais
   useEffect(() => {
@@ -53,6 +57,19 @@ export default function PickingListDetail() {
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
   }, [])
+
+  // Lazy load de imagem — dispara quando operador abre item
+  useEffect(() => {
+    if (!selectedItem) { setItemImage(null); return }
+    let cancelled = false
+    setItemImage(null)
+    setImageLoading(true)
+    api.getProductImage(selectedItem.sku)
+      .then(res => { if (!cancelled) setItemImage(res.image_url || null) })
+      .catch(() => { if (!cancelled) setItemImage(null) })
+      .finally(() => { if (!cancelled) setImageLoading(false) })
+    return () => { cancelled = true }
+  }, [selectedItem?.sku])
 
   async function loadData() {
     setLoading(true)
@@ -73,6 +90,37 @@ export default function PickingListDetail() {
 
       const alreadyShortage = new Set((data.items || []).filter(i => i.is_shortage).map(i => i.id))
       setShortageIds(alreadyShortage)
+
+      // Mobile: auto-seleciona primeiro item pendente (maior qty primeiro)
+      if (isMobilePhone) {
+        const firstPending = sorted
+          .filter(i => !alreadyPicked.has(i.id) && !alreadyShortage.has(i.id))
+          .sort((a, b) => b.quantity - a.quantity)[0] || null
+        if (firstPending) setTimeout(() => setSelectedItem(firstPending), 600)
+      }
+
+      // Pre-aquece cache de imagens em background — sem bloquear UX
+      const skus = [...new Set((data.items || []).map(i => i.sku))]
+      if (skus.length) api.warmProductImages(skus).catch(() => {})
+
+      // Monta diagnóstico por separação a partir dos itens da lista
+      const sepMap = {}
+      ;(data.items || []).forEach(it => {
+        if (!it.source_separation_ids) return
+        it.source_separation_ids.split(',').forEach(sid => {
+          sid = sid.trim()
+          if (!sid) return
+          if (!sepMap[sid]) sepMap[sid] = []
+          sepMap[sid].push(it)
+        })
+      })
+      const diag = Object.entries(sepMap).map(([sid, its]) => {
+        const total = its.length
+        const done = its.filter(i => (i.qty_picked || 0) >= i.quantity - 0.001 || i.is_shortage).length
+        const pending = its.filter(i => !((i.qty_picked || 0) >= i.quantity - 0.001 || i.is_shortage))
+        return { sep_id: sid, total, done, pending }
+      }).sort((a, b) => (a.done === a.total ? 1 : 0) - (b.done === b.total ? 1 : 0) || a.done - b.done)
+      setSepDiag(diag)
     } catch (err) {
       notify('Erro ao carregar lista.', 'error')
     } finally {
@@ -87,6 +135,7 @@ export default function PickingListDetail() {
 
   useEffect(() => {
     if (selectedItem) {
+      setInternalBarcode('')
       setTimeout(() => internalInputRef.current?.focus(), 300)
     }
   }, [selectedItem])
@@ -152,7 +201,11 @@ export default function PickingListDetail() {
       if (res.status === 'success') {
         updateItemInState(res.item)
         if (res.item.qty_picked >= res.item.quantity) {
-          setSelectedItem(null)
+          if (isMobilePhone) {
+            autoAdvance(id)
+          } else {
+            setSelectedItem(null)
+          }
           setScanStatus({ type: 'success', msg: 'Item concluído!' })
         }
       }
@@ -163,92 +216,106 @@ export default function PickingListDetail() {
 
 
 
-  const handleScan = async (e, source = 'main') => {
-    const val = source === 'main' ? barcode : internalBarcode
-    if (e.key !== 'Enter' || !val.trim()) return
-    const code = val.trim().toUpperCase()
-    source === 'main' ? setBarcode('') : setInternalBarcode('')
-    setScanStatus({ type: 'processing', msg: 'Validando bip...' })
+  // Mobile: avança para o próximo item pendente após conclusão/falta
+  const autoAdvance = (completedId) => {
+    setTimeout(() => {
+      const allItems = itemsRef.current
+      const currentPickedIds = pickedIdsRef.current
+      const pending = allItems
+        .filter(i => i.id !== completedId && !currentPickedIds.has(i.id) && !i.is_shortage)
+        .sort((a, b) => b.quantity - a.quantity)
+      setSelectedItem(pending[0] || null)
+    }, 800)
+  }
 
+  // ── Processa bipe no campo PRINCIPAL (fora do modal) ────────────────────
+  const processMainCode = async (code) => {
+    setScanStatus({ type: 'processing', msg: 'Validando bip...' })
     try {
-      // Digitar o próprio SKU no input interno abre modal de quantidade
-      if (source === 'internal' && selectedItem && code === selectedItem.sku.trim().toUpperCase()) {
-        setInternalBarcode('')
+      const res = await api.resolveBarcode(code, null)
+      const resolvedSku = res.sku.trim().toUpperCase()
+      const currentItems = itemsRef.current
+      const currentPickedIds = pickedIdsRef.current
+      const alreadyDone = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && currentPickedIds.has(i.id))
+      const pending = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && !currentPickedIds.has(i.id))
+      if (pending) {
+        setSelectedItem(pending)
+        setScanStatus({ type: null, msg: null })
+      } else if (alreadyDone) {
+        setScanStatus({ type: 'warning', msg: `JÁ CONCLUÍDO: ${resolvedSku}` })
+        sndError.play().catch(() => {})
+      } else {
+        setScanStatus({ type: 'error', msg: `NÃO ENCONTRADO: ${resolvedSku}` })
+        sndError.play().catch(() => {})
+      }
+    } catch (err) {
+      setScanStatus({ type: 'error', msg: 'Erro de comunicação' })
+      sndError.play().catch(() => {})
+      api.sendLog('error', 'Erro no scan', { code, error: err.message, listId })
+    }
+    setTimeout(() => setScanStatus({ type: null, msg: null }), 3000)
+    inputRef.current?.focus()
+  }
+
+  // ── Processa bipe no campo INTERNO do modal (ou clique de copiar) ────────
+  const processInternalCode = async (code) => {
+    setInternalBarcode('')
+    setScanStatus({ type: 'processing', msg: 'Validando bip...' })
+    try {
+      // Próprio SKU digitado/clicado → abre modal de quantidade
+      if (selectedItem && code === selectedItem.sku.trim().toUpperCase()) {
         setQtyDialog({ item: selectedItem, qty: '' })
         setScanStatus({ type: null, msg: null })
         return
       }
-
-      // No modo interno, passa o SKU da tela como focus para o backend priorizar
-      const focusSku = source === 'internal' ? selectedItem?.sku : null
-      const res = await api.resolveBarcode(code, focusSku)
+      const res = await api.resolveBarcode(code, selectedItem?.sku ?? null)
       const resolvedSku = res.sku.trim().toUpperCase()
-      const currentItems = itemsRef.current
-      const currentPickedIds = pickedIdsRef.current
-
-      // ── CAMPO PRINCIPAL: busca e abre modal ──────────────────────────────
-      if (source === 'main') {
-        const alreadyDone = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && currentPickedIds.has(i.id))
-        const pending = currentItems.find(i => i.sku.trim().toUpperCase() === resolvedSku && !currentPickedIds.has(i.id))
-
-        if (pending) {
-          setSelectedItem(pending)
-          setScanStatus({ type: null, msg: null })
-        } else if (alreadyDone) {
-          setScanStatus({ type: 'warning', msg: `JÁ CONCLUÍDO: ${resolvedSku}` })
-          sndError.play().catch(() => {})
-        } else {
-          setScanStatus({ type: 'error', msg: `NÃO ENCONTRADO: ${resolvedSku}` })
-          sndError.play().catch(() => {})
-        }
-        setTimeout(() => setScanStatus({ type: null, msg: null }), 3000)
-        inputRef.current?.focus()
-        return
-      }
-
-      // ── INPUT INTERNO DO MODAL: SKU da tela é soberano ──────────────────
-      // Prioridade absoluta: o selectedItem é o contexto — sempre.
       if (selectedItem) {
         const selectedSku = selectedItem.sku.trim().toUpperCase()
-
         if (resolvedSku === selectedSku) {
-          // Barcode já vinculado ao SKU correto → pick direto
           const pickRes = await api.pickItem(selectedItem.id, { mode: 'unit' })
           if (pickRes.status === 'success') {
             const updated = pickRes.item
             updateItemInState(updated)
             if (updated.qty_picked >= updated.quantity) {
               setScanStatus({ type: 'success', msg: `COLETADO (TOTAL): ${selectedSku}` })
-              setTimeout(() => setSelectedItem(null), 700)
+              if (isMobilePhone) {
+                autoAdvance(selectedItem.id)
+              } else {
+                setTimeout(() => setSelectedItem(null), 700)
+              }
             } else {
               setScanStatus({ type: 'success', msg: `COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${selectedSku}` })
             }
             sndSuccess.play().catch(() => {})
           }
         } else {
-          // Barcode não reconhecido para este SKU (desconhecido OU vinculado a outro SKU)
-          // → mesmo fluxo do picking: perguntar se deseja vincular ao SKU da tela
           setLinkingItem({ barcode: code, targetSku: selectedItem.sku, targetId: selectedItem.id })
           setScanStatus({ type: null, msg: null })
         }
-        setTimeout(() => setScanStatus({ type: null, msg: null }), 3000)
-        internalInputRef.current?.focus()
-        return
+      } else {
+        setScanStatus({ type: 'error', msg: 'Nenhum item selecionado' })
+        sndError.play().catch(() => {})
       }
-
-      // Sem selectedItem aberto (fallback — não deve ocorrer neste path)
-      setScanStatus({ type: 'error', msg: 'Nenhum item selecionado' })
-      sndError.play().catch(() => {})
     } catch (err) {
       setScanStatus({ type: 'error', msg: 'Erro de comunicação' })
       sndError.play().catch(() => {})
       api.sendLog('error', 'Erro no scan', { code, error: err.message, listId })
     }
-
-
     setTimeout(() => setScanStatus({ type: null, msg: null }), 3000)
-    if (source === 'main') inputRef.current?.focus()
-    else internalInputRef.current?.focus()
+    internalInputRef.current?.focus()
+  }
+
+  const handleScan = async (e, source = 'main') => {
+    const val = source === 'main' ? barcode : internalBarcode
+    if (e.key !== 'Enter' || !val.trim()) return
+    const code = val.trim().toUpperCase()
+    source === 'main' ? setBarcode('') : setInternalBarcode('')
+    if (source === 'internal') {
+      await processInternalCode(code)
+    } else {
+      await processMainCode(code)
+    }
   }
 
 
@@ -267,7 +334,11 @@ export default function PickingListDetail() {
           updateItemInState(updated)
           if (updated.qty_picked >= updated.quantity) {
             setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (TOTAL): ${sku}` })
-            setTimeout(() => setSelectedItem(null), 700)
+            if (isMobilePhone) {
+              autoAdvance(targetId)
+            } else {
+              setTimeout(() => setSelectedItem(null), 700)
+            }
           } else {
             setScanStatus({ type: 'success', msg: `VINCULADO E COLETADO (${updated.qty_picked}/${updated.quantity.toFixed(0)}): ${sku}` })
           }
@@ -323,13 +394,16 @@ export default function PickingListDetail() {
   return (
     <div className="flex-1 flex flex-col bg-white overflow-hidden relative" onClick={() => !selectedItem && !confirmUndo && !statusMenuOpen && !linkingItem && !shortageDialog && inputRef.current?.focus()}>
       {/* HEADER PRINCIPAL */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-50 bg-white z-10">
+      <div className="px-4 py-3 sm:px-8 sm:py-6 flex items-center justify-between border-b border-slate-50 bg-white z-10">
         <div className="flex items-center gap-4">
            <button onClick={() => navigate('/separacao/listas')} className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400">
              <ArrowLeft size={20} />
            </button>
            <div>
-             <h1 className="text-xl font-bold text-slate-800 tracking-tight">Separação de mercadorias</h1>
+             <h1 className="text-xl font-bold text-slate-800 tracking-tight">
+               <span className="hidden sm:inline">Separação de mercadorias</span>
+               <span className="sm:hidden">{list?.name}</span>
+             </h1>
              <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">{list?.name}</p>
            </div>
         </div>
@@ -356,19 +430,27 @@ export default function PickingListDetail() {
       </div>
 
       {/* TABS ESTILO TINY */}
-      <div className="px-8 border-b border-slate-100 flex gap-8 pt-4 bg-white z-10 shadow-sm">
+      <div className="px-4 sm:px-8 border-b border-slate-100 flex gap-6 sm:gap-8 pt-4 bg-white z-10 shadow-sm">
          <button onClick={() => setActiveTab('produtos')} className={cn("pb-3 text-sm font-semibold transition-all relative", activeTab === 'produtos' ? "text-slate-900" : "text-slate-400 hover:text-slate-600")}>
            produtos {activeTab === 'produtos' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800" />}
          </button>
          <button onClick={() => setActiveTab('notas')} className={cn("pb-3 text-sm font-semibold transition-all relative", activeTab === 'notas' ? "text-slate-900" : "text-slate-400 hover:text-slate-600")}>
-           pedidos e notas {activeTab === 'notas' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800" />}
+           separações
+           {sepDiag.length > 0 && (
+             <span className={cn("ml-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full",
+               sepDiag.every(s => s.done === s.total) ? "bg-emerald-100 text-emerald-600" : "bg-orange-100 text-orange-600"
+             )}>
+               {sepDiag.filter(s => s.done === s.total).length}/{sepDiag.length}
+             </span>
+           )}
+           {activeTab === 'notas' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-slate-800" />}
          </button>
       </div>
 
       <div className="flex-1 overflow-auto bg-slate-50/50">
         {activeTab === 'produtos' ? (
-          <div className="px-8 pb-32 pt-6">
-            
+          <div className="px-3 sm:px-8 pb-32 pt-4 sm:pt-6">
+
             {/* SCANNER AREA (INLINE) */}
             <div className="mb-6 flex flex-col items-center gap-2">
                <div className="relative w-full max-w-4xl">
@@ -404,7 +486,91 @@ export default function PickingListDetail() {
                )}
             </div>
 
-            <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+            {/* ── MOBILE CARD LIST ─────────────────────────────────────────── */}
+            <div className="md:hidden space-y-2">
+              {items.map((item) => {
+                const isPicked = pickedIds.has(item.id)
+                const isShortage = shortageIds.has(item.id)
+                const pickedQty = item.qty_picked || 0
+                const isPartialShortage = isShortage && pickedQty > 0
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleItemClick(item)}
+                    className={cn(
+                      "flex items-center gap-3 p-4 rounded-2xl border active:scale-[0.98] transition-all cursor-pointer",
+                      isPicked ? "bg-emerald-50/60 border-emerald-100 opacity-75" :
+                      isPartialShortage ? "bg-amber-50 border-amber-100" :
+                      isShortage ? "bg-red-50 border-red-100" :
+                      pickedQty > 0 ? "bg-blue-50/30 border-blue-100" :
+                      "bg-white border-slate-100 shadow-sm"
+                    )}
+                  >
+                    {/* Status circle */}
+                    <div className={cn(
+                      "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0",
+                      isPicked ? "bg-emerald-500 shadow-md shadow-emerald-200" :
+                      isPartialShortage ? "bg-amber-400 shadow-md shadow-amber-200" :
+                      isShortage ? "bg-red-500 shadow-md shadow-red-200" :
+                      "bg-blue-50 border-2 border-blue-300"
+                    )}>
+                      {isPicked && <CheckCircle2 className="text-white" size={18} strokeWidth={3} />}
+                      {!isPicked && isPartialShortage && <AlertCircle className="text-white" size={18} strokeWidth={3} />}
+                      {!isPicked && !isPartialShortage && isShortage && <X className="text-white" size={18} strokeWidth={4} />}
+                      {!isPicked && !isShortage && <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className={cn(
+                        "text-sm font-bold leading-tight line-clamp-2 mb-1",
+                        isPicked ? "text-slate-400 line-through" :
+                        isShortage ? "text-red-600" :
+                        "text-slate-800"
+                      )}>
+                        {item.description}
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={cn(
+                          "text-[10px] font-black font-mono px-2 py-0.5 rounded-lg",
+                          isPicked ? "bg-slate-100 text-slate-400" :
+                          isShortage ? "bg-red-50 text-red-500" :
+                          "bg-blue-50 text-blue-600"
+                        )}>
+                          {item.sku}
+                        </span>
+                        {item.location && (
+                          <span className="text-[9px] font-bold text-slate-400 flex items-center gap-0.5">
+                            <MapPin size={9} /> {item.location}
+                          </span>
+                        )}
+                        {item.notes && (
+                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 uppercase">Obs</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Qty */}
+                    <div className="text-right shrink-0">
+                      <p className={cn(
+                        "text-lg font-black tabular-nums leading-none",
+                        isPicked ? "text-emerald-500" :
+                        isShortage ? "text-red-500" :
+                        "text-slate-800"
+                      )}>
+                        {pickedQty.toFixed(0)}<span className="text-slate-300 text-xs font-bold">/{item.quantity.toFixed(0)}</span>
+                      </p>
+                      {isShortage && item.qty_shortage > 0 && (
+                        <p className="text-[9px] text-red-400 font-bold mt-0.5">-{item.qty_shortage.toFixed(0)} falta</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ── DESKTOP TABLE ─────────────────────────────────────────────── */}
+            <div className="hidden md:block bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
               <table className="w-full text-left border-collapse">
                  <thead>
                    <tr className="border-b border-slate-50 bg-slate-50/30">
@@ -453,9 +619,6 @@ export default function PickingListDetail() {
                            </div>
                          </td>
                          <td className="py-5 flex items-center gap-4">
-                            <div className={cn("w-14 h-14 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-center overflow-hidden shrink-0 transition-all", isPicked && "grayscale")}>
-                               <ImageIcon className="text-slate-200" size={20} />
-                            </div>
                             <span className={cn(
                               "text-xs font-bold transition-all line-clamp-2 max-w-sm", 
                               isPicked ? "text-slate-400 line-through" :
@@ -475,11 +638,11 @@ export default function PickingListDetail() {
                                )}>
                                  {item.sku}
                                </span>
-                               <button 
+                               <button
                                  onClick={(e) => {
-                                   e.stopPropagation();
-                                   navigator.clipboard.writeText(item.sku);
-                                   notify('SKU copiado!', 'success');
+                                   e.stopPropagation()
+                                   navigator.clipboard.writeText(item.sku)
+                                   processMainCode(item.sku.trim().toUpperCase())
                                  }}
                                  className="p-1 text-slate-300 hover:text-blue-600 transition-colors"
                                >
@@ -602,28 +765,51 @@ export default function PickingListDetail() {
             </div>
           </div>
         ) : (
-          <div className="p-12 text-center flex flex-col items-center gap-4">
-             <List className="text-slate-200" size={48} />
-             <div>
-                <p className="font-bold text-slate-800">Notas e Pedidos Consolidados</p>
-                <p className="text-sm text-slate-400 mt-1 max-w-sm mx-auto">
-                   Esta lista foi gerada a partir da consolidação de múltiplas notas de separação do Tiny ERP.
-                </p>
-             </div>
-             
-             <div className="mt-6 flex flex-wrap justify-center gap-3">
-                {list?.items?.[0]?.source_separation_ids?.split(',').map(id => (
-                   <div key={id} className="px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center text-xs font-bold text-slate-600 shadow-sm">
-                         #{id.slice(-4)}
+          <div className="px-8 pb-32 pt-6 max-w-3xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-black text-slate-800">Progresso por Separação</p>
+                <p className="text-xs text-slate-400 mt-0.5">{sepDiag.filter(s => s.done === s.total).length} de {sepDiag.length} separações concluídas</p>
+              </div>
+              <button
+                onClick={() => api.post(`/tiny/picking-lists/${listId}/recheck-statuses`, {}).then(() => { loadData(); notify('Status recalculados.', 'success') }).catch(() => notify('Erro ao recalcular.', 'error'))}
+                className="h-9 px-4 bg-blue-50 text-blue-600 rounded-xl text-xs font-black hover:bg-blue-100 transition-colors flex items-center gap-2"
+              >
+                <RefreshCcw size={13} /> Recalcular Status
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {sepDiag.map(s => {
+                const pct = s.total > 0 ? Math.round((s.done / s.total) * 100) : 0
+                const done = s.done === s.total
+                return (
+                  <div key={s.sep_id} className={cn("rounded-2xl border p-4", done ? "bg-emerald-50 border-emerald-100" : "bg-white border-slate-100")}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={cn("w-2 h-2 rounded-full", done ? "bg-emerald-500" : "bg-orange-400")} />
+                        <span className="text-xs font-black text-slate-700">Sep. #{s.sep_id}</span>
                       </div>
-                      <div className="text-left">
-                         <p className="text-xs font-bold text-slate-800">Nota Tiny</p>
-                         <p className="text-[10px] text-slate-400">ID: {id}</p>
+                      <span className={cn("text-[10px] font-black uppercase tracking-widest", done ? "text-emerald-600" : "text-orange-500")}>
+                        {done ? "✓ concluída" : `${s.done}/${s.total} itens`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className={cn("h-full rounded-full transition-all", done ? "bg-emerald-500" : "bg-orange-400")} style={{ width: `${pct}%` }} />
+                    </div>
+                    {!done && s.pending.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {s.pending.map((it, i) => (
+                          <span key={i} className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">
+                            {it.sku} {it.qty_picked || 0}/{it.quantity}
+                          </span>
+                        ))}
                       </div>
-                   </div>
-                ))}
-             </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -633,29 +819,64 @@ export default function PickingListDetail() {
         <div className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-200">
               <div className="p-6 sm:p-8">
-                 <button onClick={() => setSelectedItem(null)} className="mb-6 flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-all"><ArrowLeft size={16} /> Voltar (ESC)</button>
+                 <div className="mb-6 flex items-center justify-between">
+                   <button onClick={() => setSelectedItem(null)} className="flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-all">
+                     <ArrowLeft size={16} /> Voltar (ESC)
+                   </button>
+                   <button onClick={() => autoAdvance(selectedItem.id)} className="flex items-center gap-2 text-slate-400 hover:text-blue-600 transition-all">
+                     Próximo <ArrowRight size={16} />
+                   </button>
+                 </div>
                  <div className="flex justify-between items-start mb-6">
                     <div className="flex-1">
                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1">✦ SEPARAR AGORA</p>
                        <div className="flex items-center gap-3">
                           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tighter truncate max-w-[min(280px,60vw)]">{selectedItem.sku}</h2>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); copyToClipboard(selectedItem.sku) }}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigator.clipboard.writeText(selectedItem.sku).catch(() => {})
+                              processInternalCode(selectedItem.sku.trim().toUpperCase())
+                            }}
                             className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                            title="Copiar SKU"
+                            title="Copiar SKU e bipe automático"
                           >
                              <Copy size={18} />
                           </button>
                        </div>
                     </div>
-                    <button onClick={() => setSelectedItem(null)} className="p-3 bg-slate-50 text-slate-300 hover:text-slate-900 rounded-2xl transition-all">
-                       <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                       {isMobilePhone && (
+                         <span className="text-[11px] font-black bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full border border-blue-100 whitespace-nowrap">
+                           {items.filter(i => pickedIds.has(i.id) || shortageIds.has(i.id)).length} / {items.length}
+                         </span>
+                       )}
+                       <button onClick={() => setSelectedItem(null)} className="p-3 bg-slate-50 text-slate-300 hover:text-slate-900 rounded-2xl transition-all">
+                         <X size={20} />
+                       </button>
+                    </div>
                  </div>
 
-                 <p className="text-sm font-bold text-slate-400 leading-tight mb-6 line-clamp-2">
+                 <p className="text-sm font-bold text-slate-400 leading-tight mb-4 line-clamp-2">
                    {selectedItem.description}
                  </p>
+
+                 {/* IMAGEM DO PRODUTO — lazy load */}
+                 {imageLoading && (
+                   <div className="mb-4 h-48 bg-slate-100 rounded-2xl animate-pulse flex items-center justify-center">
+                     <ImageIcon size={28} className="text-slate-300" />
+                   </div>
+                 )}
+                 {!imageLoading && itemImage && (
+                   <div className="mb-4 h-48 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center bg-white">
+                     <img
+                       src={itemImage}
+                       alt={selectedItem.sku}
+                       className="h-full w-full object-contain"
+                       onError={e => { e.currentTarget.parentElement.style.display = 'none' }}
+                     />
+                   </div>
+                 )}
 
                  {/* STATUS DE SCAN DENTRO DO MODAL */}
                  {scanStatus.msg && (
@@ -672,7 +893,7 @@ export default function PickingListDetail() {
 
                  {/* SCANNER INPUT INTERNO */}
                  <div className="mb-8 relative">
-                    <input 
+                    <input
                       ref={internalInputRef}
                       type="text"
                       className="w-full h-14 bg-slate-50 border-2 border-slate-100 rounded-2xl text-center font-mono font-black text-lg focus:border-blue-500 transition-all outline-none"
@@ -694,8 +915,8 @@ export default function PickingListDetail() {
                         <span className="text-xl font-black text-slate-300">/ {selectedItem.quantity.toFixed(0)} un</span>
                      </div>
                      <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-emerald-500 transition-all duration-500" 
+                        <div
+                          className="h-full bg-emerald-500 transition-all duration-500"
                           style={{ width: `${((selectedItem.qty_picked || 0) / selectedItem.quantity) * 100}%` }}
                         />
                      </div>
@@ -708,32 +929,23 @@ export default function PickingListDetail() {
                     </div>
                   )}
 
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
-                    <button 
-                      onClick={() => togglePick(selectedItem.id, true, selectedItem.quantity)}
-                      className="h-20 bg-emerald-500 text-white rounded-3xl flex flex-col items-center justify-center gap-1 shadow-lg shadow-emerald-100 hover:bg-emerald-600 active:scale-95 transition-all group"
-                    >
-                       <CheckCircle2 size={24} strokeWidth={3} className="group-hover:scale-110 transition-transform" />
-                       <span className="text-[10px] font-black uppercase tracking-widest leading-none">COLETAR TUDO</span>
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setShortageDialog({
-                          item: selectedItem,
-                          qtyPicked: selectedItem.qty_picked || 0,
-                          qtyShortage: selectedItem.quantity - (selectedItem.qty_picked || 0),
-                          notes: ''
-                        });
-                        setSelectedItem(null);
-                      }}
-                      className="h-20 border-2 border-slate-100 text-slate-400 rounded-3xl flex flex-col items-center justify-center gap-1 hover:border-red-100 hover:text-red-500 active:scale-95 transition-all text-center"
-                    >
-                       <X size={24} />
-                       <span className="text-[10px] font-black uppercase tracking-widest leading-none">SEM ESTOQUE<br/>(RELATÓRIO)</span>
-                    </button>
-                 </div>
+                 <button
+                   onClick={() => {
+                     setShortageDialog({
+                       item: selectedItem,
+                       qtyPicked: selectedItem.qty_picked || 0,
+                       qtyShortage: selectedItem.quantity - (selectedItem.qty_picked || 0),
+                       notes: ''
+                     })
+                     setSelectedItem(null)
+                   }}
+                   className="w-full h-16 bg-red-600 text-white rounded-3xl flex items-center justify-center gap-3 shadow-lg shadow-red-100 hover:bg-red-700 active:scale-95 transition-all pb-2"
+                 >
+                   <X size={22} strokeWidth={3} />
+                   <span className="text-[10px] font-black uppercase tracking-widest leading-none">Sem Estoque (Relatório)</span>
+                 </button>
               </div>
-              <div className="h-1.5 bg-gradient-to-r from-emerald-400 via-blue-500 to-emerald-400" />
+              <div className="h-1.5 bg-gradient-to-r from-red-400 via-red-500 to-red-400" />
            </div>
         </div>
       )}
@@ -759,8 +971,11 @@ export default function PickingListDetail() {
 
       {/* MODAL DE VÍNCULO */}
       {linkingItem && (
-        <div className="fixed inset-0 z-[130] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-center">
+        <div
+          className="fixed inset-0 z-[130] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onKeyDown={(e) => { if (e.key === 'Enter' && linkingItem?.targetSku) handleLinkNewBarcode(linkingItem.targetSku) }}
+        >
+           <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 text-center" tabIndex={-1} autoFocus>
               <div className="bg-blue-600 p-8 text-white">
                  <ScanBarcode size={40} strokeWidth={3} className="mx-auto mb-3 opacity-50" />
                  <h2 className="text-xl font-black tracking-tight uppercase">Vincular Código</h2>
@@ -874,8 +1089,9 @@ export default function PickingListDetail() {
                     </button>
                     <button 
                       onClick={async () => {
+                         const itemId = shortageDialog.item.id
                          try {
-                            const operator = JSON.parse(sessionStorage.getItem('operator') || 'null')
+                            const operator = JSON.parse(localStorage.getItem('operator') || 'null')
                             await api.reportShortage({
                                sku: shortageDialog.item.sku,
                                qty: shortageDialog.qtyShortage,
@@ -910,6 +1126,7 @@ export default function PickingListDetail() {
                             notify('Falta registrada com sucesso.', 'success')
                             setShortageDialog(null)
                             setSelectedItem(null)
+                            if (isMobilePhone) autoAdvance(itemId)
                          } catch (err) {
                             notify('Erro ao salvar: ' + err.message, 'error')
                          }
@@ -961,34 +1178,26 @@ export default function PickingListDetail() {
                   placeholder={qtyDialog.item.quantity.toFixed(0)}
                   value={qtyDialog.qty}
                   onChange={e => setQtyDialog(prev => ({ ...prev, qty: e.target.value }))}
+                  onKeyDown={async e => {
+                    if (e.key === 'Enter') {
+                      await togglePick(qtyDialog.item.id, true, qtyDialog.item.quantity)
+                      setQtyDialog(null)
+                    }
+                  }}
                   autoFocus
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={async () => {
-                    await togglePick(qtyDialog.item.id, true, qtyDialog.item.quantity)
-                    setQtyDialog(null)
-                  }}
-                  className="h-16 bg-emerald-500 text-white rounded-3xl flex flex-col items-center justify-center gap-1 shadow-lg shadow-emerald-100 hover:bg-emerald-600 active:scale-95 transition-all"
-                >
-                  <CheckCircle2 size={20} strokeWidth={3} />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Coletar Tudo</span>
-                </button>
-                <button
-                  onClick={async () => {
-                    const qty = parseFloat(qtyDialog.qty)
-                    if (!qty || qty <= 0) return
-                    await togglePick(qtyDialog.item.id, null, qty)
-                    setQtyDialog(null)
-                  }}
-                  className="h-16 bg-blue-600 text-white rounded-3xl flex flex-col items-center justify-center gap-1 shadow-lg shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-40"
-                >
-                  <CheckCircle2 size={20} strokeWidth={3} />
-                  <span className="text-[9px] font-black uppercase tracking-widest">Confirmar Qtd</span>
-                </button>
-              </div>
+              <button
+                onClick={async () => {
+                  await togglePick(qtyDialog.item.id, true, qtyDialog.item.quantity)
+                  setQtyDialog(null)
+                }}
+                className="w-full h-16 bg-emerald-500 text-white rounded-3xl flex flex-col items-center justify-center gap-1 shadow-lg shadow-emerald-100 hover:bg-emerald-600 active:scale-95 transition-all"
+              >
+                <CheckCircle2 size={20} strokeWidth={3} />
+                <span className="text-[9px] font-black uppercase tracking-widest">Coletar Tudo</span>
+              </button>
             </div>
           </div>
         </div>

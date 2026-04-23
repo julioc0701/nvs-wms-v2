@@ -24,8 +24,9 @@ export default function Login() {
     try {
       const res = await api.loginOperator(Number(selected), pin)
       if (res.status === 'ok') {
-        sessionStorage.setItem('operator', JSON.stringify(res.operator))
-        navigate(res.operator.name === 'Master' ? '/supervisor' : '/sessions')
+        localStorage.setItem('operator', JSON.stringify(res.operator))
+        const isMobile = window.innerWidth < 768
+        navigate(res.operator.name === 'Master' ? '/supervisor' : isMobile ? '/separacao/listas' : '/sessions')
       }
     } catch (err) {
       setError(err.message || 'Erro ao validar PIN')
