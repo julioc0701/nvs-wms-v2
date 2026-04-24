@@ -224,6 +224,25 @@ def init_db():
             conn.commit()
             print("--- DATABASE MIGRATION: marketplace added to sessions ---")
 
+        print_job_cols = [c["name"] for c in insp.get_columns("print_jobs")] if "print_jobs" in insp.get_table_names() else []
+        print_job_migrations = {
+            "claimed_by": "ALTER TABLE print_jobs ADD COLUMN claimed_by VARCHAR(100)",
+            "claimed_at": "ALTER TABLE print_jobs ADD COLUMN claimed_at DATETIME",
+            "started_at": "ALTER TABLE print_jobs ADD COLUMN started_at DATETIME",
+            "job_token": "ALTER TABLE print_jobs ADD COLUMN job_token VARCHAR(100)",
+            "agent_version": "ALTER TABLE print_jobs ADD COLUMN agent_version VARCHAR(50)",
+            "zpl_hash": "ALTER TABLE print_jobs ADD COLUMN zpl_hash VARCHAR(64)",
+            "zpl_block_count": "ALTER TABLE print_jobs ADD COLUMN zpl_block_count INTEGER",
+        }
+        for col_name, ddl in print_job_migrations.items():
+            if col_name not in print_job_cols:
+                conn.execute(text(ddl))
+                conn.commit()
+                print(f"--- DATABASE MIGRATION: {col_name} added to print_jobs ---")
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_print_jobs_claimed_by ON print_jobs (claimed_by)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_print_jobs_job_token ON print_jobs (job_token)"))
+        conn.commit()
+
         sync_run_cols = [c["name"] for c in insp.get_columns("sync_runs")] if "sync_runs" in insp.get_table_names() else []
         if "updated_at" not in sync_run_cols:
             conn.execute(text("ALTER TABLE sync_runs ADD COLUMN updated_at DATETIME"))

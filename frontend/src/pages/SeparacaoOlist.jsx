@@ -1065,9 +1065,9 @@ export default function SeparacaoOlist() {
                       ['Destinatário', detailSep.separacao?.destinatario || detailSep._item?.destinatario, 'dest'],
                       ['Número', detailSep.separacao?.numero || detailSep._item?.numero, 'num'],
                       ['Data emissão', detailSep.separacao?.dataEmissao || detailSep._item?.dataEmissao, null],
-                      ['Prazo máx. despacho', detailSep.separacao?.prazo_maximo || detailSep._item?.prazo_maximo, null],
+                      ['Prazo máx. despacho', detailSep.separacao?.prazoMaximoDespacho || detailSep.separacao?.prazoMaximo || detailSep.separacao?.prazo_maximo || detailSep._item?.prazo_maximo, null],
                       ['Nº EC', detailSep.separacao?.numeroPedidoEcommerce || detailSep._item?.numeroPedidoEcommerce, 'ec'],
-                      ['Forma de envio', detailSep._item?.formaEnvio?.descricao || '—', null],
+                      ['Forma de envio', (typeof detailSep.separacao?.formaEnvio === 'string' ? detailSep.separacao.formaEnvio : detailSep.separacao?.formaEnvio?.descricao) || detailSep._item?.forma_envio_descricao || '—', null],
                     ].map(([label, value, copyKey]) => (
                       <div key={label}>
                         <p className="text-[10px] text-slate-400 font-semibold mb-0.5">{label}</p>

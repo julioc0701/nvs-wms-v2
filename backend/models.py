@@ -136,6 +136,13 @@ class PrintJob(Base):
     error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
     operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True)
     printer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    claimed_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    job_token: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    zpl_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    zpl_block_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class TinyOrderSync(Base):

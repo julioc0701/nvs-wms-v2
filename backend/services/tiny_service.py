@@ -171,8 +171,14 @@ class TinyService:
     async def get_faturados_numeros(self, data_inicial: str, data_final: str) -> Dict[str, str]:
         """Busca números de pedidos faturados no período via pesquisa em lote.
         Retorna mapa {id_pedido: numero}. Geralmente 1 página (~17 registros/dia)."""
+        info = await self.get_faturados_info(data_inicial, data_final)
+        return {pid: v["numero"] for pid, v in info.items()}
+
+    async def get_faturados_info(self, data_inicial: str, data_final: str) -> Dict[str, dict]:
+        """Busca pedidos faturados no período.
+        Retorna mapa {id_pedido: {numero, data_prevista, data_pedido}}."""
         import asyncio
-        result: Dict[str, str] = {}
+        result: Dict[str, dict] = {}
         pagina = 1
         while True:
             try:
@@ -186,17 +192,19 @@ class TinyService:
                 for p in pedidos:
                     ped = p.get("pedido", {})
                     pid = str(ped.get("id", ""))
-                    numero = ped.get("numero", "")
-                    if pid and numero:
-                        result[pid] = numero
-
+                    if pid:
+                        result[pid] = {
+                            "numero": ped.get("numero", ""),
+                            "data_prevista": ped.get("data_prevista", ""),
+                            "data_pedido": ped.get("data_pedido", ""),
+                        }
                 numero_paginas = int(resp.get("numero_paginas", 1))
                 if pagina >= numero_paginas:
                     break
                 pagina += 1
                 await asyncio.sleep(0.3)
             except Exception as e:
-                log.warning(f"get_faturados_numeros pagina={pagina}: {e}")
+                log.warning(f"get_faturados_info pagina={pagina}: {e}")
                 break
         return result
 

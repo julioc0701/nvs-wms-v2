@@ -229,37 +229,40 @@ async def list_separacoes(
                 synced[r.order_id] = r.numero
 
     # --- Camada 3: pedidos.pesquisa.php filtrado por Faturado + período (1 chamada) ---
-    still_missing = [oid for oid in ids_origem if oid not in synced]
-    if still_missing:
-        log.info(f"SEPARACOES: {len(still_missing)} sem numero — buscando via pesquisa Faturados")
-        try:
-            from datetime import datetime as _dt
-            _hoje = _dt.now().strftime("%d/%m/%Y")
-            _di = data_inicial or _hoje
-            _df = data_final or _hoje
-            faturados = await service.get_faturados_numeros(_di, _df)
-            resolved = {}
-            for oid in still_missing:
-                if oid in faturados:
-                    synced[oid] = faturados[oid]
-                    resolved[oid] = faturados[oid]
-            # Persiste para futuras consultas
+    # Sempre busca para ter datas (data_prevista / data_pedido) dos pedidos do período.
+    datas_map: dict = {}  # {id_pedido: {data_prevista, data_pedido}}
+    try:
+        from datetime import datetime as _dt
+        _hoje = _dt.now().strftime("%d/%m/%Y")
+        _di = data_inicial or _hoje
+        _df = data_final or _hoje
+        faturados_info = await service.get_faturados_info(_di, _df)
+        datas_map = {pid: info for pid, info in faturados_info.items()}
+        # Resolve numeros ainda faltando
+        still_missing = [oid for oid in ids_origem if oid not in synced]
+        resolved = {}
+        for oid in still_missing:
+            if oid in faturados_info:
+                synced[oid] = faturados_info[oid]["numero"]
+                resolved[oid] = faturados_info[oid]["numero"]
+        if resolved:
             for oid, numero in resolved.items():
                 existing = db.query(TinyOrderSync).filter(TinyOrderSync.id == oid).first()
                 if existing:
                     existing.numero = numero
                 else:
                     db.add(TinyOrderSync(id=oid, numero=numero, last_synced_at=datetime.utcnow()))
-            if resolved:
-                db.commit()
-            log.info(f"SEPARACOES: {len(resolved)}/{len(still_missing)} numeros resolvidos via Faturados")
-        except Exception as e:
-            log.warning(f"SEPARACOES: falha na camada 3: {e}")
+            db.commit()
+            log.info(f"SEPARACOES: {len(resolved)} numeros resolvidos via Faturados")
+    except Exception as e:
+        log.warning(f"SEPARACOES: falha na camada 3: {e}")
 
-    # Injeta numero_pedido em cada separação
+    # Injeta numero_pedido e prazo_maximo em cada separação
     for s in separacoes:
         origem_id = str(s.get("idOrigemVinc", ""))
         s["numero_pedido"] = synced.get(origem_id) or ""
+        info = datas_map.get(origem_id, {})
+        s["prazo_maximo"] = info.get("data_prevista") or info.get("data_pedido") or ""
 
     # ── Upsert de headers de exibição ─────────────────────────────────────────
     # Salva campos de display no DB local para que as abas em_separacao/separadas
@@ -269,15 +272,33 @@ async def list_separacoes(
             sep_id = str(s.get("id", ""))
             if not sep_id:
                 continue
-            forma_envio = s.get("formaEnvio")
+            forma_envio_raw = s.get("formaEnvio")
+            # formaEnvio pode ser string direta ("Shopee Envios") ou dict {"descricao": "..."}
+            if isinstance(forma_envio_raw, dict):
+                forma_envio_desc = forma_envio_raw.get("descricao")
+            elif isinstance(forma_envio_raw, str):
+                forma_envio_desc = forma_envio_raw or None
+            else:
+                forma_envio_desc = None
+            # prazo_maximo não existe na separação — busca no TinyOrderSync via idOrigemVinc (pedido)
+            prazo = (
+                s.get("prazoMaximoDespacho")
+                or s.get("prazoMaximo")
+                or s.get("prazo_maximo")
+                or s.get("prazoDespacho")
+            )
+            if not prazo and s.get("idOrigemVinc"):
+                pedido_id = str(s["idOrigemVinc"])
+                info = datas_map.get(pedido_id, {})
+                prazo = info.get("data_prevista") or info.get("data_pedido") or None
             header_data = dict(
                 numero=s.get("numero"),
                 destinatario=s.get("destinatario"),
                 numero_ec=s.get("numeroPedidoEcommerce"),
                 data_emissao=s.get("dataEmissao"),
-                prazo_maximo=s.get("prazo_maximo"),
+                prazo_maximo=prazo,
                 id_forma_envio=str(s.get("idFormaEnvio") or ""),
-                forma_envio_descricao=forma_envio.get("descricao") if isinstance(forma_envio, dict) else None,
+                forma_envio_descricao=forma_envio_desc,
                 numero_pedido=s.get("numero_pedido"),
                 updated_at=datetime.utcnow(),
             )
@@ -315,15 +336,45 @@ async def _backfill_sep_headers_bg(sep_ids: List[str], token: Optional[str]):
                 sep = res.get("separacao", {})
                 if not sep:
                     continue
-                forma_envio = sep.get("formaEnvio")
+                forma_envio_raw = sep.get("formaEnvio")
+                if isinstance(forma_envio_raw, dict):
+                    forma_envio_desc = forma_envio_raw.get("descricao")
+                elif isinstance(forma_envio_raw, str):
+                    forma_envio_desc = forma_envio_raw or None
+                else:
+                    forma_envio_desc = None
+                prazo = (
+                    sep.get("prazoMaximoDespacho")
+                    or sep.get("prazoMaximo")
+                    or sep.get("prazo_maximo")
+                    or sep.get("prazoDespacho")
+                )
+                # Tenta prazo via TinyOrderSync: busca pelo id_venda dentro do raw_data da NF
+                if not prazo:
+                    id_origem = str(sep.get("idOrigem") or "")
+                    if id_origem:
+                        try:
+                            import json as _json
+                            # idOrigem aponta para a NF — o raw_data da NF contém id_venda (pedido)
+                            nf_sync = db.query(TinyOrderSync).filter(TinyOrderSync.id == id_origem).first()
+                            if nf_sync and nf_sync.raw_data:
+                                nf_raw = _json.loads(nf_sync.raw_data)
+                                pedido_id = str(nf_raw.get("id_venda") or "")
+                                if pedido_id:
+                                    order_sync = db.query(TinyOrderSync).filter(TinyOrderSync.id == pedido_id).first()
+                                    if order_sync and order_sync.raw_data:
+                                        raw = _json.loads(order_sync.raw_data)
+                                        prazo = raw.get("data_prevista") or raw.get("data_envio") or raw.get("data_pedido") or None
+                        except Exception:
+                            pass
                 header_data = dict(
                     numero=sep.get("numero"),
                     destinatario=sep.get("destinatario"),
                     numero_ec=sep.get("numeroPedidoEcommerce"),
                     data_emissao=sep.get("dataEmissao"),
-                    prazo_maximo=sep.get("prazo_maximo"),
+                    prazo_maximo=prazo,
                     id_forma_envio=str(sep.get("idFormaEnvio") or ""),
-                    forma_envio_descricao=forma_envio.get("descricao") if isinstance(forma_envio, dict) else None,
+                    forma_envio_descricao=forma_envio_desc,
                     updated_at=datetime.utcnow(),
                 )
                 existing_h = db.query(TinySeparationHeader).filter(
@@ -430,6 +481,7 @@ async def get_tracked_separacoes(
             "dataEmissao": h.data_emissao if h else None,
             "prazo_maximo": h.prazo_maximo if h else None,
             "idFormaEnvio": h.id_forma_envio if h else None,
+            "forma_envio_descricao": h.forma_envio_descricao if h else None,
             "numero_pedido": h.numero_pedido if h else None,
             "local_status": s.status,
             "list_id": s.list_id,
@@ -899,6 +951,32 @@ async def get_separacao_detail(sep_id: str, token: Optional[str] = None, db: Ses
     service = get_service(token)
     data = await service.get_separation_details(sep_id)
     sep = data.get("separacao", {})
+
+    # ── Busca prazo de despacho do pedido vinculado ────────────────────────────
+    # separacao.obter não retorna prazo — buscamos via header cacheado (prazo_maximo)
+    # ou atravessando NF (idOrigem) → id_venda → TinyOrderSync → data_prevista
+    _prazo_header = db.query(TinySeparationHeader).filter(
+        TinySeparationHeader.separation_id == str(sep_id)
+    ).first()
+    if _prazo_header and _prazo_header.prazo_maximo:
+        sep["prazo_maximo"] = _prazo_header.prazo_maximo
+    else:
+        numero_ec = str(sep.get("numeroPedidoEcommerce") or "")
+        if numero_ec:
+            try:
+                pedidos_resp = await service._post("pedidos.pesquisa.php", {"numeroEcommerce": numero_ec})
+                pedidos_list = pedidos_resp.get("pedidos", [])
+                if pedidos_list:
+                    p = pedidos_list[0].get("pedido", {})
+                    prazo = p.get("data_prevista") or p.get("data_envio") or p.get("data_pedido") or ""
+                    if prazo:
+                        sep["prazo_maximo"] = prazo
+                        # Atualiza header cacheado
+                        if _prazo_header:
+                            _prazo_header.prazo_maximo = prazo
+                            db.commit()
+            except Exception as _e:
+                log.debug(f"prazo lookup numeroEcommerce={numero_ec}: {_e}")
 
     # Enriquece com progresso local se houver lista associada
     local_status = db.query(TinySeparationStatus).filter(

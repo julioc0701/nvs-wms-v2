@@ -120,56 +120,49 @@ def _split_zpl(zpl: str) -> list[bytes]:
 
 def _send_via_win32print(blocks: list[bytes], printer_name: str) -> str:
     import win32print
+    payload = b"\n".join(blocks)
     hp = win32print.OpenPrinter(printer_name)
+    doc_started = False
     try:
-        for i, zpl_bytes in enumerate(blocks):
-            doc_started = False
-            try:
-                win32print.StartDocPrinter(hp, 1, (f"Etiqueta {i+1}", None, "RAW"))
-                doc_started = True
-                win32print.StartPagePrinter(hp)
-                written = win32print.WritePrinter(hp, zpl_bytes)
-                if written != len(zpl_bytes):
-                    raise RuntimeError(
-                        f"Erro no Spooler: escreveu {written}/{len(zpl_bytes)} bytes"
-                    )
-                win32print.EndPagePrinter(hp)
-                win32print.EndDocPrinter(hp)
-                doc_started = False
-            except Exception:
-                if doc_started:
-                    try:
-                        win32print.AbortDocPrinter(hp)
-                    except Exception:
-                        pass
-                raise
-            if len(blocks) > 1 and i < len(blocks) - 1:
-                import time
-                time.sleep(0.05)
+        win32print.StartDocPrinter(hp, 1, ("NVS-WMS PrintJob", None, "RAW"))
+        doc_started = True
+        win32print.StartPagePrinter(hp)
+        written = win32print.WritePrinter(hp, payload)
+        if written != len(payload):
+            raise RuntimeError(
+                f"Erro no Spooler: escreveu {written}/{len(payload)} bytes"
+            )
+        win32print.EndPagePrinter(hp)
+        win32print.EndDocPrinter(hp)
+        doc_started = False
         return "win32print"
+    except Exception:
+        if doc_started:
+            try:
+                win32print.AbortDocPrinter(hp)
+            except Exception:
+                pass
+        raise
     finally:
         win32print.ClosePrinter(hp)
 
 
 def _send_via_copy(blocks: list[bytes], printer_name: str) -> str:
-    import time
     unc = f"\\\\localhost\\{printer_name}"
-    for i, zpl_bytes in enumerate(blocks):
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=".zpl", delete=False) as tmp:
-            tmp.write(zpl_bytes)
-            tmp_path = tmp.name
-        try:
-            res = subprocess.run(
-                ["cmd", "/c", "copy", "/B", tmp_path, unc],
-                capture_output=True, text=True, timeout=15,
-            )
-            if res.returncode != 0:
-                raise RuntimeError(f"Falha copy /B: {res.stderr or res.stdout}")
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-        if len(blocks) > 1 and i < len(blocks) - 1:
-            time.sleep(0.05)
+    payload = b"\n".join(blocks)
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".zpl", delete=False) as tmp:
+        tmp.write(payload)
+        tmp_path = tmp.name
+    try:
+        res = subprocess.run(
+            ["cmd", "/c", "copy", "/B", tmp_path, unc],
+            capture_output=True, text=True, timeout=30,
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"Falha copy /B: {res.stderr or res.stdout}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
     return "copy/B"
 
 
@@ -282,6 +275,7 @@ async def _handle_message(ws, raw: str) -> None:
         job_id = msg.get("id") or msg.get("job_id")
         sku    = msg.get("sku", "?")
         zpl    = msg.get("zpl_content", "")
+        job_token = msg.get("job_token")
 
         log.info(f"JOB {job_id} [{sku}] recebido → imprimindo...")
         result = await _do_print_async(zpl)
@@ -289,9 +283,11 @@ async def _handle_message(ws, raw: str) -> None:
         await ws.send(json.dumps({
             "type":    "print_result",
             "job_id":  job_id,
+            "job_token": job_token,
             "status":  result["status"],
             "printer": result.get("printer", _cached_printer or ""),
             "message": result.get("message", ""),
+            "agent_version": AGENT_VERSION,
         }))
 
         if result["status"] == "ok":

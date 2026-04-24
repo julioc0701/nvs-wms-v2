@@ -31,8 +31,8 @@ from mas_core.ai_service import AIClient
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.groq.com/openai/v1")
-AI_MODEL = os.getenv("AI_MODEL", "llama-3.3-70b-versatile")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+AI_MODEL = os.getenv("AI_MODEL", "gemma-4-26b-a4b-it")
 TINY_API_TOKEN = os.getenv("TINY_API_TOKEN", "")
 OLIST_STATUS_BUCKET = ["faturado", "pronto para envio", "enviado", "entregue"]
 
@@ -694,9 +694,9 @@ def _compose_olist_status_answer(tool_result: Dict[str, Any], confidence: str) -
 
 @router.get("/health")
 async def ai_health():
-    provider = "groq" if "groq" in AI_BASE_URL.lower() else "custom"
+    provider = "openrouter" if "openrouter" in AI_BASE_URL.lower() else ("groq" if "groq" in AI_BASE_URL.lower() else "custom")
     return {
-        "status": "online" if os.getenv("GROQ_API_KEY") else "degraded",
+        "status": "online" if os.getenv("OPENROUTER_API_KEY") else "degraded",
         "provider": provider,
         "configured_model": AI_MODEL,
         "base_url": AI_BASE_URL,
@@ -739,7 +739,7 @@ async def chat_handler(req: ChatRequest):
         return {
             "message": {
                 "role": "assistant",
-                "content": f"⚠️ Falha de comunicação com a Groq. Detalhe técnico: {error_detail}",
+                "content": f"⚠️ Falha de comunicação com o modelo AI. Detalhe: {error_detail}",
             },
             "generative_ui": None,
             "agent_meta": {
