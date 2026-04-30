@@ -1,38 +1,78 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import MarketplaceLogo from '../components/MarketplaceLogo'
-import { 
-  AlertTriangle, 
-  PackageX, 
-  Plus, 
-  Minus, 
-  ArrowLeft, 
-  Layers, 
-  LayoutGrid, 
-  ExternalLink,
-  ChevronRight
+import {
+  AlertTriangle,
+  PackageX,
+  Plus,
+  Minus,
+  ArrowLeft,
+  Layers,
+  LayoutGrid,
+  ChevronRight,
+  Trash2,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react'
-import { useFeedback } from '../components/ui/FeedbackProvider'
 
 export default function ShortageReport() {
   const navigate = useNavigate()
   const [shortages, setShortages] = useState([])
   const [loading, setLoading] = useState(true)
   const [expandedGroups, setExpandedGroups] = useState({ full: true, organico: true })
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true)
     api.getShortages()
       .then(setShortages)
       .finally(() => setLoading(false))
-  }, [])
+  }
 
-  const fullGroup = shortages.filter(s => s.category === 'full')
+  useEffect(() => { load() }, [])
+
+  const fullGroup    = shortages.filter(s => s.category === 'full')
   const organicGroup = shortages.filter(s => s.category === 'organico')
-  const totalFaltas = shortages.reduce((acc, curr) => acc + curr.quantity, 0)
+  // Total do header conta só pendentes
+  const totalPendente = shortages
+    .filter(s => s.status === 'pendente')
+    .reduce((a, s) => a + s.quantity, 0)
 
-  const toggleGroup = (group) => {
-    setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }))
+  const toggleGroup = (g) => setExpandedGroups(p => ({ ...p, [g]: !p[g] }))
+
+  async function handleToggleStatus(item) {
+    if (item.is_legacy) return
+    try {
+      await api.toggleShortageStatus(item.id)
+      setShortages(prev => prev.map(s =>
+        s.id === item.id
+          ? { ...s, status: s.status === 'pendente' ? 'concluido' : 'pendente' }
+          : s
+      ))
+    } catch (e) { alert('Erro: ' + e.message) }
+  }
+
+  async function handleDelete(item) {
+    try {
+      if (item.is_legacy) {
+        const legacyId = String(item.id).replace('legacy_', '')
+        await api.deleteShortageLegacy(legacyId)
+      } else {
+        await api.deleteShortage(item.id)
+      }
+      setShortages(prev => prev.filter(s => s.id !== item.id))
+    } catch (e) { alert('Erro: ' + e.message) }
+  }
+
+  async function handleDeleteAll() {
+    setDeletingAll(true)
+    try {
+      await api.deleteAllShortages()
+      setShortages([])
+      setDeleteAllConfirm(false)
+    } catch (e) { alert('Erro: ' + e.message) }
+    finally { setDeletingAll(false) }
   }
 
   if (loading) return (
@@ -44,11 +84,11 @@ export default function ShortageReport() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* HEADER PREMIUM */}
+      {/* HEADER */}
       <div className="bg-white/80 backdrop-blur-md sticky top-0 z-30 border-b border-slate-200 px-6 py-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <button 
+            <button
               onClick={() => navigate('/sessions')}
               className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-900 transition-all active:scale-90"
             >
@@ -56,22 +96,36 @@ export default function ShortageReport() {
             </button>
             <div>
               <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-                 <AlertTriangle core className="text-red-500" size={32} />
+                 <AlertTriangle className="text-red-500" size={32} />
                  Relatório de Faltas
               </h1>
-              <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">Consolidação de estoque zerado durante o Picking</p>
+              <p className="text-slate-400 text-sm font-bold uppercase tracking-widest mt-1">
+                Consolidação de estoque zerado durante o Picking
+              </p>
             </div>
           </div>
 
-          <div className="bg-red-50 border border-red-100 px-6 py-3 rounded-3xl flex flex-col items-end">
-             <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Total Faltante</span>
-             <span className="text-2xl font-black text-red-600 tabular-nums">{totalFaltas.toFixed(0)} <small className="text-sm">UNID.</small></span>
+          <div className="flex items-center gap-3">
+            <div className="bg-red-50 border border-red-100 px-5 py-3 rounded-3xl flex flex-col items-end">
+               <span className="text-[10px] font-black text-red-400 uppercase tracking-widest">Pendentes</span>
+               <span className="text-2xl font-black text-red-600 tabular-nums">
+                 {totalPendente.toFixed(0)} <small className="text-sm">UNID.</small>
+               </span>
+            </div>
+            {shortages.length > 0 && (
+              <button
+                onClick={() => setDeleteAllConfirm(true)}
+                title="Apagar todas as faltas"
+                className="p-3 rounded-2xl text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all active:scale-90"
+              >
+                <Trash2 size={22} />
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 p-6 md:p-10 max-w-6xl mx-auto w-full space-y-12 pb-24">
-        
         {shortages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-slate-300">
              <PackageX size={80} strokeWidth={1} className="mb-6 opacity-20" />
@@ -80,37 +134,77 @@ export default function ShortageReport() {
           </div>
         ) : (
           <>
-            {/* GRUPO FULL */}
-            <GroupSection 
-              title="Full Shopee / ML" 
+            <GroupSection
+              title="Full Shopee / ML"
               subtitle="Itens faltantes nas sessões de carregamento do Full"
               items={fullGroup}
               expanded={expandedGroups.full}
               onToggle={() => toggleGroup('full')}
               icon={<LayoutGrid className="text-blue-500" size={24} />}
               color="blue"
+              onToggleStatus={handleToggleStatus}
+              onDelete={handleDelete}
             />
-
-            {/* GRUPO ORGÂNICO */}
-            <GroupSection 
-              title="Orgânico" 
+            <GroupSection
+              title="Orgânico"
               subtitle="Itens faltantes nas listas de separação avulsas/Tiny"
               items={organicGroup}
               expanded={expandedGroups.organico}
               onToggle={() => toggleGroup('organico')}
               icon={<Layers className="text-emerald-500" size={24} />}
               color="emerald"
+              onToggleStatus={handleToggleStatus}
+              onDelete={handleDelete}
             />
           </>
         )}
       </div>
+
+      {/* Modal — apagar tudo */}
+      {deleteAllConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Trash2 size={28} className="text-red-500" />
+              <div>
+                <p className="font-bold text-gray-900 text-lg">Apagar todas as faltas?</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {shortages.length} registro(s) serão removidos permanentemente
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3 mb-5">
+              ⚠️ Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteAllConfirm(false)}
+                disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                Não, cancelar
+              </button>
+              <button
+                onClick={handleDeleteAll}
+                disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {deletingAll ? 'Apagando...' : 'Sim, apagar tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color }) {
-  const totalQtd = items.reduce((acc, curr) => acc + curr.quantity, 0)
-  
+function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color, onToggleStatus, onDelete }) {
+  const totalPendente = items
+    .filter(s => s.status === 'pendente')
+    .reduce((a, s) => a + s.quantity, 0)
+  const totalQtd = items.reduce((a, s) => a + s.quantity, 0)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between group">
@@ -126,14 +220,18 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color 
 
         <div className="flex items-center gap-4">
           <div className="text-right">
-             <span className={`text-lg font-black text-${color}-600 tabular-nums`}>{totalQtd.toFixed(0)} <small className="text-[10px] uppercase">un</small></span>
-             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{items.length} skus</p>
+            <span className={`text-lg font-black text-${color}-600 tabular-nums`}>
+              {totalPendente.toFixed(0)} <small className="text-[10px] uppercase">pendentes</small>
+            </span>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+              {items.length} skus · {totalQtd.toFixed(0)} total
+            </p>
           </div>
-          <button 
+          <button
             onClick={onToggle}
             className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all active:scale-90 ${
-              expanded 
-                ? 'bg-slate-800 text-white' 
+              expanded
+                ? 'bg-slate-800 text-white'
                 : `bg-${color}-100 text-${color}-600 hover:bg-${color}-200`
             }`}
           >
@@ -145,7 +243,9 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color 
       {expanded && (
         <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-300">
           {items.length === 0 ? (
-            <div className="p-12 text-center text-slate-300 italic text-sm">Nenhum registro para este grupo</div>
+            <div className="p-12 text-center text-slate-300 italic text-sm">
+              Nenhum registro para este grupo
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
@@ -156,23 +256,39 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color 
                     <th className="px-8 py-5 text-center">Operador</th>
                     <th className="px-8 py-5">Observação</th>
                     <th className="px-8 py-5 text-center">Data Registro</th>
+                    <th className="px-8 py-5 text-center">Status</th>
                     <th className="px-8 py-5 text-right">Qtd Faltante</th>
+                    <th className="px-4 py-5 w-12"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {items.map(item => (
-                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <tr
+                      key={item.id}
+                      className={`hover:bg-slate-50/50 transition-colors group ${
+                        item.status === 'concluido' ? 'opacity-50' : ''
+                      }`}
+                    >
+                      {/* SKU */}
                       <td className="px-8 py-6">
                         <div className="flex flex-col gap-1">
-                           <span className="font-mono font-black text-slate-700 text-base group-hover:text-blue-600 transition-colors">{item.sku}</span>
-                           <span className="text-xs font-semibold text-slate-400 truncate max-w-sm">{item.description || 'Sem descrição cadastrada'}</span>
+                           <span className="font-mono font-black text-slate-700 text-base group-hover:text-blue-600 transition-colors">
+                             {item.sku}
+                           </span>
+                           <span className="text-xs font-semibold text-slate-400 truncate max-w-sm">
+                             {item.description || 'Sem descrição cadastrada'}
+                           </span>
                         </div>
                       </td>
+
+                      {/* Lista */}
                       <td className="px-8 py-6 text-center">
                         <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl font-mono text-xs font-bold text-slate-500">
                            <ChevronRight size={14} className="text-slate-300"/> {item.list_id || '—'}
                         </div>
                       </td>
+
+                      {/* Operador */}
                       <td className="px-8 py-6 text-center">
                          <div className="flex items-center justify-center gap-2">
                            <div className="w-8 h-8 bg-blue-50 border border-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600 uppercase shadow-sm shrink-0">
@@ -183,21 +299,68 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color 
                            </span>
                          </div>
                       </td>
+
+                      {/* Obs */}
                       <td className="px-8 py-6 max-w-[200px]">
                         {item.notes
                           ? <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg italic leading-relaxed block truncate" title={item.notes}>{item.notes}</span>
                           : <span className="text-xs text-slate-300">—</span>
                         }
                       </td>
+
+                      {/* Data */}
                       <td className="px-8 py-6 text-center">
                          <span className="text-xs font-bold text-slate-400 uppercase tabular-nums">
                             {new Date(item.created_at).toLocaleDateString('pt-BR')}
-                            <span className="opacity-50 ml-1 font-normal">{new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span className="opacity-50 ml-1 font-normal">
+                              {new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
                          </span>
                       </td>
+
+                      {/* STATUS — clicável para toggle */}
+                      <td className="px-8 py-6 text-center">
+                        {item.is_legacy ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-500 border border-orange-100">
+                            <Clock size={11} /> Pendente
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => onToggleStatus(item)}
+                            title="Clique para alternar status"
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all active:scale-95 cursor-pointer ${
+                              item.status === 'concluido'
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
+                                : 'bg-orange-50 text-orange-500 border-orange-100 hover:bg-orange-100'
+                            }`}
+                          >
+                            {item.status === 'concluido'
+                              ? <><CheckCircle2 size={11} /> Concluído</>
+                              : <><Clock size={11} /> Pendente</>
+                            }
+                          </button>
+                        )}
+                      </td>
+
+                      {/* Qtd */}
                       <td className="px-8 py-6 text-right">
-                         <span className="text-xl font-black text-red-500 tabular-nums">-{item.quantity.toFixed(0)}</span>
+                         <span className={`text-xl font-black tabular-nums ${
+                           item.status === 'concluido' ? 'text-slate-300 line-through' : 'text-red-500'
+                         }`}>
+                           -{item.quantity.toFixed(0)}
+                         </span>
                          <span className="text-[10px] font-bold text-slate-300 ml-1 uppercase">unid.</span>
+                      </td>
+
+                      {/* Delete por linha — aparece no hover */}
+                      <td className="px-4 py-6">
+                        <button
+                          onClick={() => onDelete(item)}
+                          title="Remover este registro"
+                          className="p-2 rounded-xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-all active:scale-90 opacity-0 group-hover:opacity-100"
+                        >
+                          <Trash2 size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}

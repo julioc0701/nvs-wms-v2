@@ -306,6 +306,11 @@ def init_db():
                 conn.execute(text("ALTER TABLE shortages ADD COLUMN operator_id INTEGER REFERENCES operators(id)"))
                 conn.commit()
                 print("--- DATABASE MIGRATION: operator_id added to shortages ---")
+
+            if "status" not in shortage_cols:
+                conn.execute(text("ALTER TABLE shortages ADD COLUMN status VARCHAR(20) DEFAULT 'pendente'"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: status added to shortages ---")
         except Exception:
             pass
 

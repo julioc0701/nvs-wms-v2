@@ -194,6 +194,10 @@ export const api = {
   // Relatório de Faltas (v2)
   reportShortage: (data) => req('POST', '/tiny/report-shortage', data),
   getShortages: () => req('GET', '/tiny/shortages'),
+  toggleShortageStatus: (id) => req('PATCH', `/tiny/shortages/${id}/status`),
+  deleteShortage: (id) => req('DELETE', `/tiny/shortages/${id}`),
+  deleteShortageLegacy: (itemId) => req('DELETE', `/tiny/shortages/legacy/${itemId}`),
+  deleteAllShortages: () => req('DELETE', '/tiny/shortages'),
   
   // App Health & Gemma AI Control Panel
   getHealth: () => req('GET', '/health'),

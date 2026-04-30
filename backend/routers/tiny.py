@@ -1496,7 +1496,9 @@ async def get_shortages(db: Session = Depends(get_db)):
             "list_id": s.list_id,
             "notes": s.notes,
             "operator_name": s.operator.name if s.operator else "Admin",
-            "created_at": s.created_at
+            "created_at": s.created_at,
+            "status": getattr(s, "status", "pendente"),
+            "is_legacy": False,
         })
 
     # Converte os legados
@@ -1509,7 +1511,9 @@ async def get_shortages(db: Session = Depends(get_db)):
             "category": "full",
             "list_id": f"Lista {item.session_id}",
             "operator_name": op_name or "Desconhecido",
-            "created_at": item.completed_at or datetime.utcnow()
+            "created_at": item.completed_at or datetime.utcnow(),
+            "status": "pendente",
+            "is_legacy": True,
         })
         
     # Ordena por data (mais recentes primeiro)
@@ -1649,11 +1653,55 @@ async def get_erp_send_logs(sep_id: str, db: Session = Depends(get_db)):
 
 @router.post("/shortages/{shortage_id}/delete")
 async def delete_shortage(shortage_id: int, db: Session = Depends(get_db)):
-    """Remove um registro da tabela de faltas."""
+    """Remove um registro da tabela de faltas (compat)."""
     item = db.query(Shortage).filter(Shortage.id == shortage_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
-    
     db.delete(item)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/shortages/{shortage_id}")
+async def delete_shortage_rest(shortage_id: int, db: Session = Depends(get_db)):
+    """Remove falta — Shortage table (novo) ou PickingItem legacy."""
+    # Legacy item: id começa com "legacy_" — não aplicável via int, tratado separado
+    item = db.query(Shortage).filter(Shortage.id == shortage_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+    db.delete(item)
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.delete("/shortages/legacy/{item_id}")
+async def delete_shortage_legacy(item_id: int, db: Session = Depends(get_db)):
+    """Zera shortage_qty de um PickingItem legado (remove da tela de faltas)."""
+    item = db.query(PickingItem).filter(PickingItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    item.shortage_qty = 0
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.patch("/shortages/{shortage_id}/status")
+async def toggle_shortage_status(shortage_id: int, db: Session = Depends(get_db)):
+    """Alterna status pendente ↔ concluido de uma falta."""
+    item = db.query(Shortage).filter(Shortage.id == shortage_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+    item.status = "concluido" if getattr(item, "status", "pendente") == "pendente" else "pendente"
+    db.commit()
+    return {"status": "ok", "new_status": item.status}
+
+
+@router.delete("/shortages")
+async def delete_all_shortages(db: Session = Depends(get_db)):
+    """Apaga TODAS as faltas (Shortage table + zera shortage_qty dos PickingItems)."""
+    db.query(Shortage).delete(synchronize_session=False)
+    db.query(PickingItem).filter(PickingItem.shortage_qty > 0).update(
+        {"shortage_qty": 0}, synchronize_session=False
+    )
     db.commit()
     return {"status": "ok"}

@@ -367,5 +367,6 @@ class Shortage(Base):
     operator_id: Mapped[int | None] = mapped_column(ForeignKey("operators.id"), nullable=True) # NOVO
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="pendente")  # pendente | concluido
 
     operator: Mapped["Operator | None"] = relationship()
