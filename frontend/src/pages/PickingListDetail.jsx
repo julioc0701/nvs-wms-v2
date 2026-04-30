@@ -262,17 +262,19 @@ export default function PickingListDetail() {
     setInternalBarcode('')
     setScanStatus({ type: 'processing', msg: 'Validando bip...' })
     try {
-      // Próprio SKU digitado/clicado → abre modal de quantidade
+      // SKU digitado diretamente → rejeitado (somente barcode é aceito)
       if (selectedItem && code === selectedItem.sku.trim().toUpperCase()) {
-        setQtyDialog({ item: selectedItem, qty: '' })
-        setScanStatus({ type: null, msg: null })
+        notify('SKU não é aceito como bipagem. Use o código de barras.', 'error')
+        setScanStatus({ type: 'error', msg: 'SKU não aceito. Use o código de barras.' })
+        sndError.play().catch(() => {})
         return
       }
       const res = await api.resolveBarcode(code, selectedItem?.sku ?? null)
       const resolvedSku = res.sku.trim().toUpperCase()
       if (selectedItem) {
         const selectedSku = selectedItem.sku.trim().toUpperCase()
-        if (resolvedSku === selectedSku) {
+        // res.found === false significa que não há barcode vinculado → nunca aceita como pick direto
+        if (res.found && resolvedSku === selectedSku) {
           const pickRes = await api.pickItem(selectedItem.id, { mode: 'unit' })
           if (pickRes.status === 'success') {
             const updated = pickRes.item

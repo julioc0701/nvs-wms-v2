@@ -83,7 +83,28 @@ _cached_all_printers: list[str] = []
 
 def _detect_printers() -> tuple[str | None, list[str]]:
     if platform.system() != "Windows":
-        return None, []
+        try:
+            res = subprocess.run(
+                ["lpstat", "-p"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            all_names = []
+            for line in res.stdout.splitlines():
+                m = re.match(r"printer\s+(\S+)", line)
+                if m:
+                    all_names.append(m.group(1))
+        except Exception:
+            all_names = []
+
+        zebra = PRINTER_NAME or None
+        if not zebra:
+            for name in all_names:
+                if re.search(r"Zebra|ZD|ZDesigner", name, re.IGNORECASE):
+                    zebra = name
+                    break
+        return zebra, all_names
     try:
         import win32print
         raw = win32print.EnumPrinters(
@@ -166,6 +187,26 @@ def _send_via_copy(blocks: list[bytes], printer_name: str) -> str:
     return "copy/B"
 
 
+def _send_via_cups(blocks: list[bytes], printer_name: str) -> str:
+    payload = b"\n".join(blocks)
+    with tempfile.NamedTemporaryFile(mode="wb", suffix=".zpl", delete=False) as tmp:
+        tmp.write(payload)
+        tmp_path = tmp.name
+    try:
+        res = subprocess.run(
+            ["lp", "-d", printer_name, "-o", "raw", tmp_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode != 0:
+            raise RuntimeError(f"Falha lp/CUPS: {res.stderr or res.stdout}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    return "cups/lp"
+
+
 def do_print(zpl: str, printer_name: str | None = None) -> dict:
     name = printer_name or _cached_printer
     if not name:
@@ -183,10 +224,13 @@ def do_print(zpl: str, printer_name: str | None = None) -> dict:
             return {"status": "error", "message": "ZPL vazio ou invalido."}
 
         log.info(f"  Enviando {len(blocks)} etiqueta(s) para '{name}'...")
-        try:
-            method = _send_via_win32print(blocks, name)
-        except (ImportError, Exception):
-            method = _send_via_copy(blocks, name)
+        if platform.system() == "Windows":
+            try:
+                method = _send_via_win32print(blocks, name)
+            except (ImportError, Exception):
+                method = _send_via_copy(blocks, name)
+        else:
+            method = _send_via_cups(blocks, name)
 
         return {"status": "ok", "printer": name, "method": method, "count": len(blocks)}
     except Exception as e:
@@ -198,7 +242,16 @@ def do_print(zpl: str, printer_name: str | None = None) -> dict:
 
 def fix_spooler() -> dict:
     if platform.system() != "Windows":
-        return {"status": "error", "message": "Apenas Windows suportado."}
+        target = PRINTER_NAME or _cached_printer
+        try:
+            cmd = ["cancel", "-a"]
+            if target:
+                cmd.append(target)
+            subprocess.run(cmd, capture_output=True, timeout=15)
+            refresh_printer_cache()
+            return {"status": "ok", "message": "Fila CUPS limpa com sucesso."}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     log.info("Iniciando limpeza forçada do spooler (solicitado via servidor)...")
     try:

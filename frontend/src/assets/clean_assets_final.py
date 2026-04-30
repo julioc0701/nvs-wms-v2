@@ -2,6 +2,8 @@ from PIL import Image, ImageDraw
 import numpy as np
 import os
 
+ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def mask_background_color(input_path, output_path, seed_points=[(0,0), (0,-1), (-1,0), (-1,-1)]):
     if not os.path.exists(input_path):
         print(f"Arquivo não encontrado: {input_path}")
@@ -68,13 +70,11 @@ def mask_background_color(input_path, output_path, seed_points=[(0,0), (0,-1), (
     print(f"Processamento de TRANSPARÊNCIA concluído: {output_path}")
 
 if __name__ == "__main__":
-    assets_dir = r"C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2\frontend\src\assets"
-    
     # Limpar o logo principal (NVS)
     # Aumentando o número de seed points para cobrir as bordas
     seeds = [(0,0), (10, 10), (2000, 10), (10, 2000), (2000, 2000)]
-    mask_background_color(os.path.join(assets_dir, "logo-novaes.png"), os.path.join(assets_dir, "logo-novaes-clean.png"))
+    mask_background_color(os.path.join(ASSETS_DIR, "logo-novaes.png"), os.path.join(ASSETS_DIR, "logo-novaes-clean.png"))
     
     # Reprocessar ML e Shopee para garantir que o contorno branco sumiu
-    mask_background_color(os.path.join(assets_dir, "ml-logo-raw.png"), os.path.join(assets_dir, "ml-logo.png"))
-    mask_background_color(os.path.join(assets_dir, "shopee-logo-raw.png"), os.path.join(assets_dir, "shopee-logo.png"))
+    mask_background_color(os.path.join(ASSETS_DIR, "ml-logo-raw.png"), os.path.join(ASSETS_DIR, "ml-logo.png"))
+    mask_background_color(os.path.join(ASSETS_DIR, "shopee-logo-raw.png"), os.path.join(ASSETS_DIR, "shopee-logo.png"))

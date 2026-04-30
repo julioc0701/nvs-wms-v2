@@ -1,7 +1,7 @@
 from parsers.ml_pdf_parser import parse_picking_pdf as ml_parse_pdf
 from parsers.ml_zpl_parser import parse_zpl_file as ml_parse_zpl, get_ml_barcodes
 
-from parsers.shopee_pdf_parser import parse_picking_pdf as shopee_parse_pdf
+from parsers.shopee import parse_picking_pdf as shopee_parse_pdf
 # from parsers.shopee_zpl_parser import parse_zpl_file as shopee_parse_zpl
 
 def parse_picking_pdf_factory(marketplace: str, pdf_bytes: bytes) -> list[dict]:

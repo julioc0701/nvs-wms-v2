@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import MarketplaceLogo from '../components/MarketplaceLogo'
 import TransferConfirmDialog from '../components/dialogs/TransferConfirmDialog'
@@ -107,6 +107,8 @@ export default function Picking() {
   const [searchParams] = useSearchParams()
   const focusSku = searchParams.get('sku')
   const navigate = useNavigate()
+  const location = useLocation()
+  const isOverlay = !!location.state?.backgroundLocation
   const operator = JSON.parse(localStorage.getItem('operator') || 'null')
 
   const goBackToItems = useCallback(() => navigate(`/sessions/${sessionId}/items`), [sessionId, navigate])
@@ -175,6 +177,13 @@ export default function Picking() {
     const code = (codeOverride || barcode || '').trim()
     if (!code) return
     if (!codeOverride) setBarcode('')
+    // SKU digitado diretamente → rejeita com mensagem de erro
+    if (item && code.toUpperCase() === item.sku.trim().toUpperCase()) {
+      notify('SKU não é aceito como bipagem. Use o código de barras.', 'error')
+      triggerFlash('error')
+      focusInput()
+      return
+    }
     try {
       if (scanMode === 'box' && item) {
         const res = await api.scan(sessionId, code, operator.id, focusSku || null)
@@ -476,254 +485,227 @@ export default function Picking() {
 
   return (
     <div className={cn(
-      "min-h-[100dvh] flex flex-col transition-colors duration-200 bg-slate-100",
+      "flex flex-col items-center transition-colors duration-200 py-4 px-4",
+      isOverlay
+        ? "fixed inset-0 z-50 overflow-y-auto"
+        : "min-h-[100dvh] bg-slate-200",
       compact && "compact-density",
-      flash === 'ok' && "bg-emerald-50",
-      flash === 'error' && "bg-red-50",
-      flash === 'complete' && "bg-blue-50"
+      isOverlay && flash === null && "bg-black/50 backdrop-blur-sm",
+      isOverlay && flash === 'ok' && "bg-emerald-900/40 backdrop-blur-sm",
+      isOverlay && flash === 'error' && "bg-red-900/40 backdrop-blur-sm",
+      isOverlay && flash === 'complete' && "bg-blue-900/40 backdrop-blur-sm",
+      !isOverlay && flash === 'ok' && "bg-emerald-100",
+      !isOverlay && flash === 'error' && "bg-red-100",
+      !isOverlay && flash === 'complete' && "bg-blue-100",
+      !isOverlay && flash === null && "bg-slate-200",
     )} onClick={() => !dialog && focusInput()}>
 
       {transferData && <TransferConfirmDialog sku={transferData.sku} ownerName={transferData.ownerName} onConfirm={handleTransfer} onCancel={() => setTransferData(null)} />}
       {dialog?.type === 'multiple_matches' && <SearchSelectionDialog candidates={dialog.data.candidates} onSelect={onSelectSearchResult} onCancel={() => setDialog(null)} />}
 
-      {/* ── TOPBAR IMERSIVO FIORI ──────────────────────── */}
-      <div className="bg-slate-900 border-b border-slate-800 shadow-sm px-4 md:px-8 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-20">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => focusSku ? goBackToItems() : navigate('/sessions')}
-            className="h-12 px-4 -ml-1 text-slate-100 hover:text-white bg-slate-800/80 hover:bg-slate-700 rounded-xl transition-colors shrink-0 inline-flex items-center gap-2 border border-slate-700"
-          >
-             <ArrowLeft size={22} />
-             <span className="text-sm font-bold tracking-wide">Voltar</span>
-          </button>
-          <button
-            onClick={() => { localStorage.removeItem('operator'); navigate('/') }}
-            className="h-12 px-3 text-slate-200 hover:text-white hover:bg-slate-800 rounded-xl transition-colors shrink-0 inline-flex items-center gap-2 border border-slate-700"
-            title="Trocar operador"
-          >
-             <Home size={18} />
-          </button>
-          <div className="flex flex-col">
-            <span className="text-xl font-black text-white flex items-center gap-2">
-              <MarketplaceLogo marketplace={session?.marketplace} size={20} className="brightness-0 invert"/> {session?.session_code}
-            </span>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">Carimbo de Operação</span>
-          </div>
-        </div>
-        <div className="flex md:items-center gap-4 text-slate-300 pointer-events-none self-end md:self-auto">
-          <div className="w-32 md:w-48 h-2 bg-slate-800 rounded-full overflow-hidden shadow-inner hidden md:block">
-            <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <div className="flex gap-4 font-mono text-sm">
-             <span><strong className="text-white text-base">{progress.items_picked}</strong> / {progress.items_total} un</span>
-             <span><strong className="text-white text-base">{progress.skus_complete}</strong> / {progress.skus_total} sku</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 max-w-5xl mx-auto w-full flex flex-col pt-5 pb-16 px-4 md:px-6 relative outline-none" tabIndex={0} onKeyDown={(e) => { 
+      {/* ── CARD MODAL ─────────────────────────────────────── */}
+      <div className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden" tabIndex={0} onKeyDown={(e) => {
         if (dialog) return
         if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
           inputRef.current?.focus()
         }
       }}>
-        
-        {/* INPUT INVISIVEL / CONTROLADOR DE LEITURA */}
-        {item && (
-          <div className="mb-5 relative w-full h-20 action-rail overflow-hidden group focus-within:border-blue-500 transition-colors">
-             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-300 group-focus-within:text-blue-500">
-               <Zap size={24}/>
-             </div>
-             <input
-               ref={inputRef}
-               className="w-full h-full pl-14 pr-4 bg-transparent outline-none font-mono text-2xl md:text-3xl text-slate-700 font-black placeholder-slate-300 tracking-wide"
-               placeholder="Bipe aqui ou digite SKU manual..."
-               value={barcode}
-               onChange={e => setBarcode(e.target.value)}
-               onKeyDown={handleScan}
-               autoFocus
-               readOnly={false} // Mantém o teclado normal no mobile!
-             />
-             <div className="absolute inset-y-0 right-0 pr-2 flex items-center pointer-events-none opacity-50">
-                {scanMode === 'box' ? <Box size={24} className="text-amber-500"/> : <Check size={24} className="text-blue-500"/>}
-             </div>
-          </div>
-        )}
 
-        {item && (
-          <div className="mb-5 action-rail flex flex-wrap gap-2">
-            <button
-              onClick={() => handleScan(null, item.sku)}
-              className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs md:text-sm tracking-wide hover:bg-blue-700 transition-colors"
-            >
-              Usar SKU Atual: {item.sku}
-            </button>
-            <button
-              onClick={() => { setBarcode(item.sku); focusInput() }}
-              className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-300 text-slate-700 font-bold text-xs md:text-sm tracking-wide hover:bg-slate-200 transition-colors"
-            >
-              Preencher Campo com SKU
-            </button>
+        {/* HEADER */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <button
+            onClick={() => isOverlay ? navigate(-1) : (focusSku ? goBackToItems() : navigate('/sessions'))}
+            className="flex items-center gap-1.5 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors"
+          >
+            <ArrowLeft size={16}/> Voltar
+          </button>
+          <div className="flex flex-col items-center">
+            <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+              <MarketplaceLogo marketplace={session?.marketplace} size={14}/> {session?.session_code}
+            </span>
+            <span className="text-[10px] text-slate-400 font-bold tabular-nums">
+              {progress.items_picked}/{progress.items_total} un · {progress.skus_complete}/{progress.skus_total} sku
+            </span>
           </div>
-        )}
+          <button
+            onClick={() => { localStorage.removeItem('operator'); navigate('/') }}
+            className="text-slate-400 hover:text-slate-700 transition-colors p-1"
+            title="Trocar operador"
+          >
+            <Home size={16}/>
+          </button>
+        </div>
 
-        {/* MODO DE LEITURA (BOTÕES) */}
-        {item && (
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <button onMouseDown={e => e.preventDefault()} onClick={() => { setScanMode('unit'); focusInput() }}
-              className={cn("py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-widest border-2 transition-all flex items-center justify-center gap-2", 
-                scanMode === 'unit' ? "bg-blue-600 text-white border-blue-600 shadow-md transform scale-100" : "bg-white text-slate-400 border-slate-200 opacity-70 scale-95 hover:opacity-100"
-              )}>
-              <div className="w-5 h-5 rounded-full bg-black/20 text-white flex items-center justify-center font-black leading-none pb-[1px]">1</div> 
-              Bipe Unitário
-            </button>
-            <button onMouseDown={e => e.preventDefault()} onClick={() => { setScanMode('box'); focusInput() }}
-              className={cn("py-3 px-4 rounded-xl text-xs font-bold uppercase tracking-widest border-2 transition-all flex items-center justify-center gap-2", 
-                scanMode === 'box' ? "bg-amber-500 text-white border-amber-500 shadow-md transform scale-100" : "bg-white text-slate-400 border-slate-200 opacity-70 scale-95 hover:opacity-100"
-              )}>
-              <Box size={20} strokeWidth={2.5}/> Caixa
-            </button>
-          </div>
-        )}
-        
-        {item && scanMode === 'box' && (
-          <p className="bg-amber-50 text-amber-700 border-l-4 border-amber-500 rounded-r-xl p-4 text-sm font-bold shadow-sm mb-6 flex items-start gap-2 animate-in fade-in">
-             <Info size={18} className="shrink-0 mt-0.5" /> 1 bipe equivalerá a 1 caixa cheia. O sistema informará a necessidade de bipar apenas as caixas restantes.
-          </p>
-        )}
+        {/* BARRA DE PROGRESSO GERAL */}
+        <div className="h-1 bg-slate-100">
+          <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${pct}%` }}/>
+        </div>
 
-        {/* CARD PRINCIPAL DO ITEM */}
         {item ? (
-          <div className={cn("panel-elevated flex flex-col shrink-0 overflow-hidden transition-all duration-300", 
-            "rounded-3xl border-t-[6px]",
-            item.status === 'in_progress' ? 'border-blue-500' :
-            item.status === 'complete' ? 'border-emerald-500' :
-            item.status === 'out_of_stock' ? 'border-red-500' : 'border-slate-300'
-          )}>
-            <div className="p-6 md:p-8 relative">
-              
-              <div className="flex justify-between items-start mb-6 pr-24">
-                <div>
-                  <span className="section-kicker flex items-center gap-1.5"><Zap size={12}/> O que você precisa separar agora</span>
-                  <p className="text-4xl md:text-5xl font-black text-slate-800 tracking-tight mt-2 break-all">{item.sku}</p>
-                  <p className="text-lg md:text-xl font-medium text-slate-500 mt-3 line-clamp-3 leading-relaxed">{item.description}</p>
-                </div>
-              </div>
-              
-              <div className={cn("absolute top-6 right-6 px-4 py-2 rounded-xl text-sm font-black uppercase tracking-widest", STATUS_COLOR[item.status])}>
+          <div className="p-5 flex flex-col gap-4">
+
+            {/* SKU + DESCRIÇÃO */}
+            <div className="relative pr-20">
+              <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest flex items-center gap-1 mb-1">
+                <Zap size={10}/> Separar agora
+              </span>
+              <p className="text-2xl font-black text-slate-800 break-all leading-tight">{item.sku}</p>
+              <p className="text-sm text-slate-500 mt-1 line-clamp-2 leading-snug">{item.description}</p>
+              <div className={cn("absolute top-0 right-0 px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wide", STATUS_COLOR[item.status])}>
                 {STATUS_LABEL[item.status]}
               </div>
-
-              {/* BARRA DE PROGRESSO DO ITEM */}
-              <div className="mt-8 metric-tile bg-slate-50 rounded-2xl">
-                <div className="flex justify-between items-end mb-2">
-                  <div>
-                    <span className={cn("text-6xl font-black tabular-nums tracking-tighter leading-none", 
-                      item.qty_picked >= item.qty_required ? "text-emerald-500" : "text-blue-600"
-                    )}>{item.qty_picked}</span>
-                    <span className="text-xl text-slate-400 font-bold ml-2 tabular-nums">/ {item.qty_required}</span>
-                  </div>
-                  {item.qty_picked === 0 && <span className="text-sm font-bold text-slate-400">Pendente de Leitura</span>}
-                </div>
-                <div className="h-4 bg-slate-200 rounded-full overflow-hidden w-full shadow-inner">
-                  <div
-                    className={cn("h-full rounded-full transition-all duration-300 ease-out", 
-                      item.qty_picked >= item.qty_required ? 'bg-emerald-500' : 'bg-blue-500'
-                    )}
-                    style={{ width: `${Math.min((item.qty_picked / item.qty_required) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* BOTÕES DE AÇÃO INFERIORES */}
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                <button
-                  onClick={handleUndo} disabled={item.qty_picked === 0}
-                  className="py-5 flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 disabled:opacity-20 transition-all group active:scale-95"
-                >
-                  <RotateCcw size={22} className="group-hover:-rotate-90 transition-transform"/>
-                  <span className="text-[11px] font-black uppercase tracking-widest">Desfazer Bip</span>
-                </button>
-                <button
-                  onClick={handleOutOfStock}
-                  className="py-5 flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-red-100 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all group active:scale-95 bg-red-50/30"
-                >
-                  <XCircle size={22} strokeWidth={2.5}/>
-                  <span className="text-[11px] font-black uppercase tracking-widest">Sem Estoque</span>
-                </button>
-              </div>
-
-              {/* ZONA DE IMPRESSÃO */}
-              {item.labels_ready && (
-                <div className="mt-6 border-t-[3px] border-slate-100 border-dashed pt-6 flex flex-col gap-3">
-                  {printStatus === null && (
-                    <button onClick={handlePrint} className="py-5 w-full bg-emerald-500 text-white rounded-2xl font-black text-xl hover:bg-emerald-600 active:scale-95 transition-all shadow-md flex justify-center items-center gap-3">
-                      <Printer size={24} /> IMPRIMIR {item.qty_required} ETIQUETAS
-                    </button>
-                  )}
-                  {printStatus === 'printing' && (
-                    <div className="py-4 px-5 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-center gap-3 text-blue-700 font-bold">
-                       <RefreshCcw size={20} className="animate-spin" /> Transferindo PPL p/ Zebra...
-                    </div>
-                  )}
-                  {printStatus === 'done' && (
-                    <div className="flex flex-col md:flex-row gap-3">
-                       <div className="flex-1 py-4 px-5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3 text-emerald-800 font-bold">
-                          <CheckCircle2 size={24} className="text-emerald-500" /> Lote de etiquetas descarregado
-                       </div>
-                       <button onClick={handleForcePrint} className="py-4 px-6 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 active:scale-95 transition-all flex items-center justify-center gap-2">
-                          <RefreshCcw size={18}/> Reimprimir Error
-                       </button>
-                    </div>
-                  )}
-                  {printStatus === 'error' && (
-                    <div className="flex flex-col md:flex-row gap-3">
-                       <div className="flex-1 py-4 px-5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-3 text-red-800 font-medium">
-                          <AlertCircle size={24} className="text-red-500 shrink-0" />
-                          <div className="text-sm">Falha de conexão serial com HUB 9100. Verifique se o app Windows está minimizado no relógio da máquina.</div>
-                       </div>
-                       <div className="flex flex-col gap-2 shrink-0">
-                        <button onClick={handlePrint} className="py-3 px-6 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 active:scale-95 transition-all text-xs uppercase">
-                            Reiniciar Print
-                        </button>
-                        <button onClick={handleFixSpooler} disabled={fixingSpooler} className="py-3 px-6 bg-slate-800 text-white font-bold rounded-xl hover:bg-black active:scale-95 transition-all text-xs uppercase flex items-center justify-center gap-2">
-                            {fixingSpooler ? <RefreshCcw size={14} className="animate-spin"/> : <AlertTriangle size={14}/>} Fix Spooler
-                        </button>
-                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
+
+            {/* MODO DE LEITURA */}
+            <div className="grid grid-cols-2 gap-2">
+              <button onMouseDown={e => e.preventDefault()} onClick={() => { setScanMode('unit'); focusInput() }}
+                className={cn("py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-widest border-2 transition-all flex items-center justify-center gap-2",
+                  scanMode === 'unit' ? "bg-blue-600 text-white border-blue-600 shadow-md" : "bg-white text-slate-400 border-slate-200 opacity-70 hover:opacity-100"
+                )}>
+                <div className="w-4 h-4 rounded-full bg-black/20 text-white flex items-center justify-center font-black text-[10px]">1</div>
+                Bipe Unitário
+              </button>
+              <button onMouseDown={e => e.preventDefault()} onClick={() => { setScanMode('box'); focusInput() }}
+                className={cn("py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-widest border-2 transition-all flex items-center justify-center gap-2",
+                  scanMode === 'box' ? "bg-amber-500 text-white border-amber-500 shadow-md" : "bg-white text-slate-400 border-slate-200 opacity-70 hover:opacity-100"
+                )}>
+                <Box size={16} strokeWidth={2.5}/> Caixa
+              </button>
+            </div>
+
+            {/* INPUT */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Zap size={16}/>
+              </div>
+              <input
+                ref={inputRef}
+                className="w-full h-12 pl-10 pr-10 border-2 border-slate-200 rounded-2xl outline-none font-mono text-base text-slate-700 font-black placeholder-slate-300 focus:border-blue-400 transition-colors bg-slate-50 tracking-wide"
+                placeholder="BIPE O CÓDIGO DE BARRAS AQUI..."
+                value={barcode}
+                onChange={e => setBarcode(e.target.value)}
+                onKeyDown={handleScan}
+                autoFocus
+                readOnly={false}
+              />
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none opacity-40">
+                {scanMode === 'box' ? <Box size={16} className="text-amber-500"/> : <Check size={16} className="text-blue-500"/>}
+              </div>
+            </div>
+
+            {/* AVISO MODO CAIXA */}
+            {scanMode === 'box' && (
+              <p className="bg-amber-50 text-amber-700 border-l-4 border-amber-500 rounded-r-xl p-2 text-xs font-bold flex items-start gap-2 -mt-2 animate-in fade-in">
+                <Info size={13} className="shrink-0 mt-0.5"/> 1 bipe = 1 caixa cheia. Sistema informará caixas restantes.
+              </p>
+            )}
+
+            {/* CONTADOR */}
+            <div className="text-center py-3 bg-slate-50 rounded-2xl border border-slate-100">
+              <div className="flex items-end justify-center gap-2">
+                <span className={cn("text-5xl font-black tabular-nums tracking-tighter leading-none",
+                  item.qty_picked >= item.qty_required ? "text-emerald-500" : "text-blue-600"
+                )}>{item.qty_picked}</span>
+                <span className="text-lg text-slate-400 font-bold mb-1">/ {item.qty_required} un</span>
+              </div>
+              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mx-4 mt-3">
+                <div
+                  className={cn("h-full rounded-full transition-all duration-300",
+                    item.qty_picked >= item.qty_required ? 'bg-emerald-500' : 'bg-blue-500'
+                  )}
+                  style={{ width: `${Math.min((item.qty_picked / item.qty_required) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* BOTÕES DE AÇÃO */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleOutOfStock}
+                className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-red-700 active:scale-[0.98] transition-all shadow-md"
+              >
+                <XCircle size={18} strokeWidth={2.5}/> SEM ESTOQUE (RELATÓRIO)
+              </button>
+              <button
+                onClick={handleUndo} disabled={item.qty_picked === 0}
+                className="w-full py-3 border-2 border-slate-200 rounded-2xl font-bold text-sm text-slate-500 flex items-center justify-center gap-2 hover:bg-slate-50 disabled:opacity-20 active:scale-[0.98] transition-all group"
+              >
+                <RotateCcw size={15} className="group-hover:-rotate-90 transition-transform"/> Desfazer Último Bip
+              </button>
+            </div>
+
+            {/* ZONA DE IMPRESSÃO */}
+            {item.labels_ready && (
+              <div className="border-t-2 border-slate-100 border-dashed pt-4 flex flex-col gap-2">
+                {printStatus === null && (
+                  <button onClick={handlePrint} className="py-3 w-full bg-emerald-500 text-white rounded-2xl font-black text-sm hover:bg-emerald-600 active:scale-[0.98] transition-all shadow-md flex justify-center items-center gap-2">
+                    <Printer size={16}/> IMPRIMIR {item.qty_required} ETIQUETAS
+                  </button>
+                )}
+                {printStatus === 'printing' && (
+                  <div className="py-3 px-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center justify-center gap-2 text-blue-700 font-bold text-sm">
+                    <RefreshCcw size={16} className="animate-spin"/> Transferindo para Zebra...
+                  </div>
+                )}
+                {printStatus === 'done' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="py-3 px-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-emerald-800 font-bold text-sm">
+                      <CheckCircle2 size={18} className="text-emerald-500"/> Etiquetas descarregadas
+                    </div>
+                    <button onClick={handleForcePrint} className="py-2 px-4 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 active:scale-95 text-xs flex items-center justify-center gap-1.5 transition-all">
+                      <RefreshCcw size={13}/> Reimprimir
+                    </button>
+                  </div>
+                )}
+                {printStatus === 'error' && (
+                  <div className="flex flex-col gap-2">
+                    <div className="py-3 px-4 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2 text-red-800 text-xs font-medium">
+                      <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5"/>
+                      Falha de conexão com HUB 9100. Verifique o app Windows.
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={handlePrint} className="py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 text-xs uppercase active:scale-95 transition-all">
+                        Reiniciar Print
+                      </button>
+                      <button onClick={handleFixSpooler} disabled={fixingSpooler} className="py-2 bg-slate-800 text-white font-bold rounded-xl hover:bg-black text-xs uppercase flex items-center justify-center gap-1 active:scale-95 transition-all">
+                        {fixingSpooler ? <RefreshCcw size={12} className="animate-spin"/> : <AlertTriangle size={12}/>} Fix Spooler
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
-          <CompletionSummary items={allItems} onBack={() => navigate('/sessions')} />
-        )}
-
-        {/* RECENTES */}
-        {item && recentItems.length > 0 && (
-          <div className="mt-10">
-            <h3 className="section-kicker mb-4 flex items-center gap-2"><History size={14}/> Acabaram de Passar</h3>
-            <div className="flex flex-col gap-3">
-              {recentItems.map(ri => (
-                <div key={ri.sku} className="metric-tile text-sm flex justify-between items-center">
-                  <div className="flex items-center gap-4">
-                    <div className={cn("w-2 h-2 rounded-full ring-4 shadow-sm", 
-                      ri.status === 'complete' ? "bg-emerald-500 ring-emerald-100" : ri.status === 'out_of_stock' ? "bg-red-500 ring-red-100" : "bg-amber-500 ring-amber-100"
-                    )}/>
-                    <span className="font-mono font-bold text-slate-700">{ri.sku}</span>
-                    <span className="bg-slate-100 px-2.5 py-1 rounded-md text-slate-500 font-bold tabular-nums">{ri.qty_picked} u.</span>
-                    {ri.shortage_qty > 0 && <span className="text-red-600 bg-red-50 px-2.5 py-1 rounded-md font-bold">{ri.shortage_qty} falta</span>}
-                  </div>
-                  <button onClick={() => handleReopen(ri.sku)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-1.5 rounded-lg font-bold transition-colors">Abrir Correção</button>
-                </div>
-              ))}
-            </div>
+          <div className="p-5">
+            <CompletionSummary items={allItems} onBack={() => navigate('/sessions')} />
           </div>
         )}
       </div>
 
-      {/* ── MODAIS REFATORADOS FIORI ───────────────────────────────── */}
+      {/* RECENTES — abaixo do card */}
+      {item && recentItems.length > 0 && (
+        <div className="w-full max-w-sm mt-4">
+          <h3 className="section-kicker mb-2 flex items-center gap-2"><History size={12}/> Acabaram de Passar</h3>
+          <div className="flex flex-col gap-2">
+            {recentItems.map(ri => (
+              <div key={ri.sku} className="metric-tile text-sm flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-2 h-2 rounded-full ring-4 shadow-sm",
+                    ri.status === 'complete' ? "bg-emerald-500 ring-emerald-100" : ri.status === 'out_of_stock' ? "bg-red-500 ring-red-100" : "bg-amber-500 ring-amber-100"
+                  )}/>
+                  <span className="font-mono font-bold text-slate-700 text-xs">{ri.sku}</span>
+                  <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-500 font-bold tabular-nums text-xs">{ri.qty_picked} u.</span>
+                  {ri.shortage_qty > 0 && <span className="text-red-600 bg-red-50 px-2 py-0.5 rounded font-bold text-xs">{ri.shortage_qty} falta</span>}
+                </div>
+                <button onClick={() => handleReopen(ri.sku)} className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2.5 py-1 rounded-lg font-bold text-xs transition-colors">Abrir Correção</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAIS ─────────────────────────────────────────────────── */}
       {dialog?.type === 'oos_confirm' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-sm w-full flex flex-col gap-6 animate-in zoom-in-95">
@@ -741,11 +723,11 @@ export default function Picking() {
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Motivo do Saldo Remanescente (Opcional)</label>
-              <textarea 
-                value={dialog.data.notes} 
+              <textarea
+                value={dialog.data.notes}
                 onChange={e => setDialog({ ...dialog, data: { ...dialog.data, notes: e.target.value } })}
                 autoFocus
-                placeholder="Exemplo prático..." 
+                placeholder="Exemplo prático..."
                 className="w-full text-sm font-medium border-2 border-slate-200 rounded-xl p-4 focus:outline-none focus:border-red-400 min-h-[100px] resize-none"
               />
             </div>
@@ -759,7 +741,7 @@ export default function Picking() {
 
       {dialog?.type === 'defect_adjust' && item && <DefectAdjustDialog item={item} onConfirm={handleDefectAdjustConfirm} onCancel={() => { setDialog(null); focusInput() }} />}
       {dialog?.type === 'unknown' && <UnknownBarcodeDialog barcode={dialog.data.barcode} currentSku={item?.sku} onAdd={() => handleAddBarcode(dialog.data.barcode)} onSkip={() => { setDialog(null); focusInput() }} />}
-      
+
       {dialog?.type === 'wrong_session' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-3xl shadow-2xl p-6 md:p-8 max-w-sm w-full flex flex-col gap-6 animate-in zoom-in-95">
@@ -781,7 +763,7 @@ export default function Picking() {
 
       {dialog?.type === 'box_qty' && item && <BoxQtyDialog item={item} onConfirm={handleBoxQtyConfirm} onCancel={() => { setDialog(null); focusInput() }} />}
       {dialog?.type === 'reprint_qty' && item && <ReprintQtyDialog item={item} defaultQty={dialog.data.qty} onConfirm={handleReprintConfirm} onCancel={() => { setDialog(null); focusInput() }} />}
-      
+
       {dialog?.type === 'wrong_sku' && (
         <WrongSkuDialog scannedItem={dialog.data.item} expectedSku={dialog.data.expected_sku} onCancel={() => { setDialog(null); focusInput() }} onConfirm={async () => {
           const code = dialog.data.barcode

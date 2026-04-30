@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import OperatorsManagement from './pages/OperatorsManagement'
@@ -14,13 +14,20 @@ import GemmaDashboard from './pages/GemmaDashboard'
 import SeparacaoOlist from './pages/SeparacaoOlist'
 import PickingListsHistory from './pages/PickingListsHistory'
 import PickingListDetail from './pages/PickingListDetail'
+import LandingNVS from './pages/LandingNVS'
+import SiteNJS from './pages/SiteNJS'
 
-export default function App() {
+function AppRoutes() {
+  const location = useLocation()
+  const backgroundLocation = location.state?.backgroundLocation
+
   return (
-    <BrowserRouter>
-      <Routes>
+    <>
+      {/* Rotas principais — quando há overlay, renderiza o fundo (backgroundLocation) */}
+      <Routes location={backgroundLocation || location}>
         <Route path="/" element={<Login />} />
-        {/* Usamos o layout agnóstico para as telas que precisam de navegação */}
+        <Route path="/landing" element={<LandingNVS />} />
+        <Route path="/njs" element={<SiteNJS />} />
         <Route element={<Layout />}>
           <Route path="/sessions" element={<SessionSelect />} />
           <Route path="/sessions/:sessionId/items" element={<SessionItems />} />
@@ -38,6 +45,21 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
+
+      {/* Overlay — Picking renderizado como modal sobre o fundo */}
+      {backgroundLocation && (
+        <Routes>
+          <Route path="/picking/:sessionId" element={<Picking />} />
+        </Routes>
+      )}
+    </>
+  )
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   )
 }

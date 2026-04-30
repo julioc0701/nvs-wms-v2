@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import MarketplaceLogo from '../components/MarketplaceLogo'
 
@@ -25,6 +25,7 @@ const RESETTABLE = ['complete', 'partial', 'out_of_stock', 'in_progress']
 export default function SessionItems() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const operator = JSON.parse(localStorage.getItem('operator') || 'null')
 
   const [session, setSession] = useState(null)
@@ -48,7 +49,9 @@ export default function SessionItems() {
   }
 
   function goToPicking(sku) {
-    navigate(`/picking/${sessionId}?sku=${encodeURIComponent(sku)}`)
+    navigate(`/picking/${sessionId}?sku=${encodeURIComponent(sku)}`, {
+      state: { backgroundLocation: location }
+    })
   }
 
   async function handleScan(e) {

@@ -2,6 +2,8 @@ from PIL import Image, ImageDraw
 import numpy as np
 import os
 
+ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def final_aggressive_cleaning(input_path, output_path, tolerance=200):
     if not os.path.exists(input_path):
         print(f"Arquivo não encontrado: {input_path}")
@@ -60,11 +62,9 @@ def final_aggressive_cleaning(input_path, output_path, tolerance=200):
     print(f"Limpeza AGRESSIVA concluída: {output_path}")
 
 if __name__ == "__main__":
-    assets_dir = r"C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2\frontend\src\assets"
-    
     # Limpar com tolerância maior de 200
-    final_aggressive_cleaning(os.path.join(assets_dir, "logo-novaes.png"), os.path.join(assets_dir, "logo-novaes-v3.png"), tolerance=200)
+    final_aggressive_cleaning(os.path.join(ASSETS_DIR, "logo-novaes.png"), os.path.join(ASSETS_DIR, "logo-novaes-v3.png"), tolerance=200)
     
     # Reprocessar ML e Shopee com a mesma lógica agressiva
-    final_aggressive_cleaning(os.path.join(assets_dir, "ml-logo-raw.png"), os.path.join(assets_dir, "ml-logo-v3.png"), tolerance=220)
-    final_aggressive_cleaning(os.path.join(assets_dir, "shopee-logo-raw.png"), os.path.join(assets_dir, "shopee-logo-v3.png"), tolerance=220)
+    final_aggressive_cleaning(os.path.join(ASSETS_DIR, "ml-logo-raw.png"), os.path.join(ASSETS_DIR, "ml-logo-v3.png"), tolerance=220)
+    final_aggressive_cleaning(os.path.join(ASSETS_DIR, "shopee-logo-raw.png"), os.path.join(ASSETS_DIR, "shopee-logo-v3.png"), tolerance=220)

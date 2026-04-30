@@ -1,5 +1,8 @@
 from PIL import Image
 import numpy as np
+import os
+
+ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def clean_logo(input_path, output_path):
     # Abrir a imagem
@@ -51,6 +54,6 @@ def clean_logo(input_path, output_path):
     print(f"Limpeza concluída! Resultado salvo em {output_path}")
 
 if __name__ == "__main__":
-    path = r"C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2\frontend\src\assets\logo-novaes.png"
-    out = r"C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2\frontend\src\assets\logo-novaes-clean.png"
+    path = os.path.join(ASSETS_DIR, "logo-novaes.png")
+    out = os.path.join(ASSETS_DIR, "logo-novaes-clean.png")
     clean_logo(path, out)

@@ -58,13 +58,25 @@ export function FeedbackProvider({ children }) {
     <FeedbackContext.Provider value={value}>
       {children}
 
+      {/* Erros — centralizados na tela, grandes, visíveis para o operador */}
+      <div className="fixed inset-x-0 top-1/3 z-[120] flex flex-col items-center gap-3 pointer-events-none px-4">
+        {toasts.filter(t => t.type === 'error').map(t => (
+          <div
+            key={t.id}
+            className="rounded-2xl border-2 border-red-300 bg-red-600 text-white px-8 py-5 text-xl font-black shadow-2xl pointer-events-auto text-center w-[min(92vw,480px)]"
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Outros toasts — canto superior direito */}
       <div className="fixed top-4 right-4 z-[120] flex flex-col gap-2 w-[min(92vw,360px)] pointer-events-none">
-        {toasts.map(t => (
+        {toasts.filter(t => t.type !== 'error').map(t => (
           <div
             key={t.id}
             className={[
               'rounded-xl border px-4 py-3 text-sm font-semibold shadow-lg pointer-events-auto',
-              t.type === 'error' ? 'bg-red-50 text-red-700 border-red-200' : '',
               t.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : '',
               t.type === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' : '',
               t.type === 'info' ? 'bg-blue-50 text-blue-700 border-blue-200' : '',

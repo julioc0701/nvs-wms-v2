@@ -36,17 +36,19 @@ def process_scan(
     Possible statuses: ok | complete | excess | unknown_barcode | wrong_sku | ambiguous_barcode
     """
     skus = resolve_barcode(db, barcode)
-    
-    # Se não encontrar via barcode, tenta tratar o input diretamente como o SKU (fallback manual)
+
+    # Barcode não vinculado → unknown_barcode
     if not skus:
-        sku = barcode
-        skus = [sku]
-        is_barcode = False
-    else:
-        is_barcode = True
+        return {"status": "unknown_barcode", "barcode": barcode}
+
+    # Barcode igual ao próprio SKU → rejeita (SKU não é barcode válido)
+    if len(skus) == 1 and barcode.strip().upper() == skus[0].strip().upper():
+        return {"status": "unknown_barcode", "barcode": barcode}
+
+    is_barcode = True
 
     # --- NOVO: PRIORIDADE DE FOCO ---
-    # Se temos um SKU focado, e esse código NÃO está vinculado a ele, 
+    # Se temos um SKU focado, e esse código NÃO está vinculado a ele,
     # ignoramos qualquer outro SKU global para forçar o vínculo local.
     if focus_sku:
         if focus_sku.upper() not in [s.upper() for s in skus]:
@@ -59,11 +61,8 @@ def process_scan(
         .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
         .all()
     )
-    
+
     if not items:
-        # Se não é um barcode conhecido E não é um SKU desta sessão, é desconhecido
-        if not is_barcode:
-            return {"status": "unknown_barcode", "barcode": barcode}
             
         # Barcode é conhecido mas pertence a SKU(s) que não estão nesta sessão
         # Pegamos o primeiro SKU para prover uma descrição de erro (legado)
@@ -195,22 +194,20 @@ def process_scan_box(
     Same barcode validation as process_scan (unknown_barcode / wrong_sku / excess).
     """
     skus = resolve_barcode(db, barcode)
+    # Barcode não vinculado → unknown_barcode
     if not skus:
-        sku = barcode
-        skus = [sku]
-        is_barcode = False
-    else:
-        is_barcode = True
+        return {"status": "unknown_barcode", "barcode": barcode}
+    # Barcode igual ao próprio SKU → rejeita
+    if len(skus) == 1 and barcode.strip().upper() == skus[0].strip().upper():
+        return {"status": "unknown_barcode", "barcode": barcode}
 
     items = (
         db.query(PickingItem)
         .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
         .all()
     )
-    
+
     if not items:
-        if not is_barcode:
-            return {"status": "unknown_barcode", "barcode": barcode}
             
         # --- NOVO: Tenta localizar esse SKU em outras sessões para sugerir transferência ---
         other_rows = (

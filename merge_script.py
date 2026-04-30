@@ -1,8 +1,11 @@
-import shutil
 import os
+import shutil
+from pathlib import Path
 
-src_base = r'C:\Users\julio\OneDrive\Documentos\Antigra\Codex\nvs-wms-code-isolated'
-dst_base = r'C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2'
+ROOT_DIR = Path(__file__).resolve().parent
+ANTIGRA_DIR = ROOT_DIR.parent
+src_base = ANTIGRA_DIR / 'Codex' / 'nvs-wms-code-isolated'
+dst_base = ROOT_DIR
 
 ignores = {'node_modules', '.git', '__pycache__', '.claude', 'dist', '.ISOLADO', '.vscode'}
 
@@ -21,6 +24,5 @@ def copytree_custom(src, dst):
                 print(f"Copied {d}")
             except Exception as e:
                 print(f"Failed {s}: {e}")
-
-copytree_custom(src_base, dst_base)
+copytree_custom(os.fspath(src_base), os.fspath(dst_base))
 print("Merge complete!")

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Q
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch
+from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch, PrintJob
 from parsers.ml_pdf_parser import parse_picking_pdf
 from parsers.ml_zpl_parser import parse_zpl_file, get_ml_barcodes
 from services import picking as svc
@@ -86,6 +86,7 @@ def list_batches(db: DBSession = Depends(get_db)):
             "full_date": b.full_date.isoformat(),
             "seq": b.seq,
             "status": b.status,
+            "marketplace": b.marketplace,
             "created_at": b.created_at.isoformat(),
             "total_items": total_items,
             "total_picked": total_picked,
@@ -93,6 +94,26 @@ def list_batches(db: DBSession = Depends(get_db)):
             "sessions": sess_data,
         })
     return result
+
+
+@router.delete("/batches/{batch_id}", status_code=200)
+def delete_batch(batch_id: int, db: DBSession = Depends(get_db)):
+    """Delete a batch and all its sessions, items and scan events."""
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(404, "Lote não encontrado")
+    session_ids = [s.id for s in db.query(Session.id).filter(Session.batch_id == batch_id).all()]
+    if session_ids:
+        item_ids = [i.id for i in db.query(PickingItem.id).filter(PickingItem.session_id.in_(session_ids)).all()]
+        if item_ids:
+            db.query(ScanEvent).filter(ScanEvent.picking_item_id.in_(item_ids)).delete(synchronize_session=False)
+        db.query(PrintJob).filter(PrintJob.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(Label).filter(Label.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(PickingItem).filter(PickingItem.session_id.in_(session_ids)).delete(synchronize_session=False)
+        db.query(Session).filter(Session.id.in_(session_ids)).delete(synchronize_session=False)
+    db.delete(batch)
+    db.commit()
+    return {"status": "ok", "deleted_sessions": len(session_ids)}
 
 
 @router.post("/batches/{batch_id}/archive")
@@ -134,7 +155,7 @@ async def upload_session(
         labels_data = []
 
         if marketplace == "shopee":
-            from parsers.shopee_pdf_parser import parse_picking_pdf as shopee_parse
+            from parsers.shopee import parse_picking_pdf as shopee_parse
             from parsers.shopee_zpl_generator import generate_shopee_paired_zpl
 
             items_data = await asyncio.wait_for(
@@ -779,6 +800,7 @@ def delete_session(session_id: int, db: DBSession = Depends(get_db)):
     item_ids = [i.id for i in db.query(PickingItem.id).filter(PickingItem.session_id == session_id).all()]
     if item_ids:
         db.query(ScanEvent).filter(ScanEvent.picking_item_id.in_(item_ids)).delete(synchronize_session=False)
+    db.query(PrintJob).filter(PrintJob.session_id == session_id).delete(synchronize_session=False)
     db.query(Label).filter(Label.session_id == session_id).delete(synchronize_session=False)
     db.query(PickingItem).filter(PickingItem.session_id == session_id).delete(synchronize_session=False)
     db.delete(sess)

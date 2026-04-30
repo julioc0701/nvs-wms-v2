@@ -2,6 +2,8 @@ from PIL import Image
 import numpy as np
 import os
 
+ASSETS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def process_logo_final(input_path, output_path):
     if not os.path.exists(input_path):
         print(f"Arquivo não encontrado: {input_path}")
@@ -31,10 +33,8 @@ def process_logo_final(input_path, output_path):
     print(f"Processamento concluído: {output_path}")
 
 if __name__ == "__main__":
-    assets_dir = r"C:\Users\julio\OneDrive\Documentos\Antigra\warehouse-picker v2\frontend\src\assets"
-    
     # ML
-    process_logo_final(os.path.join(assets_dir, "ml-logo-raw.png"), os.path.join(assets_dir, "ml-logo.png"))
+    process_logo_final(os.path.join(ASSETS_DIR, "ml-logo-raw.png"), os.path.join(ASSETS_DIR, "ml-logo.png"))
     
     # Shopee
-    process_logo_final(os.path.join(assets_dir, "shopee-logo-raw.png"), os.path.join(assets_dir, "shopee-logo.png"))
+    process_logo_final(os.path.join(ASSETS_DIR, "shopee-logo-raw.png"), os.path.join(ASSETS_DIR, "shopee-logo.png"))
