@@ -235,8 +235,19 @@ async def receive_frontend_log(request: Request):
     return {"ok": True}
 
 
-# Serve React frontend (production build)
-# This must come AFTER all /api routes
+# Serve React frontend (SPA) — catch-all fallback para rotas do React Router
+# StaticFiles(html=True) sozinho não resolve deep links (/shortage-report, etc.)
+from fastapi.responses import FileResponse as _FR
+from starlette.staticfiles import StaticFiles as _SF
+
+class _SPAFiles(_SF):
+    """StaticFiles com fallback para index.html em rotas desconhecidas (SPA)."""
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except Exception:
+            return _FR(os.path.join(self.directory, "index.html"))
+
 _static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(_static_dir):
-    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
+    app.mount("/", _SPAFiles(directory=_static_dir, html=True), name="static")
