@@ -849,10 +849,14 @@ export default function Supervisor() {
 
   const visibleBatches = batches.filter(b => normalizeMarket(b.marketplace) === normalizeMarket(marketplaceView))
   const visibleSessions = sessions.filter(s => normalizeMarket(s.marketplace) === normalizeMarket(marketplaceView))
+  const visibleShortages = shortageItems.filter(i =>
+    normalizeMarket(i.marketplace) === normalizeMarket(marketplaceView) &&
+    i.status === 'pendente'
+  )
   const shortageStats = {
-    totalUnits: shortageItems.reduce((sum, i) => sum + (i.quantity || 0), 0),
-    skuCount: new Set(shortageItems.map(i => i.sku)).size,
-    sessionCount: new Set(shortageItems.map(i => i.list_id)).size,
+    totalUnits: visibleShortages.reduce((sum, i) => sum + (i.quantity || 0), 0),
+    skuCount: new Set(visibleShortages.map(i => i.sku)).size,
+    sessionCount: new Set(visibleShortages.map(i => i.list_id)).size,
   }
 
   return (

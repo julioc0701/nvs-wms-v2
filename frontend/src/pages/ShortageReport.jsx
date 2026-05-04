@@ -19,7 +19,7 @@ export default function ShortageReport() {
   const navigate = useNavigate()
   const [shortages, setShortages] = useState([])
   const [loading, setLoading] = useState(true)
-  const [expandedGroups, setExpandedGroups] = useState({ full: true, organico: true })
+  const [expandedGroups, setExpandedGroups] = useState({ ml: true, shopee: true, organico: true })
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
   const [deletingAll, setDeletingAll] = useState(false)
 
@@ -32,7 +32,8 @@ export default function ShortageReport() {
 
   useEffect(() => { load() }, [])
 
-  const fullGroup    = shortages.filter(s => s.category === 'full')
+  const mlGroup      = shortages.filter(s => s.category === 'full' && s.marketplace === 'ml')
+  const shopeeGroup  = shortages.filter(s => s.category === 'full' && s.marketplace === 'shopee')
   const organicGroup = shortages.filter(s => s.category === 'organico')
   // Total do header conta só pendentes
   const totalPendente = shortages
@@ -138,18 +139,29 @@ export default function ShortageReport() {
         ) : (
           <>
             <GroupSection
-              title="Full Shopee / ML"
-              subtitle="Itens faltantes nas sessões de carregamento do Full"
-              items={fullGroup}
-              expanded={expandedGroups.full}
-              onToggle={() => toggleGroup('full')}
-              icon={<LayoutGrid className="text-blue-500" size={24} />}
-              color="blue"
+              title="Mercado Livre Full"
+              subtitle="Itens faltantes nas sessões de carregamento do Full Mercado Livre"
+              items={mlGroup}
+              expanded={expandedGroups.ml}
+              onToggle={() => toggleGroup('ml')}
+              icon={<LayoutGrid className="text-yellow-500" size={24} />}
+              color="yellow"
               onToggleStatus={handleToggleStatus}
               onDelete={handleDelete}
             />
             <GroupSection
-              title="Orgânico"
+              title="Shopee Full"
+              subtitle="Itens faltantes nas sessões de carregamento do Full Shopee"
+              items={shopeeGroup}
+              expanded={expandedGroups.shopee}
+              onToggle={() => toggleGroup('shopee')}
+              icon={<LayoutGrid className="text-orange-500" size={24} />}
+              color="orange"
+              onToggleStatus={handleToggleStatus}
+              onDelete={handleDelete}
+            />
+            <GroupSection
+              title="Orgânico (Tiny)"
               subtitle="Itens faltantes nas listas de separação avulsas/Tiny"
               items={organicGroup}
               expanded={expandedGroups.organico}
@@ -202,7 +214,15 @@ export default function ShortageReport() {
   )
 }
 
+const COLOR_CLASSES = {
+  blue:    { bg50: 'bg-blue-50',    border100: 'border-blue-100',    text600: 'text-blue-600',    bg100: 'bg-blue-100',    hover200: 'hover:bg-blue-200' },
+  emerald: { bg50: 'bg-emerald-50', border100: 'border-emerald-100', text600: 'text-emerald-600', bg100: 'bg-emerald-100', hover200: 'hover:bg-emerald-200' },
+  yellow:  { bg50: 'bg-yellow-50',  border100: 'border-yellow-100',  text600: 'text-yellow-600',  bg100: 'bg-yellow-100',  hover200: 'hover:bg-yellow-200' },
+  orange:  { bg50: 'bg-orange-50',  border100: 'border-orange-100',  text600: 'text-orange-600',  bg100: 'bg-orange-100',  hover200: 'hover:bg-orange-200' },
+}
+
 function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color, onToggleStatus, onDelete }) {
+  const c = COLOR_CLASSES[color] || COLOR_CLASSES.blue
   const totalPendente = items
     .filter(s => s.status === 'pendente')
     .reduce((a, s) => a + s.quantity, 0)
@@ -212,7 +232,7 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
     <div className="space-y-4">
       <div className="flex items-center justify-between group">
         <div className="flex items-center gap-4">
-           <div className={`p-3 bg-${color}-50 rounded-2xl shadow-sm border border-${color}-100`}>
+           <div className={`p-3 ${c.bg50} rounded-2xl shadow-sm border ${c.border100}`}>
              {icon}
            </div>
            <div>
@@ -223,7 +243,7 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
 
         <div className="flex items-center gap-4">
           <div className="text-right">
-            <span className={`text-lg font-black text-${color}-600 tabular-nums`}>
+            <span className={`text-lg font-black ${c.text600} tabular-nums`}>
               {totalPendente.toFixed(0)} <small className="text-[10px] uppercase">pendentes</small>
             </span>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
@@ -235,7 +255,7 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
             className={`w-12 h-12 flex items-center justify-center rounded-2xl transition-all active:scale-90 ${
               expanded
                 ? 'bg-slate-800 text-white'
-                : `bg-${color}-100 text-${color}-600 hover:bg-${color}-200`
+                : `${c.bg100} ${c.text600} ${c.hover200}`
             }`}
           >
             {expanded ? <Minus size={20} /> : <Plus size={20} />}
