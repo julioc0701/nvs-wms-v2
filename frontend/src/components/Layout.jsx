@@ -102,30 +102,57 @@ export default function Layout() {
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
             // Se for Supervisão Full e houver um marketplace ativo, mantemos o pai ativo
             const isParentActive = item.path === '/supervisor' && isMarketplaceActive
-            
+            const showInlineSubMenu = item.path === '/supervisor' && isMarketplaceActive
+
             return (
-              <button
-                key={item.path}
-                onClick={() => handleNav(item)}
-                className={cn(
-                  "flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200",
-                  (isActive || isParentActive)
-                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md shadow-cyan-900/30"
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              <div key={item.path} className="flex flex-col gap-1.5">
+                <button
+                  onClick={() => handleNav(item)}
+                  className={cn(
+                    "flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200",
+                    (isActive || isParentActive)
+                      ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md shadow-cyan-900/30"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  )}
+                >
+                  <Icon size={20} strokeWidth={(isActive || isParentActive) ? 2.5 : 2} />
+                  {item.label}
+                  {item.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
+                </button>
+
+                {showInlineSubMenu && (
+                  <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-top-1 duration-300">
+                    {subNavItems.map((sub) => {
+                      const SubIcon = sub.icon
+                      const isSubActive = location.pathname === sub.path
+                      return (
+                        <button
+                          key={sub.path}
+                          onClick={() => handleNav(sub)}
+                          className={cn(
+                            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ml-4",
+                            isSubActive
+                              ? "bg-white text-slate-900 shadow-md border border-slate-200"
+                              : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                          )}
+                        >
+                          <SubIcon size={16} strokeWidth={isSubActive ? 2.5 : 2} />
+                          {sub.label}
+                          {sub.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
                 )}
-              >
-                <Icon size={20} strokeWidth={(isActive || isParentActive) ? 2.5 : 2} />
-                {item.label}
-                {item.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
-              </button>
+              </div>
             )
           })}
 
-          {/* SUB-MENU DINÂMICO */}
-          {(isMarketplaceActive || isSeparacaoActive) && (
+          {/* SUB-MENU DINÂMICO — apenas para Separação (Supervisão renderiza inline acima) */}
+          {isSeparacaoActive && (
             <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                {isMarketplaceActive ? `Monitoramento ${activeMarketplace.toUpperCase()}` : "Gestão de Separação"}
+                Gestão de Separação
               </p>
               {subNavItems.map((sub) => {
                 const SubIcon = sub.icon

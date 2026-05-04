@@ -89,7 +89,10 @@ export default function ShortageReport() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-6">
             <button
-              onClick={() => navigate('/sessions')}
+              onClick={() => {
+                if (window.history.length > 1) navigate(-1)
+                else navigate('/supervisor')
+              }}
               className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400 hover:text-slate-900 transition-all active:scale-90"
             >
                <ArrowLeft size={24} />

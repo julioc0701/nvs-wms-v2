@@ -36,6 +36,7 @@ function MetricTile({ label, value, detail, icon: Icon }) {
 
 // ── Progress Hero ─────────────────────────────────────────────────────────────
 function ProgressHero({ sessions, shortageStats, compact = false }) {
+  const navigate = useNavigate()
   const totalPicked = sessions.reduce((s, r) => s + (r.items_picked || 0), 0)
   const totalItems  = sessions.reduce((s, r) => s + (r.items_total  || 0), 0)
   const done        = sessions.filter(s => s.status === 'completed').length
@@ -141,8 +142,15 @@ function ProgressHero({ sessions, shortageStats, compact = false }) {
           ))}
         </div>
 
-        <div className="rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm">
-          <p className="section-kicker text-red-600 mb-3">Relatório de Faltas</p>
+        <button
+          type="button"
+          onClick={() => navigate('/shortage-report')}
+          className="text-left w-full rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm hover:bg-red-50 hover:border-red-300 hover:shadow-md transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300"
+        >
+          <p className="section-kicker text-red-600 mb-3 flex items-center justify-between">
+            <span>Relatório de Faltas</span>
+            <ArrowRight size={14} className="text-red-400" />
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
             <div className="rounded-lg border border-red-200 bg-white px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Itens Faltantes</p>
@@ -160,7 +168,7 @@ function ProgressHero({ sessions, shortageStats, compact = false }) {
           <div className="text-xs font-semibold text-red-700 bg-red-100/70 border border-red-200 rounded-lg px-3 py-2">
             Prioridade: revisar faltas antes do fechamento final do lote.
           </div>
-        </div>
+        </button>
       </div>
     </div>
   )
@@ -927,29 +935,46 @@ export default function Supervisor() {
         <div className="flex flex-col h-full min-h-[calc(100vh-64px)] bg-slate-50">
           
           {/* Header de Contexto (Breadcrumb/Banner) */}
-          <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10 md:static">
-             <div className="flex items-center gap-4">
+          <div className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 md:py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 sticky top-0 z-10 md:static">
+             <div className="flex items-center gap-2 md:gap-4">
                <button
                  onClick={() => {
                    if (tab !== 'overview') navigate(`/supervisor/${marketplaceView}/overview`)
                    else navigate('/supervisor')
                  }}
-                 className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-blue-600"
+                 className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-blue-600 shrink-0"
                >
                  <ArrowLeft size={20} />
                </button>
-               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex justify-center items-center">
-                   <MarketplaceLogo marketplace={marketplaceView} size={24} />
-                 </div>
-                 <div>
-                   <h2 className="text-lg font-black text-slate-900 leading-none">Supervisão {marketplaceView === 'ml' ? 'Mercado Livre' : 'Shopee'}</h2>
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Conectado • {timeSince}</p>
-                 </div>
+
+               <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200">
+                 {[
+                   { id: 'ml', label: 'Mercado Livre' },
+                   { id: 'shopee', label: 'Shopee' },
+                 ].map((mp) => {
+                   const isActive = marketplaceView === mp.id
+                   return (
+                     <button
+                       key={mp.id}
+                       onClick={() => { if (!isActive) navigate(`/supervisor/${mp.id}/${tab}`) }}
+                       className={cn(
+                         "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                         isActive
+                           ? "bg-white text-slate-900 shadow-sm border border-slate-200"
+                           : "text-slate-500 hover:text-slate-800 hover:bg-white/60 border border-transparent"
+                       )}
+                     >
+                       <MarketplaceLogo marketplace={mp.id} size={18} />
+                       <span className="hidden sm:inline">{mp.label}</span>
+                     </button>
+                   )
+                 })}
                </div>
+
+               <p className="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-widest">Conectado • {timeSince}</p>
              </div>
-             
-             <div className="flex items-center gap-3">
+
+             <div className="flex items-center gap-2 md:gap-3 shrink-0">
                <div className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Sincronizado
                </div>
