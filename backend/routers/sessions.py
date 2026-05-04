@@ -259,7 +259,8 @@ async def upload_session(
     db.flush()
 
     # ── Build session code prefix ─────────────────────────────────────────────
-    prefix = _date_to_prefix(batch_date)
+    mp_prefix = "SH" if marketplace == "shopee" else "ML"
+    prefix = f"{mp_prefix}-{_date_to_prefix(batch_date)}"
     if seq > 1:
         prefix = f"{prefix}-{chr(64 + seq)}"  # -B, -C, ...
 
@@ -365,7 +366,8 @@ def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_d
     if missing:
         raise HTTPException(400, f"SKU(s) não cadastrado(s) na Base: {', '.join(missing)}")
 
-    prefix = _date_to_prefix(batch.full_date)
+    mp_prefix = "SH" if batch.marketplace == "shopee" else "ML"
+    prefix = f"{mp_prefix}-{_date_to_prefix(batch.full_date)}"
     pattern = f"{prefix}-EXTRA-%"
     existing = (
         db.query(Session.session_code)

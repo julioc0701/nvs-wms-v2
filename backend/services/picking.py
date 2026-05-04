@@ -63,21 +63,26 @@ def process_scan(
     )
 
     if not items:
-            
+
         # Barcode é conhecido mas pertence a SKU(s) que não estão nesta sessão
         # Pegamos o primeiro SKU para prover uma descrição de erro (legado)
         target_sku = skus[0]
-        
+
+        # Marketplace da sessão atual — sugestões de transferência só dentro do MESMO marketplace
+        current_session = db.query(Session).filter(Session.id == session_id).first()
+        current_marketplace = current_session.marketplace if current_session else None
+
         # --- NOVO: Tenta localizar esse SKU em outras sessões para sugerir transferência ---
-        other_rows = (
+        other_query = (
             db.query(PickingItem, Session, Operator)
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
             .filter(PickingItem.sku.in_(skus), Session.status != "completed")
             .filter(PickingItem.qty_picked == 0) # Só sugere transferir o que não começou
-            .order_by(PickingItem.qty_required.desc())
-            .all()
         )
+        if current_marketplace:
+            other_query = other_query.filter(Session.marketplace == current_marketplace)
+        other_rows = other_query.order_by(PickingItem.qty_required.desc()).all()
         if other_rows:
             other_item, other_session, other_op = other_rows[0]
             return {
@@ -208,17 +213,22 @@ def process_scan_box(
     )
 
     if not items:
-            
+
+        # Marketplace da sessão atual — sugestões de transferência só dentro do MESMO marketplace
+        current_session = db.query(Session).filter(Session.id == session_id).first()
+        current_marketplace = current_session.marketplace if current_session else None
+
         # --- NOVO: Tenta localizar esse SKU em outras sessões para sugerir transferência ---
-        other_rows = (
+        other_query = (
             db.query(PickingItem, Session, Operator)
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
             .filter(PickingItem.sku.in_(skus), Session.status != "completed")
             .filter(PickingItem.qty_picked == 0)
-            .order_by(PickingItem.qty_required.desc())
-            .all()
         )
+        if current_marketplace:
+            other_query = other_query.filter(Session.marketplace == current_marketplace)
+        other_rows = other_query.order_by(PickingItem.qty_required.desc()).all()
         if other_rows:
             other_item, other_session, other_op = other_rows[0]
             return {
@@ -594,13 +604,15 @@ def reallocate_item(db: DBSession, item_id: int, operator_id: int) -> Session:
         raise ValueError("Não é possível transferir um item que já possui unidades coletadas")
 
     old_session = db.query(Session).filter(Session.id == item.session_id).first()
-    
-    # Create the new EXTRA session
+
+    # Create the new EXTRA session — preserva batch_id e marketplace da sessão de origem
     new_code = f"EXT-{old_session.session_code}-{datetime.utcnow().strftime('%M%S')}"
     new_sess = Session(
         session_code=new_code,
         operator_id=operator_id,
-        status="open" # Will go to in_progress on first scan
+        status="open", # Will go to in_progress on first scan
+        batch_id=old_session.batch_id,
+        marketplace=old_session.marketplace,
     )
     db.add(new_sess)
     db.flush()
