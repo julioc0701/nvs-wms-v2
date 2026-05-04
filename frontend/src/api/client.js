@@ -85,6 +85,7 @@ export const api = {
   // Barcodes
   importBarcodesExcel: (formData) => req('POST', '/barcodes/import-excel', formData, true),
   resolveBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
+  resolveLegacyBarcode: (barcode) => req('GET', `/barcodes/resolve?barcode=${encodeURIComponent(barcode)}`),
   listBarcodes: (search = '') => req('GET', `/barcodes/?search=${encodeURIComponent(search)}&limit=2000`),
 
   // Zebra Agent Status + Commands (via backend — funciona em HTTPS/produção)
@@ -101,6 +102,10 @@ export const api = {
     req('GET', `/print-jobs?session_id=${sessionId}&sku=${encodeURIComponent(sku)}`),
   getLabelsZpl: (sessionId, sku) => 
     req('GET', `/labels/zpl?session_id=${sessionId}&sku=${encodeURIComponent(sku)}`),
+
+  // Sessions — manual (lista extra)
+  createManualSession: (batchId, items) =>
+    req('POST', '/sessions/manual', { batch_id: batchId, items }),
 
   // Master Data CRUD
   createProduct: (sku, description, barcodes) =>
@@ -175,7 +180,7 @@ export const api = {
   warmProductImages: (skus) => req('POST', '/tiny/product-images/warm', { skus }),
   
   // New Tiny Picking Actions
-  resolveBarcode: (code, focusSku = null) => {
+  resolveTinyBarcode: (code, focusSku = null) => {
     const url = focusSku
       ? `/tiny/resolve-barcode/${encodeURIComponent(code)}?focus_sku=${encodeURIComponent(focusSku)}`
       : `/tiny/resolve-barcode/${encodeURIComponent(code)}`

@@ -5,7 +5,7 @@ import Card from '../components/ui/Card'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import SkeletonRows from '../components/ui/SkeletonRows'
-import { RefreshCcw, PackageX, FolderArchive } from 'lucide-react'
+import { RefreshCcw, PackageX, FolderArchive, Plus, X, Trash2, Search } from 'lucide-react'
 import { useFeedback } from '../components/ui/FeedbackProvider'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -194,8 +194,10 @@ function SessionRow({ s, onDeleted }) {
 export default function BatchDetail() {
   const { batchId } = useParams()
   const navigate = useNavigate()
+  const { notify } = useFeedback()
   const [batch, setBatch] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [extraOpen, setExtraOpen] = useState(false)
 
   function load() {
     api.listBatches()
@@ -298,10 +300,18 @@ export default function BatchDetail() {
         <Card>
           <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
             <h2 className="font-bold text-slate-800">Listas do Lote</h2>
-            <Button onClick={load} className="text-sm">
-              <RefreshCcw size={14} />
-              Atualizar
-            </Button>
+            <div className="flex items-center gap-2">
+              {batch.status === 'active' && (
+                <Button onClick={() => setExtraOpen(true)} className="text-sm" variant="primary">
+                  <Plus size={14} />
+                  Nova Lista Extra
+                </Button>
+              )}
+              <Button onClick={load} className="text-sm">
+                <RefreshCcw size={14} />
+                Atualizar
+              </Button>
+            </div>
           </div>
 
           {batch.sessions.length === 0 ? (
@@ -340,6 +350,264 @@ export default function BatchDetail() {
             </div>
           )}
         </Card>
+      </div>
+
+      {extraOpen && (
+        <ExtraListModal
+          batch={batch}
+          onClose={() => setExtraOpen(false)}
+          onCreated={(code) => {
+            setExtraOpen(false)
+            notify(`Lista ${code} criada`, 'success')
+            load()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ── Extra List Modal ──────────────────────────────────────────────────────────
+function ExtraListModal({ batch, onClose, onCreated }) {
+  const { notify } = useFeedback()
+  const [items, setItems] = useState([{ sku: '', qty_required: '', description: '', resolved: null, checking: false }])
+  const [submitting, setSubmitting] = useState(false)
+  const [skuModalOpen, setSkuModalOpen] = useState(null)
+
+  const addRow = () => setItems(prev => [...prev, { sku: '', qty_required: '', description: '', resolved: null, checking: false }])
+  const removeRow = (idx) => setItems(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx))
+  const updateRow = (idx, patch) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
+
+  async function checkSku(idx) {
+    const sku = items[idx]?.sku?.trim() || ''
+    if (!sku) {
+      updateRow(idx, { resolved: null, description: '' })
+      return
+    }
+    const dup = items.findIndex((it, i) => i !== idx && it.sku.trim() === sku)
+    if (dup !== -1) {
+      notify(`SKU "${sku}" já adicionado nesta lista`, 'error')
+      updateRow(idx, { sku: '', resolved: null, description: '' })
+      return
+    }
+    updateRow(idx, { checking: true })
+    try {
+      const r = await api.resolveBarcode(sku)
+      if (r && r.sku) {
+        updateRow(idx, { resolved: true, description: r.description || '', checking: false, sku: r.sku })
+      } else {
+        updateRow(idx, { resolved: false, checking: false })
+        setSkuModalOpen({ idx, sku })
+      }
+    } catch {
+      updateRow(idx, { resolved: false, checking: false })
+      setSkuModalOpen({ idx, sku })
+    }
+  }
+
+  async function handleSkuRegistered(idx, sku, description) {
+    try {
+      await api.createProduct(sku, description, [])
+      updateRow(idx, { sku, description, resolved: true, checking: false })
+      setSkuModalOpen(null)
+      notify(`SKU ${sku} cadastrado na Base`, 'success')
+    } catch (e) {
+      notify(`Erro ao cadastrar: ${e.message}`, 'error')
+    }
+  }
+
+  async function submit() {
+    const cleaned = items
+      .map(it => ({ sku: it.sku.trim(), qty_required: Number(it.qty_required), description: it.description?.trim() || '' }))
+      .filter(it => it.sku && it.qty_required > 0)
+
+    if (cleaned.length === 0) {
+      notify('Adicione ao menos um item válido', 'error')
+      return
+    }
+    const skus = cleaned.map(i => i.sku)
+    if (new Set(skus).size !== skus.length) {
+      notify('SKU duplicado na lista', 'error')
+      return
+    }
+    const allResolved = items.every(it => !it.sku.trim() || it.resolved === true)
+    if (!allResolved) {
+      notify('Há SKUs não cadastrados na Base', 'error')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await api.createManualSession(batch.id, cleaned)
+      onCreated(res.session_code)
+    } catch (e) {
+      notify(`Erro: ${e.message}`, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Nova Lista Extra</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Lote {batch.name} · {batch.marketplace?.toUpperCase()}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="grid grid-cols-12 gap-2 px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <div className="col-span-4">SKU</div>
+            <div className="col-span-5">Descrição</div>
+            <div className="col-span-2">Qtd</div>
+            <div className="col-span-1"></div>
+          </div>
+
+          {items.map((it, idx) => (
+            <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-center">
+              <div className="col-span-4 relative">
+                <input
+                  type="text"
+                  value={it.sku}
+                  onChange={e => updateRow(idx, { sku: e.target.value, resolved: null, description: '' })}
+                  onBlur={() => checkSku(idx)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); checkSku(idx) } }}
+                  placeholder="Digite o SKU"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                    it.resolved === true ? 'border-emerald-300 bg-emerald-50/30' :
+                    it.resolved === false ? 'border-red-300 bg-red-50/30' :
+                    'border-slate-200'
+                  }`}
+                />
+                {it.checking && <Search size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
+              </div>
+              <div className="col-span-5">
+                <input
+                  type="text"
+                  value={it.description}
+                  readOnly
+                  placeholder={it.resolved === false ? 'Cadastre o SKU' : 'Descrição da Base'}
+                  className="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-600"
+                />
+              </div>
+              <div className="col-span-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={it.qty_required}
+                  onChange={e => updateRow(idx, { qty_required: e.target.value })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+              </div>
+              <div className="col-span-1 flex justify-end">
+                <button
+                  onClick={() => removeRow(idx)}
+                  disabled={items.length === 1}
+                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-30 disabled:hover:bg-transparent"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={addRow}
+            className="mt-2 w-full py-2 text-sm font-semibold text-blue-600 border-2 border-dashed border-blue-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus size={14} />
+            Adicionar item
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+          >
+            Cancelar
+          </button>
+          <Button onClick={submit} disabled={submitting} variant="primary" className="text-sm">
+            {submitting ? 'Gerando...' : 'Gerar Lista'}
+          </Button>
+        </div>
+      </div>
+
+      {skuModalOpen && (
+        <SkuRegisterModal
+          initialSku={skuModalOpen.sku}
+          onClose={() => {
+            updateRow(skuModalOpen.idx, { sku: '', resolved: null, description: '' })
+            setSkuModalOpen(null)
+          }}
+          onSave={(sku, description) => handleSkuRegistered(skuModalOpen.idx, sku, description)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ── SKU Register Modal ────────────────────────────────────────────────────────
+function SkuRegisterModal({ initialSku, onClose, onSave }) {
+  const [sku, setSku] = useState(initialSku || '')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const canSave = sku.trim() && description.trim() && !saving
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(sku.trim(), description.trim())
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+        <div className="px-6 py-4 border-b border-slate-100">
+          <h3 className="text-lg font-black text-slate-900">SKU não encontrado na Base</h3>
+          <p className="text-xs text-slate-500 mt-1">Cadastre agora para continuar.</p>
+        </div>
+        <div className="px-6 py-4 space-y-3">
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">SKU</label>
+            <input
+              type="text"
+              value={sku}
+              onChange={e => setSku(e.target.value)}
+              className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Descrição *</label>
+            <input
+              type="text"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Ex: Capa de banco preta XL"
+              className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+              onKeyDown={e => { if (e.key === 'Enter' && canSave) handleSave() }}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100">
+          <button onClick={onClose} disabled={saving} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">
+            Cancelar
+          </button>
+          <Button onClick={handleSave} disabled={!canSave} variant="primary" className="text-sm">
+            {saving ? 'Salvando...' : 'Cadastrar e usar'}
+          </Button>
+        </div>
       </div>
     </div>
   )

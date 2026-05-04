@@ -326,6 +326,97 @@ async def upload_session(
     }
 
 
+# ── Manual extra session ──────────────────────────────────────────────────────
+
+class ManualItemBody(BaseModel):
+    sku: str
+    qty_required: int
+    description: str | None = None
+
+
+class ManualSessionBody(BaseModel):
+    batch_id: int
+    items: list[ManualItemBody]
+
+
+@router.post("/manual", status_code=201)
+def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_db)):
+    """Cria uma lista EXTRA dentro de um lote existente, com itens digitados manualmente."""
+    if not body.items:
+        raise HTTPException(400, "Lista deve ter pelo menos um item")
+
+    batch = db.query(Batch).filter(Batch.id == body.batch_id).first()
+    if not batch:
+        raise HTTPException(404, "Lote não encontrado")
+
+    skus_norm = [i.sku.strip() for i in body.items]
+    if any(not s for s in skus_norm):
+        raise HTTPException(400, "SKU inválido")
+    if len(skus_norm) != len(set(skus_norm)):
+        raise HTTPException(400, "SKU duplicado na mesma lista")
+    for it in body.items:
+        if it.qty_required is None or it.qty_required <= 0:
+            raise HTTPException(400, f"Quantidade inválida para SKU {it.sku}")
+
+    known_skus = {
+        b.sku for b in db.query(Barcode).filter(Barcode.sku.in_(skus_norm)).all()
+    }
+    missing = [s for s in skus_norm if s not in known_skus]
+    if missing:
+        raise HTTPException(400, f"SKU(s) não cadastrado(s) na Base: {', '.join(missing)}")
+
+    prefix = _date_to_prefix(batch.full_date)
+    pattern = f"{prefix}-EXTRA-%"
+    existing = (
+        db.query(Session.session_code)
+        .filter(Session.batch_id == batch.id, Session.session_code.like(pattern))
+        .all()
+    )
+    max_seq = 0
+    for (code,) in existing:
+        try:
+            seq = int(code.rsplit("-EXTRA-", 1)[1])
+            if seq > max_seq:
+                max_seq = seq
+        except (ValueError, IndexError):
+            continue
+    next_seq = max_seq + 1
+    session_code = f"{prefix}-EXTRA-{next_seq:02d}"
+
+    sess = Session(
+        session_code=session_code,
+        operator_id=None,
+        status="open",
+        batch_id=batch.id,
+        marketplace=batch.marketplace,
+    )
+    db.add(sess)
+    db.flush()
+
+    descriptions = {
+        b.sku: b.description
+        for b in db.query(Barcode).filter(
+            Barcode.sku.in_(skus_norm), Barcode.description.isnot(None)
+        ).all()
+    }
+
+    for it in body.items:
+        sku = it.sku.strip()
+        pi = PickingItem(
+            session_id=sess.id,
+            sku=sku,
+            description=descriptions.get(sku) or it.description or "",
+            qty_required=it.qty_required,
+        )
+        db.add(pi)
+
+    db.commit()
+    return {
+        "session_id": sess.id,
+        "session_code": session_code,
+        "items_count": len(body.items),
+    }
+
 
 # ── Claim ─────────────────────────────────────────────────────────────────────
 
