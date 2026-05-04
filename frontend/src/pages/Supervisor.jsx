@@ -35,7 +35,7 @@ function MetricTile({ label, value, detail, icon: Icon }) {
 }
 
 // ── Progress Hero ─────────────────────────────────────────────────────────────
-function ProgressHero({ sessions, shortageStats, compact = false }) {
+export function ProgressHero({ sessions, shortageStats, compact = false }) {
   const navigate = useNavigate()
   const totalPicked = sessions.reduce((s, r) => s + (r.items_picked || 0), 0)
   const totalItems  = sessions.reduce((s, r) => s + (r.items_total  || 0), 0)
@@ -175,7 +175,7 @@ function ProgressHero({ sessions, shortageStats, compact = false }) {
 }
 
 // ── Ranking with Batch Selector ──────────────────────────────────────────────
-function OperatorRanking({ batches = [], marketplace = null, compact = false }) {
+export function OperatorRanking({ batches = [], marketplace = null, compact = false }) {
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(true)

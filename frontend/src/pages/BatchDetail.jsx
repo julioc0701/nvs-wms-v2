@@ -7,6 +7,14 @@ import Button from '../components/ui/Button'
 import SkeletonRows from '../components/ui/SkeletonRows'
 import { RefreshCcw, PackageX, FolderArchive, Plus, X, Trash2, Search } from 'lucide-react'
 import { useFeedback } from '../components/ui/FeedbackProvider'
+import { ProgressHero, OperatorRanking } from './Supervisor'
+
+function normalizeMarket(value) {
+  const v = String(value || '').toLowerCase()
+  if (v === 'ml' || v === 'mercado_livre' || v === 'mercadolivre' || v === 'mercado livre') return 'ml'
+  if (v === 'shopee') return 'shopee'
+  return v
+}
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function TrashIcon() {
@@ -196,6 +204,7 @@ export default function BatchDetail() {
   const navigate = useNavigate()
   const { notify } = useFeedback()
   const [batch, setBatch] = useState(null)
+  const [shortageItems, setShortageItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [extraOpen, setExtraOpen] = useState(false)
 
@@ -206,6 +215,7 @@ export default function BatchDetail() {
         setBatch(found || null)
       })
       .finally(() => setLoading(false))
+    api.getShortages().then(setShortageItems).catch(() => {})
   }
 
   useEffect(() => { load() }, [batchId])
@@ -230,12 +240,16 @@ export default function BatchDetail() {
     </div>
   )
 
-  const pct = batch.pct || 0
-  const barColor = pct >= 90 ? 'from-green-500 to-emerald-400' : pct >= 50 ? 'from-blue-500 to-sky-400' : 'from-orange-500 to-amber-400'
-
-  const active    = batch.sessions.filter(s => s.status === 'in_progress').length
-  const available = batch.sessions.filter(s => s.status === 'open').length
-  const done      = batch.sessions.filter(s => s.status === 'completed').length
+  const batchMarketplace = normalizeMarket(batch.marketplace)
+  const visibleShortages = shortageItems.filter(i =>
+    normalizeMarket(i.marketplace) === batchMarketplace &&
+    i.status === 'pendente'
+  )
+  const shortageStats = {
+    totalUnits: visibleShortages.reduce((sum, i) => sum + (i.quantity || 0), 0),
+    skuCount: new Set(visibleShortages.map(i => i.sku)).size,
+    sessionCount: new Set(visibleShortages.map(i => i.list_id)).size,
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -263,41 +277,8 @@ export default function BatchDetail() {
           }
         />
 
-        {/* Progress card */}
-        <Card className="p-8">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Progresso do Lote</p>
-              <p className="text-6xl font-black text-slate-900">{pct}<span className="text-3xl text-slate-400">%</span></p>
-            </div>
-            <div className="text-right bg-slate-50 border border-slate-100 rounded-xl px-4 py-2">
-              <p className="text-2xl font-black text-slate-700">
-                {batch.total_picked.toLocaleString('pt-BR')}
-                <span className="text-lg text-slate-400"> / {batch.total_items.toLocaleString('pt-BR')}</span>
-              </p>
-              <p className="text-sm text-slate-400 mt-1">itens separados</p>
-            </div>
-          </div>
-          <div className="h-4 bg-slate-100 rounded-full overflow-hidden mb-6">
-            <div
-              className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-1000`}
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { v: active,    label: 'Em Andamento', color: 'bg-blue-50 border-blue-200 text-blue-700',   icon: '🔵' },
-              { v: available, label: 'Disponíveis',  color: 'bg-slate-50 border-slate-200 text-slate-600',   icon: '⚪' },
-              { v: done,      label: 'Concluídas',   color: 'bg-green-50 border-green-200 text-green-700', icon: '✅' },
-            ].map(k => (
-              <div key={k.label} className={`rounded-2xl border-2 p-4 flex flex-col gap-1 ${k.color}`}>
-                <span className="text-2xl">{k.icon}</span>
-                <p className="text-3xl font-black mt-1">{k.v}</p>
-                <p className="text-xs font-bold uppercase tracking-wider opacity-70">{k.label}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <ProgressHero sessions={batch.sessions} shortageStats={shortageStats} />
+        <OperatorRanking batches={[batch]} marketplace={batchMarketplace} />
 
         {/* Sessions list */}
         <Card>
