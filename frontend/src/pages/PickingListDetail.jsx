@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import { useFeedback } from '../components/ui/FeedbackProvider'
 import {
   ArrowLeft, ArrowRight, Package, CheckCircle2,
-  RefreshCcw, Search, ScanBarcode, X, Copy,
+  RefreshCcw, Search, ScanBarcode, X,
   AlertCircle, Clock, MapPin, Image as ImageIcon
 } from 'lucide-react'
 import { cn } from '../lib/utils'
@@ -140,11 +140,6 @@ export default function PickingListDetail() {
     }
   }, [selectedItem])
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text)
-    notify('SKU copiado para a área de transferência!', 'success')
-  }
-
   const updateItemInState = (updatedItem) => {
     setItems(prev => {
       const next = prev.map(i => i.id === updatedItem.id ? { ...i, ...updatedItem } : i)
@@ -214,6 +209,14 @@ export default function PickingListDetail() {
     }
   }
 
+  const getQtyDialogValue = () => {
+    if (!qtyDialog) return null
+    const maxQty = Number(qtyDialog.item.quantity || 0)
+    const rawQty = Number(qtyDialog.qty)
+    const pickedQty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : maxQty
+    return Math.min(Math.max(pickedQty, 1), maxQty)
+  }
+
 
 
   // Mobile: avança para o próximo item pendente após conclusão/falta
@@ -232,7 +235,7 @@ export default function PickingListDetail() {
   const processMainCode = async (code) => {
     setScanStatus({ type: 'processing', msg: 'Validando bip...' })
     try {
-      const res = await api.resolveBarcode(code, null)
+      const res = await api.resolveTinyBarcode(code, null)
       const resolvedSku = res.sku.trim().toUpperCase()
       const currentItems = itemsRef.current
       const currentPickedIds = pickedIdsRef.current
@@ -269,7 +272,7 @@ export default function PickingListDetail() {
         sndError.play().catch(() => {})
         return
       }
-      const res = await api.resolveBarcode(code, selectedItem?.sku ?? null)
+      const res = await api.resolveTinyBarcode(code, selectedItem?.sku ?? null)
       const resolvedSku = res.sku.trim().toUpperCase()
       if (selectedItem) {
         const selectedSku = selectedItem.sku.trim().toUpperCase()
@@ -640,16 +643,6 @@ export default function PickingListDetail() {
                                )}>
                                  {item.sku}
                                </span>
-                               <button
-                                 onClick={(e) => {
-                                   e.stopPropagation()
-                                   navigator.clipboard.writeText(item.sku)
-                                   processMainCode(item.sku.trim().toUpperCase())
-                                 }}
-                                 className="p-1 text-slate-300 hover:text-blue-600 transition-colors"
-                               >
-                                 <Copy size={12} />
-                               </button>
                                {item.notes && (
                                  <div className="ml-auto text-[8px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100 uppercase">
                                    Obs
@@ -834,17 +827,6 @@ export default function PickingListDetail() {
                        <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] mb-1">✦ SEPARAR AGORA</p>
                        <div className="flex items-center gap-3">
                           <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tighter truncate max-w-[min(280px,60vw)]">{selectedItem.sku}</h2>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              navigator.clipboard.writeText(selectedItem.sku).catch(() => {})
-                              processInternalCode(selectedItem.sku.trim().toUpperCase())
-                            }}
-                            className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all"
-                            title="Copiar SKU e bipe automático"
-                          >
-                             <Copy size={18} />
-                          </button>
                        </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -1182,7 +1164,7 @@ export default function PickingListDetail() {
                   onChange={e => setQtyDialog(prev => ({ ...prev, qty: e.target.value }))}
                   onKeyDown={async e => {
                     if (e.key === 'Enter') {
-                      await togglePick(qtyDialog.item.id, true, qtyDialog.item.quantity)
+                      await togglePick(qtyDialog.item.id, true, getQtyDialogValue())
                       setQtyDialog(null)
                     }
                   }}
@@ -1192,13 +1174,13 @@ export default function PickingListDetail() {
 
               <button
                 onClick={async () => {
-                  await togglePick(qtyDialog.item.id, true, qtyDialog.item.quantity)
+                  await togglePick(qtyDialog.item.id, true, getQtyDialogValue())
                   setQtyDialog(null)
                 }}
                 className="w-full h-16 bg-emerald-500 text-white rounded-3xl flex flex-col items-center justify-center gap-1 shadow-lg shadow-emerald-100 hover:bg-emerald-600 active:scale-95 transition-all"
               >
                 <CheckCircle2 size={20} strokeWidth={3} />
-                <span className="text-[9px] font-black uppercase tracking-widest">Coletar Tudo</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">Confirmar Coleta</span>
               </button>
             </div>
           </div>

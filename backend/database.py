@@ -311,6 +311,11 @@ def init_db():
                 conn.execute(text("ALTER TABLE shortages ADD COLUMN status VARCHAR(20) DEFAULT 'pendente'"))
                 conn.commit()
                 print("--- DATABASE MIGRATION: status added to shortages ---")
+
+            if "marketplace" not in shortage_cols:
+                conn.execute(text("ALTER TABLE shortages ADD COLUMN marketplace VARCHAR(20)"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: marketplace added to shortages ---")
         except Exception:
             pass
 

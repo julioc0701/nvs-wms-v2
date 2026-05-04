@@ -8,7 +8,7 @@ import ShortageDialog from '../components/dialogs/ShortageDialog'
 import UnknownBarcodeDialog from '../components/dialogs/UnknownBarcodeDialog'
 import WrongSkuDialog from '../components/dialogs/WrongSkuDialog'
 import { cn } from '../lib/utils'
-import { ArrowLeft, Box, Check, CheckCircle2, RotateCcw, ShieldAlert, Printer, AlertTriangle, XCircle, RefreshCcw, Hand, Info, Zap, AlertCircle, Home } from 'lucide-react'
+import { ArrowLeft, Box, Check, CheckCircle2, RotateCcw, ShieldAlert, Printer, AlertTriangle, XCircle, RefreshCcw, Hand, Info, Zap, AlertCircle, Home, History } from 'lucide-react'
 import { useFeedback } from '../components/ui/FeedbackProvider'
 import { useCompactViewport } from '../hooks/useCompactViewport'
 

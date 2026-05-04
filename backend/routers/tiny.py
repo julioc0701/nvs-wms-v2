@@ -1398,8 +1398,9 @@ class ShortageRequest(BaseModel):
     list_id: str | None = None
     description: str | None = None
     operator_id: int | None = None
-    notes: str | None = None # NOVO
-    item_id: int | None = None # NOVO
+    notes: str | None = None
+    item_id: int | None = None
+    marketplace: str | None = None  # ml | shopee | None=organico
 
 @router.post("/picking-items/{item_id}/clear-shortage")
 async def clear_item_shortage(item_id: int, db: Session = Depends(get_db)):
@@ -1435,7 +1436,8 @@ async def report_shortage(req: ShortageRequest, background_tasks: BackgroundTask
             list_id=req.list_id,
             description=req.description,
             operator_id=req.operator_id,
-            notes=req.notes
+            notes=req.notes,
+            marketplace=req.marketplace or (None if req.category == "organico" else None),
         )
         db.add(shortage)
 
@@ -1473,19 +1475,18 @@ async def get_shortages(db: Session = Depends(get_db)):
     # 1. Busca da tabela definitiva
     new_shortages = db.query(Shortage).all()
     
-    # 2. Busca legados do PickingItem (Full - Shopee/ML)
-    # Precisamos do join com Session e Operator para os legados
+    # 2. Busca legados do PickingItem (Full - Shopee/ML) — incluindo marketplace da sessão
     legacy_rows = (
-        db.query(PickingItem, Operator.name)
+        db.query(PickingItem, Operator.name, PickSession.marketplace)
         .join(PickSession, PickSession.id == PickingItem.session_id)
         .outerjoin(Operator, Operator.id == PickSession.operator_id)
         .filter(PickingItem.shortage_qty > 0)
         .all()
     )
-    
+
     consolidated = []
-    
-    # Adiciona os novos
+
+    # Adiciona os novos (marketplace já salvo na tabela Shortage)
     for s in new_shortages:
         consolidated.append({
             "id": s.id,
@@ -1498,11 +1499,12 @@ async def get_shortages(db: Session = Depends(get_db)):
             "operator_name": s.operator.name if s.operator else "Admin",
             "created_at": s.created_at,
             "status": getattr(s, "status", "pendente"),
+            "marketplace": getattr(s, "marketplace", None),
             "is_legacy": False,
         })
 
-    # Converte os legados
-    for item, op_name in legacy_rows:
+    # Converte os legados — marketplace vem do join com Session
+    for item, op_name, session_marketplace in legacy_rows:
         consolidated.append({
             "id": f"legacy_{item.id}",
             "sku": item.sku,
@@ -1513,6 +1515,7 @@ async def get_shortages(db: Session = Depends(get_db)):
             "operator_name": op_name or "Desconhecido",
             "created_at": item.completed_at or datetime.utcnow(),
             "status": "pendente",
+            "marketplace": session_marketplace or None,
             "is_legacy": True,
         })
         

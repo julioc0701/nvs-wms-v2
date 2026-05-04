@@ -175,7 +175,10 @@ def add_barcode_to_sku(sku: str, body: AddBarcodeBody, db: DBSession = Depends(g
 
 @router.delete("/{sku}/barcode/{barcode}")
 def remove_barcode_from_sku(sku: str, barcode: str, db: DBSession = Depends(get_db)):
-    """Remove um código de barras de um SKU (não remove o SKU-alias)."""
+    """Remove um código de barras de um SKU.
+    Garante que o produto sempre mantém pelo menos a entrada SKU-alias,
+    evitando que o produto desapareça da listagem.
+    """
     bc = db.query(Barcode).filter(
         Barcode.barcode == barcode,
         Barcode.sku == sku,
@@ -183,6 +186,16 @@ def remove_barcode_from_sku(sku: str, barcode: str, db: DBSession = Depends(get_
     ).first()
     if not bc:
         raise HTTPException(404, "Código não encontrado")
+
+    # Garante que existe entrada SKU-alias antes de deletar o EAN.
+    # Se não existir, cria agora — assim o produto continua visível na listagem.
+    alias_exists = db.query(Barcode).filter(
+        Barcode.barcode == sku,
+        Barcode.sku == sku,
+    ).first()
+    if not alias_exists:
+        db.add(Barcode(barcode=sku, sku=sku, is_primary=True))
+
     db.delete(bc)
     db.commit()
     return {"status": "ok"}
@@ -195,12 +208,29 @@ def resolve_barcode(barcode: str = Query(...), db: DBSession = Depends(get_db)):
     rows = db.query(Barcode).filter(Barcode.barcode == barcode).all()
     if not rows:
         raise HTTPException(404, "Código de barras não encontrado")
-    
+
     skus = list(set(r.sku for r in rows))
+    sku = skus[0]
+    alias_row = (
+        db.query(Barcode.description)
+        .filter(Barcode.barcode == sku, Barcode.sku == sku, Barcode.description.isnot(None))
+        .first()
+    )
+    description = alias_row[0] if alias_row else None
+    if not description:
+        from models import PickingItem
+        pi_row = (
+            db.query(PickingItem.description)
+            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None), PickingItem.description != "")
+            .order_by(PickingItem.id.desc())
+            .first()
+        )
+        description = pi_row[0] if pi_row else None
     return {
-        "barcode": barcode, 
-        "sku": skus[0], # Legacy support
-        "skus": skus
+        "barcode": barcode,
+        "sku": sku,
+        "skus": skus,
+        "description": description,
     }
 
 
