@@ -115,7 +115,13 @@ export default function OperatorsManagement() {
           <h1 className="text-4xl font-bold">Gestão de Operadores</h1>
           <p className="text-gray-500 mt-2">Adicione ou remova permissões de login com PIN</p>
         </div>
-        <button onClick={() => navigate('/supervisor')} className="text-blue-500 hover:underline text-lg">
+        <button
+          onClick={() => {
+            if (window.history.length > 1) navigate(-1)
+            else navigate('/supervisor')
+          }}
+          className="text-blue-500 hover:underline text-lg"
+        >
           ← Voltar pro Painel
         </button>
       </div>

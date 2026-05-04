@@ -244,7 +244,10 @@ export default function BatchDetail() {
           title={batch.name}
           subtitle="Detalhamento visual e operacional do lote"
           backLabel="Voltar para listas"
-          onBack={() => navigate('/supervisor?tab=lists')}
+          onBack={() => {
+            if (window.history.length > 1) navigate(-1)
+            else navigate('/supervisor?tab=lists')
+          }}
           right={
             batch.status === 'active' ? (
               <Button

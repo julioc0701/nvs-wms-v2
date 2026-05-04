@@ -389,7 +389,10 @@ export default function MasterData() {
             + Novo Produto
           </button>
           <button
-            onClick={() => navigate('/supervisor')}
+            onClick={() => {
+              if (window.history.length > 1) navigate(-1)
+              else navigate('/supervisor')
+            }}
             className="text-gray-400 hover:text-gray-700 text-lg"
           >
             ← Voltar
