@@ -459,7 +459,7 @@ function ExtraListModal({ batch, onClose, onCreated }) {
                 <input
                   type="text"
                   value={it.sku}
-                  onChange={e => updateRow(idx, { sku: e.target.value, resolved: null, description: '' })}
+                  onChange={e => updateRow(idx, { sku: e.target.value.toUpperCase(), resolved: null, description: '' })}
                   onBlur={() => checkSku(idx)}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); checkSku(idx) } }}
                   placeholder="Digite o SKU"
@@ -542,7 +542,7 @@ function ExtraListModal({ batch, onClose, onCreated }) {
 
 // ── SKU Register Modal ────────────────────────────────────────────────────────
 function SkuRegisterModal({ initialSku, onClose, onSave }) {
-  const [sku, setSku] = useState(initialSku || '')
+  const [sku, setSku] = useState((initialSku || '').toUpperCase())
   const [description, setDescription] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -550,7 +550,7 @@ function SkuRegisterModal({ initialSku, onClose, onSave }) {
 
   async function handleSave() {
     setSaving(true)
-    await onSave(sku.trim(), description.trim())
+    await onSave(sku.trim().toUpperCase(), description.trim())
     setSaving(false)
   }
 
@@ -567,7 +567,7 @@ function SkuRegisterModal({ initialSku, onClose, onSave }) {
             <input
               type="text"
               value={sku}
-              onChange={e => setSku(e.target.value)}
+              onChange={e => setSku(e.target.value.toUpperCase())}
               className="mt-1 w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
               autoFocus
             />

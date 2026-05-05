@@ -1,5 +1,6 @@
 """Core picking business logic."""
 from datetime import datetime
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob, Operator
 
@@ -18,10 +19,10 @@ def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
 
 
 def resolve_barcode(db: DBSession, barcode: str) -> list[str]:
-    """Return all SKUs for a barcode."""
+    """Return all SKUs for a barcode (uppercased to make comparisons case-insensitive)."""
     b = barcode.strip()
     entries = db.query(Barcode).filter(Barcode.barcode == b).all()
-    return list(set(e.sku for e in entries))
+    return list({(e.sku or "").upper() for e in entries})
 
 
 def process_scan(
@@ -55,10 +56,10 @@ def process_scan(
             return {"status": "unknown_barcode", "barcode": barcode}
     # -------------------------------
 
-    # Find which of these SKUs are in the current session
+    # Find which of these SKUs are in the current session (case-insensitive)
     items = (
         db.query(PickingItem)
-        .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
+        .filter(PickingItem.session_id == session_id, func.upper(PickingItem.sku).in_(skus))
         .all()
     )
 
@@ -77,7 +78,7 @@ def process_scan(
             db.query(PickingItem, Session, Operator)
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
-            .filter(PickingItem.sku.in_(skus), Session.status != "completed")
+            .filter(func.upper(PickingItem.sku).in_(skus), Session.status != "completed")
             .filter(PickingItem.qty_picked == 0) # Só sugere transferir o que não começou
         )
         if current_marketplace:
@@ -95,10 +96,10 @@ def process_scan(
             }
 
         target_sku = skus[0]
-        bc = db.query(Barcode).filter(Barcode.barcode == barcode.strip(), Barcode.sku == target_sku).first()
+        bc = db.query(Barcode).filter(Barcode.barcode == barcode.strip(), func.upper(Barcode.sku) == target_sku).first()
         description = (bc.description if bc else None) or (
             db.query(PickingItem.description)
-            .filter(PickingItem.sku == target_sku, PickingItem.description.isnot(None))
+            .filter(func.upper(PickingItem.sku) == target_sku, PickingItem.description.isnot(None))
             .scalar()
         )
         return {
@@ -208,7 +209,7 @@ def process_scan_box(
 
     items = (
         db.query(PickingItem)
-        .filter(PickingItem.session_id == session_id, PickingItem.sku.in_(skus))
+        .filter(PickingItem.session_id == session_id, func.upper(PickingItem.sku).in_(skus))
         .all()
     )
 
@@ -223,7 +224,7 @@ def process_scan_box(
             db.query(PickingItem, Session, Operator)
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
-            .filter(PickingItem.sku.in_(skus), Session.status != "completed")
+            .filter(func.upper(PickingItem.sku).in_(skus), Session.status != "completed")
             .filter(PickingItem.qty_picked == 0)
         )
         if current_marketplace:
@@ -250,7 +251,8 @@ def process_scan_box(
         }
 
     if focus_sku:
-        item = next((i for i in items if i.sku == focus_sku), None)
+        target_focus = focus_sku.strip().upper()
+        item = next((i for i in items if i.sku.upper() == target_focus), None)
         if not item:
              return {"status": "error", "message": f"SKU focado {focus_sku} não encontrado para este código"}
     else:
@@ -258,8 +260,8 @@ def process_scan_box(
 
     sku = item.sku
     current = get_current_item(db, session_id)
-    in_focus_mode = focus_sku is not None and focus_sku == sku
-    if current and current.sku != sku and not in_focus_mode:
+    in_focus_mode = focus_sku is not None and focus_sku.upper() == sku.upper()
+    if current and current.sku.upper() != sku.upper() and not in_focus_mode:
         return {
             "status": "wrong_sku",
             "scanned_sku": sku,

@@ -74,7 +74,7 @@ def _extract_ml_table(pdf) -> list[dict]:
 def _extract_sku(produto: str) -> str | None:
     # Pattern: 'SKU:\nSKU_VALUE' or 'SKU: SKU_VALUE'
     match = re.search(r"SKU:\s*\n?(\S+)", produto)
-    return match.group(1) if match else None
+    return match.group(1).upper() if match else None
 
 
 def _extract_ml_code(produto: str) -> str | None:

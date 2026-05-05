@@ -3,6 +3,7 @@ Barcode master data management.
 Allows importing EAN→SKU mapping from an Excel file, and CRUD via API.
 """
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from pydantic import BaseModel
 from typing import Optional, List
@@ -55,7 +56,7 @@ async def import_excel(
     for row in ws.iter_rows(min_row=2, values_only=True):
         if not row or not row[0]:
             continue
-        sku = str(row[0]).strip()
+        sku = str(row[0]).strip().upper()
         if not sku:
             continue
 
@@ -112,10 +113,10 @@ async def import_excel(
 @router.post("/product", status_code=201)
 def create_product(body: CreateProductBody, db: DBSession = Depends(get_db)):
     """Cria um novo produto manualmente (sem upload de arquivo)."""
-    sku = body.sku.strip()
+    sku = body.sku.strip().upper()
     if not sku:
         raise HTTPException(400, "SKU obrigatório")
-    existing = db.query(Barcode).filter(Barcode.sku == sku).first()
+    existing = db.query(Barcode).filter(func.upper(Barcode.sku) == sku).first()
     if existing:
         raise HTTPException(409, f"SKU '{sku}' já existe")
 
@@ -209,11 +210,11 @@ def resolve_barcode(barcode: str = Query(...), db: DBSession = Depends(get_db)):
     if not rows:
         raise HTTPException(404, "Código de barras não encontrado")
 
-    skus = list(set(r.sku for r in rows))
+    skus = list({(r.sku or "").upper() for r in rows})
     sku = skus[0]
     alias_row = (
         db.query(Barcode.description)
-        .filter(Barcode.barcode == sku, Barcode.sku == sku, Barcode.description.isnot(None))
+        .filter(func.upper(Barcode.barcode) == sku, func.upper(Barcode.sku) == sku, Barcode.description.isnot(None))
         .first()
     )
     description = alias_row[0] if alias_row else None
@@ -221,7 +222,7 @@ def resolve_barcode(barcode: str = Query(...), db: DBSession = Depends(get_db)):
         from models import PickingItem
         pi_row = (
             db.query(PickingItem.description)
-            .filter(PickingItem.sku == sku, PickingItem.description.isnot(None), PickingItem.description != "")
+            .filter(func.upper(PickingItem.sku) == sku, PickingItem.description.isnot(None), PickingItem.description != "")
             .order_by(PickingItem.id.desc())
             .first()
         )

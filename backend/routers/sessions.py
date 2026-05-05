@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
 from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch, PrintJob
@@ -290,23 +291,24 @@ async def upload_session(
         db.flush()
 
         for item in batch_items:
+            sku_norm = (item["sku"] or "").strip().upper()
             pi = PickingItem(
                 session_id=sess.id,
-                sku=item["sku"],
+                sku=sku_norm,
                 ml_code=item.get("ml_code"),
                 description=item.get("description", ""),
                 qty_required=item["qty_required"],
             )
             db.add(pi)
-            add_barcode_safe(item["sku"], item["sku"], True)
+            add_barcode_safe(sku_norm, sku_norm, True)
             ean = item.get("ean")
             if ean:
-                add_barcode_safe(ean, item["sku"], False)
+                add_barcode_safe(ean, sku_norm, False)
 
             for lbl in sku_labels.get(item["sku"], []):
                 db.add(Label(
                     session_id=sess.id,
-                    sku=lbl["sku"],
+                    sku=(lbl["sku"] or "").strip().upper(),
                     label_index=lbl["label_index"],
                     zpl_content=lbl["zpl_content"],
                 ))
@@ -350,7 +352,7 @@ def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_d
     if not batch:
         raise HTTPException(404, "Lote não encontrado")
 
-    skus_norm = [i.sku.strip() for i in body.items]
+    skus_norm = [i.sku.strip().upper() for i in body.items]
     if any(not s for s in skus_norm):
         raise HTTPException(400, "SKU inválido")
     if len(skus_norm) != len(set(skus_norm)):
@@ -360,7 +362,8 @@ def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_d
             raise HTTPException(400, f"Quantidade inválida para SKU {it.sku}")
 
     known_skus = {
-        b.sku for b in db.query(Barcode).filter(Barcode.sku.in_(skus_norm)).all()
+        (b.sku or "").upper()
+        for b in db.query(Barcode).filter(func.upper(Barcode.sku).in_(skus_norm)).all()
     }
     missing = [s for s in skus_norm if s not in known_skus]
     if missing:
@@ -396,14 +399,14 @@ def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_d
     db.flush()
 
     descriptions = {
-        b.sku: b.description
+        (b.sku or "").upper(): b.description
         for b in db.query(Barcode).filter(
-            Barcode.sku.in_(skus_norm), Barcode.description.isnot(None)
+            func.upper(Barcode.sku).in_(skus_norm), Barcode.description.isnot(None)
         ).all()
     }
 
     for it in body.items:
-        sku = it.sku.strip()
+        sku = it.sku.strip().upper()
         pi = PickingItem(
             session_id=sess.id,
             sku=sku,

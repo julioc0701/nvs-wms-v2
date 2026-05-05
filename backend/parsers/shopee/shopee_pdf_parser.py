@@ -175,7 +175,7 @@ def _parse_block(vendor_parts: List[str], anchor_line: str, block_lines: List[st
         all_vendor_parts.append(vendor_prefix)
 
     # Join without spaces: handles "VFW3GTCRIST\nAL" → "VFW3GTCRISTAL"
-    sku_vendedor = "".join(all_vendor_parts)
+    sku_vendedor = "".join(all_vendor_parts).upper()
 
     id_p1 = m.group(0)
 
