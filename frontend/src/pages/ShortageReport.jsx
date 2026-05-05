@@ -271,17 +271,17 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
+              <table className="w-full text-left table-fixed">
                 <thead>
                   <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                    <th className="px-8 py-5">SKU / Descrição</th>
-                    <th className="px-8 py-5 text-center">Lista de Origem</th>
-                    <th className="px-8 py-5 text-center">Operador</th>
-                    <th className="px-8 py-5">Observação</th>
-                    <th className="px-8 py-5 text-center">Data Registro</th>
-                    <th className="px-8 py-5 text-center">Status</th>
-                    <th className="px-8 py-5 text-right">Qtd Faltante</th>
-                    <th className="px-4 py-5 w-12"></th>
+                    <th className="px-3 py-5 w-[26%]">SKU / Descrição</th>
+                    <th className="px-3 py-5 text-center w-[9%]">Lista</th>
+                    <th className="px-3 py-5 text-center w-[12%]">Operador</th>
+                    <th className="px-3 py-5 text-center w-[11%]">Data</th>
+                    <th className="px-3 py-5 text-center w-[12%]">Status</th>
+                    <th className="px-3 py-5 text-right w-[9%]">Qtd</th>
+                    <th className="px-3 py-5 w-[17%]">Observação</th>
+                    <th className="px-2 py-5 w-[4%]"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -293,47 +293,39 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
                       }`}
                     >
                       {/* SKU */}
-                      <td className="px-8 py-6">
-                        <div className="flex flex-col gap-1">
-                           <span className="font-mono font-black text-slate-700 text-base group-hover:text-blue-600 transition-colors">
+                      <td className="px-3 py-6 align-middle">
+                        <div className="flex flex-col gap-1 min-w-0">
+                           <span className="font-mono font-black text-slate-700 text-sm group-hover:text-blue-600 transition-colors truncate" title={item.sku}>
                              {item.sku}
                            </span>
-                           <span className="text-xs font-semibold text-slate-400 truncate max-w-sm">
+                           <span className="text-[11px] font-semibold text-slate-400 truncate" title={item.description || ''}>
                              {item.description || 'Sem descrição cadastrada'}
                            </span>
                         </div>
                       </td>
 
                       {/* Lista */}
-                      <td className="px-8 py-6 text-center">
-                        <div className="inline-flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl font-mono text-xs font-bold text-slate-500">
-                           <ChevronRight size={14} className="text-slate-300"/> {item.list_id || '—'}
+                      <td className="px-3 py-6 text-center align-middle">
+                        <div className="inline-flex items-center gap-1 bg-slate-100 border border-slate-200 px-2 py-1 rounded-xl font-mono text-xs font-bold text-slate-500">
+                           <ChevronRight size={12} className="text-slate-300"/> {item.list_id || '—'}
                         </div>
                       </td>
 
                       {/* Operador */}
-                      <td className="px-8 py-6 text-center">
-                         <div className="flex items-center justify-center gap-2">
-                           <div className="w-8 h-8 bg-blue-50 border border-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600 uppercase shadow-sm shrink-0">
+                      <td className="px-3 py-6 text-center align-middle">
+                         <div className="flex items-center justify-center gap-2 min-w-0">
+                           <div className="w-7 h-7 bg-blue-50 border border-blue-100 rounded-full flex items-center justify-center text-[10px] font-black text-blue-600 uppercase shadow-sm shrink-0">
                              {item.operator_name ? item.operator_name.slice(0, 2).toUpperCase() : 'AD'}
                            </div>
-                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate">
-                             {item.operator_name || 'Sistema / ADM'}
+                           <span className="text-[10px] font-black text-slate-500 uppercase tracking-wide truncate">
+                             {item.operator_name || 'Sistema'}
                            </span>
                          </div>
                       </td>
 
-                      {/* Obs */}
-                      <td className="px-8 py-6 max-w-[200px]">
-                        {item.notes
-                          ? <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg italic leading-relaxed block truncate" title={item.notes}>{item.notes}</span>
-                          : <span className="text-xs text-slate-300">—</span>
-                        }
-                      </td>
-
                       {/* Data */}
-                      <td className="px-8 py-6 text-center">
-                         <span className="text-xs font-bold text-slate-400 uppercase tabular-nums">
+                      <td className="px-3 py-6 text-center align-middle">
+                         <span className="text-[11px] font-bold text-slate-400 uppercase tabular-nums whitespace-nowrap">
                             {new Date(item.created_at).toLocaleDateString('pt-BR')}
                             <span className="opacity-50 ml-1 font-normal">
                               {new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -342,41 +334,49 @@ function GroupSection({ title, subtitle, items, expanded, onToggle, icon, color,
                       </td>
 
                       {/* STATUS — clicável para toggle */}
-                      <td className="px-8 py-6 text-center">
+                      <td className="px-3 py-6 text-center align-middle">
                         {item.is_legacy ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-500 border border-orange-100">
-                            <Clock size={11} /> Pendente
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-50 text-orange-500 border border-orange-100">
+                            <Clock size={10} /> Pendente
                           </span>
                         ) : (
                           <button
                             onClick={() => onToggleStatus(item)}
                             title="Clique para alternar status"
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border transition-all active:scale-95 cursor-pointer ${
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all active:scale-95 cursor-pointer ${
                               item.status === 'concluido'
                                 ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
                                 : 'bg-orange-50 text-orange-500 border-orange-100 hover:bg-orange-100'
                             }`}
                           >
                             {item.status === 'concluido'
-                              ? <><CheckCircle2 size={11} /> Concluído</>
-                              : <><Clock size={11} /> Pendente</>
+                              ? <><CheckCircle2 size={10} /> Concluído</>
+                              : <><Clock size={10} /> Pendente</>
                             }
                           </button>
                         )}
                       </td>
 
                       {/* Qtd */}
-                      <td className="px-8 py-6 text-right">
-                         <span className={`text-xl font-black tabular-nums ${
+                      <td className="px-3 py-6 text-right align-middle">
+                         <span className={`text-lg font-black tabular-nums ${
                            item.status === 'concluido' ? 'text-slate-300 line-through' : 'text-red-500'
                          }`}>
                            -{item.quantity.toFixed(0)}
                          </span>
-                         <span className="text-[10px] font-bold text-slate-300 ml-1 uppercase">unid.</span>
+                         <span className="text-[9px] font-bold text-slate-300 ml-0.5 uppercase">un</span>
+                      </td>
+
+                      {/* Obs — movida pro fim */}
+                      <td className="px-3 py-6 align-middle">
+                        {item.notes
+                          ? <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-100 px-2 py-1 rounded-lg italic leading-relaxed block truncate" title={item.notes}>{item.notes}</span>
+                          : <span className="text-xs text-slate-300">—</span>
+                        }
                       </td>
 
                       {/* Delete por linha — aparece no hover */}
-                      <td className="px-4 py-6">
+                      <td className="px-2 py-6 align-middle">
                         <button
                           onClick={() => onDelete(item)}
                           title="Remover este registro"
