@@ -488,35 +488,36 @@ def find_by_barcode(
       not_found        — barcode not in the Barcode table
       not_in_sessions  — SKU exists but not in any active session
     """
-    # 1. Try exact barcode match first
-    bc = db.query(Barcode).filter(Barcode.barcode == barcode).first()
-    sku = bc.sku if bc else None
+    # 1. Try exact barcode match — pega TODOS os SKUs vinculados (multi-SKU possível)
+    bc_rows = db.query(Barcode).filter(Barcode.barcode == barcode).all()
+    skus = list({(r.sku or "").upper() for r in bc_rows})
 
     # 2. If no barcode match, try SKU or Description (partial match)
-    if not sku:
+    if not skus:
         like_query = f"%{barcode}%"
         # Search for candidates in PickingItem directly
         # Include ALL sessions (even completed) so EXT lists and finished items show up
         from sqlalchemy import case
+        barcode_upper = barcode.upper()
         candidates_query = (
             db.query(PickingItem, Session, Operator.name.label("operator_name"))
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
             .filter(
-                (PickingItem.sku == barcode) | 
-                (PickingItem.sku.ilike(like_query)) | 
+                (func.upper(PickingItem.sku) == barcode_upper) |
+                (PickingItem.sku.ilike(like_query)) |
                 (PickingItem.description.ilike(like_query))
             )
             .order_by(
                 # Prioritize non-completed sessions first
                 case((Session.status != "completed", 0), else_=1).asc(),
-                case((PickingItem.sku == barcode, 1), else_=0).desc(),  # Exact SKU first
+                case((func.upper(PickingItem.sku) == barcode_upper, 1), else_=0).desc(),  # Exact SKU first
                 PickingItem.qty_required.desc()                         # Then by volume
             )
         )
-        
+
         matches = candidates_query.all()
-        
+
         if not matches:
              return {"action": "not_found", "barcode": barcode}
 
@@ -524,14 +525,15 @@ def find_by_barcode(
         seen_skus = set()
         unique_matches = []
         for m in matches:
-            if m[0].sku not in seen_skus:
-                seen_skus.add(m[0].sku)
+            sku_key = (m[0].sku or "").upper()
+            if sku_key not in seen_skus:
+                seen_skus.add(sku_key)
                 unique_matches.append(m)
         matches = unique_matches
 
         # If the top match is NOT an exact SKU, and there are multiple candidates, return list
         top_item, _, _ = matches[0]
-        if top_item.sku != barcode and len(matches) > 1:
+        if (top_item.sku or "").upper() != barcode_upper and len(matches) > 1:
             return {
                 "action": "multiple_matches",
                 "barcode": barcode,
@@ -543,38 +545,63 @@ def find_by_barcode(
                         "session_id": m[1].id,
                         "session_code": m[1].session_code,
                         "operator_name": m[2] or "Disponível",
-                        "marketplace": m[1].marketplace, # INJETADO
+                        "marketplace": m[1].marketplace,
                         "qty_picked": m[0].qty_picked,
                         "qty_required": m[0].qty_required,
                         "status": m[0].status
                     } for m in matches
                 ]
             }
-        
-        # Otherwise, take the first one
-        sku = top_item.sku
 
-    # 3. Find all items with this SKU in non-completed sessions, best first
+        # Otherwise, take the first one
+        skus = [(top_item.sku or "").upper()]
+
+    # 3. Busca itens com QUALQUER um dos SKUs vinculados, em sessões abertas
     rows = (
         db.query(PickingItem, Session, Operator)
         .join(Session, Session.id == PickingItem.session_id)
         .outerjoin(Operator, Operator.id == Session.operator_id)
         .filter(
-            PickingItem.sku == sku,
+            func.upper(PickingItem.sku).in_(skus),
             Session.status != "completed",
         )
         .order_by(PickingItem.qty_required.desc())
         .all()
     )
 
+    # Se >1 SKU vinculado ao mesmo barcode tem item em listas abertas → mostra todos pra escolher
+    distinct_skus_in_rows = {(r[0].sku or "").upper() for r in rows}
+    if len(distinct_skus_in_rows) > 1:
+        return {
+            "action": "multiple_matches",
+            "barcode": barcode,
+            "candidates": [
+                {
+                    "item_id": r[0].id,
+                    "sku": r[0].sku,
+                    "description": r[0].description,
+                    "session_id": r[1].id,
+                    "session_code": r[1].session_code,
+                    "operator_name": r[2].name if r[2] else "Disponível",
+                    "marketplace": r[1].marketplace,
+                    "qty_picked": r[0].qty_picked,
+                    "qty_required": r[0].qty_required,
+                    "status": r[0].status,
+                } for r in rows
+            ]
+        }
+
+    # Apenas 1 SKU encontrado (ou nenhum) — fluxo single
+    sku = next(iter(distinct_skus_in_rows), skus[0])
+
     if not rows:
-        # Verificar se o SKU foi concluído em alguma sessão finalizada
+        # Verificar se algum dos SKUs vinculados foi concluído em sessão finalizada
         done_rows = (
             db.query(PickingItem, Session, Operator)
             .join(Session, Session.id == PickingItem.session_id)
             .outerjoin(Operator, Operator.id == Session.operator_id)
             .filter(
-                PickingItem.sku == sku,
+                func.upper(PickingItem.sku).in_(skus),
                 Session.status == "completed",
                 PickingItem.status.in_(["complete", "partial", "out_of_stock"]),
             )
