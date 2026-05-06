@@ -102,7 +102,8 @@ export default function Layout() {
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
             // Se for Supervisão Full e houver um marketplace ativo, mantemos o pai ativo
             const isParentActive = item.path === '/supervisor' && isMarketplaceActive
-            const showInlineSubMenu = item.path === '/supervisor' && isMarketplaceActive
+            const showInlineSubMenu = (item.path === '/supervisor' && isMarketplaceActive)
+              || (item.path === '/separacao' && isSeparacaoActive)
 
             return (
               <div key={item.path} className="flex flex-col gap-1.5">
@@ -148,34 +149,6 @@ export default function Layout() {
             )
           })}
 
-          {/* SUB-MENU DINÂMICO — apenas para Separação (Supervisão renderiza inline acima) */}
-          {isSeparacaoActive && (
-            <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <p className="px-3 mb-2 text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">
-                Gestão de Separação
-              </p>
-              {subNavItems.map((sub) => {
-                const SubIcon = sub.icon
-                const isSubActive = location.pathname === sub.path
-                return (
-                  <button
-                    key={sub.path}
-                    onClick={() => handleNav(sub)}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-200 ml-2",
-                      isSubActive
-                        ? "bg-white text-slate-900 shadow-md border border-slate-200"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                    )}
-                  >
-                    <SubIcon size={16} strokeWidth={isSubActive ? 2.5 : 2} />
-                    {sub.label}
-                    {sub.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
-                  </button>
-                )
-              })}
-            </div>
-          )}
         </div>
 
         <div className="p-4 border-t border-slate-800">
