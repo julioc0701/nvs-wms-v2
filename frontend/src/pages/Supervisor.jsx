@@ -743,8 +743,8 @@ export default function Supervisor() {
   const [agentInfo, setAgentInfo] = useState(null)
   const [shortageItems, setShortageItems] = useState([])
   const [lastRefresh, setLastRefresh] = useState(null)
-  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
-  const [deletingAll, setDeletingAll] = useState(false)
+  const [deleteBatchConfirm, setDeleteBatchConfirm] = useState(null)
+  const [deletingBatch, setDeletingBatch] = useState(false)
 
   const agentCheckRef = useRef(false)
   const refreshIntervalRef = useRef(null)
@@ -775,18 +775,17 @@ export default function Supervisor() {
     })
   }
 
-  async function handleDeleteAllBatches() {
-    const toDelete = batches.filter(b => normalizeMarket(b.marketplace) === normalizeMarket(marketplaceView))
-    if (toDelete.length === 0) { setDeleteAllConfirm(false); return }
-    setDeletingAll(true)
+  async function handleDeleteBatch() {
+    if (!deleteBatchConfirm) return
+    setDeletingBatch(true)
     try {
-      await Promise.all(toDelete.map(b => api.deleteBatch(b.id)))
+      await api.deleteBatch(deleteBatchConfirm.id)
       refresh()
-      setDeleteAllConfirm(false)
+      setDeleteBatchConfirm(null)
     } catch (err) {
       alert('Erro ao apagar: ' + (err.message || err))
     } finally {
-      setDeletingAll(false)
+      setDeletingBatch(false)
     }
   }
 
@@ -1008,15 +1007,6 @@ export default function Supervisor() {
                 const orphanSessions  = visibleSessions.filter(s => !batchSessionIds.has(s.id))
                 return (
                   <div className="flex flex-col gap-10">
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => setDeleteAllConfirm(true)}
-                        title="Apagar todas as listas"
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        🗑️
-                      </button>
-                    </div>
                     {/* Lotes Ativos */}
                     {visibleBatches.filter(b => b.status === 'active').length > 0 && (
                       <div>
@@ -1030,8 +1020,9 @@ export default function Supervisor() {
                             const available = batch.sessions.filter(s => s.status === 'open').length
                             const done      = batch.sessions.filter(s => s.status === 'completed').length
                             return (
-                              <button key={batch.id} onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
-                                className="bg-white text-left rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all overflow-hidden group">
+                              <div key={batch.id} onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
+                                role="button" tabIndex={0}
+                                className="bg-white text-left rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all overflow-hidden group cursor-pointer">
                                 <div className="p-6">
                                   <div className="flex items-start justify-between mb-5">
                                     <div>
@@ -1041,7 +1032,16 @@ export default function Supervisor() {
                                       <p className="font-black text-slate-900 text-lg leading-tight">{batch.name}</p>
                                       <p className="text-xs font-medium text-slate-500 mt-1">{batch.sessions.length} listas · {batch.total_items.toLocaleString('pt-BR')} itens</p>
                                     </div>
-                                    <p className="text-2xl font-black text-slate-800 tabular-nums bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">{bPct}<span className="text-sm text-slate-400">%</span></p>
+                                    <div className="flex items-start gap-2">
+                                      <p className="text-2xl font-black text-slate-800 tabular-nums bg-slate-50 px-3 py-1 rounded-xl border border-slate-100">{bPct}<span className="text-sm text-slate-400">%</span></p>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setDeleteBatchConfirm(batch) }}
+                                        title="Apagar este lote"
+                                        className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden mb-5">
                                     <div className={cn("h-full rounded-full transition-all duration-700", bPct >= 90 ? "bg-emerald-500" : bPct >= 50 ? "bg-blue-500" : "bg-amber-500")} style={{ width: `${bPct}%` }} />
@@ -1056,7 +1056,7 @@ export default function Supervisor() {
                                   <span>{batch.total_picked.toLocaleString()} / {batch.total_items.toLocaleString()}</span>
                                   <span className="text-blue-600 group-hover:underline flex items-center gap-1">Supervisionar <ArrowLeft size={12} className="rotate-180" /></span>
                                 </div>
-                              </button>
+                              </div>
                             )
                           })}
                         </div>
@@ -1071,16 +1071,26 @@ export default function Supervisor() {
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {visibleBatches.filter(b => b.status === 'archived').map(batch => (
-                            <button key={batch.id} onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
-                              className="bg-white text-left rounded-xl border border-slate-200 shadow-sm opacity-70 hover:opacity-100 transition-all group overflow-hidden">
-                              <div className="p-4 flex items-center justify-between">
-                                <div>
+                            <div key={batch.id} onClick={() => navigate(`/supervisor/batch/${batch.id}`)}
+                              role="button" tabIndex={0}
+                              className="bg-white text-left rounded-xl border border-slate-200 shadow-sm opacity-70 hover:opacity-100 transition-all group overflow-hidden cursor-pointer">
+                              <div className="p-4 flex items-center justify-between gap-2">
+                                <div className="min-w-0 flex-1">
                                   <p className="font-bold text-slate-700 truncate">{batch.name}</p>
                                   <p className="text-xs text-slate-400 mt-0.5">{batch.sessions.length} listas integradas</p>
                                 </div>
-                                <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-md border border-slate-200">{batch.pct || 0}%</span>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-md border border-slate-200">{batch.pct || 0}%</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setDeleteBatchConfirm(batch) }}
+                                    title="Apagar este lote"
+                                    className="p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
                               </div>
-                            </button>
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -1259,30 +1269,30 @@ export default function Supervisor() {
         </div>
       )}
 
-      {/* Modal — apagar todas as listas */}
-      {deleteAllConfirm && (
+      {/* Modal — apagar lote */}
+      {deleteBatchConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-3xl">🗑️</span>
+              <Trash2 size={28} className="text-red-500" />
               <div>
-                <p className="font-bold text-gray-900 text-lg">Apagar todas as listas?</p>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  {batches.filter(b => normalizeMarket(b.marketplace) === normalizeMarket(marketplaceView)).length} lote(s) serão apagados permanentemente
+                <p className="font-bold text-gray-900 text-lg">Apagar este lote?</p>
+                <p className="text-sm text-gray-500 mt-0.5 truncate">
+                  {deleteBatchConfirm.name} · {deleteBatchConfirm.sessions?.length || 0} lista(s)
                 </p>
               </div>
             </div>
             <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3 mb-5">
-              ⚠️ Esta ação não pode ser desfeita. Todas as sessões, itens e histórico de bipagem serão removidos.
+              ⚠️ Esta ação não pode ser desfeita. Todas as sessões, itens e histórico de bipagem deste lote serão removidos.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteAllConfirm(false)} disabled={deletingAll}
+              <button onClick={() => setDeleteBatchConfirm(null)} disabled={deletingBatch}
                 className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
                 Não, cancelar
               </button>
-              <button onClick={handleDeleteAllBatches} disabled={deletingAll}
+              <button onClick={handleDeleteBatch} disabled={deletingBatch}
                 className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 disabled:opacity-50 transition-colors">
-                {deletingAll ? 'Apagando...' : 'Sim, apagar tudo'}
+                {deletingBatch ? 'Apagando...' : 'Sim, apagar'}
               </button>
             </div>
           </div>

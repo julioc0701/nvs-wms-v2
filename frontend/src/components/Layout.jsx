@@ -1,9 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import novaesLogo from '../assets/logo-novaes-v3.png'
-import { 
+import {
   Home, PackageSearch, Users, AlertCircle, LogOut, Database,
-  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList
+  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList,
+  Pin, PinOff, Menu
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -14,6 +15,32 @@ export default function Layout() {
 
   const isMaster = operator?.name === 'Master'
   const isMobilePhone = window.innerWidth < 768
+
+  // Auto-hide sidebar (desktop) — hover-reveal com pin opcional
+  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('sidebarPinned') === 'true')
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarPinned') === 'true')
+  const closeTimerRef = useRef(null)
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null }
+  }
+  const openSidebar = () => { cancelClose(); setSidebarOpen(true) }
+  const scheduleClose = () => {
+    if (sidebarPinned) return
+    cancelClose()
+    closeTimerRef.current = setTimeout(() => setSidebarOpen(false), 300)
+  }
+  const togglePin = () => {
+    setSidebarPinned(prev => {
+      const next = !prev
+      localStorage.setItem('sidebarPinned', String(next))
+      if (next) setSidebarOpen(true)
+      return next
+    })
+  }
+  useEffect(() => () => cancelClose(), [])
+
+  const sidebarVisible = sidebarOpen || sidebarPinned
 
   // Redireciona não-master no celular para /separacao/listas (fora da rota de separação)
   useEffect(() => {
@@ -65,6 +92,7 @@ export default function Layout() {
     } else {
       navigate(item.path)
     }
+    if (!sidebarPinned) setSidebarOpen(false)
   }
 
   function handleLogout() {
@@ -84,9 +112,40 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row font-sans text-slate-900">
       
+      {/* TRIGGER ZONE — borda esquerda (desktop, só quando sidebar fechada) */}
+      {!sidebarVisible && (
+        <div
+          onMouseEnter={openSidebar}
+          onClick={openSidebar}
+          className="hidden lg:flex fixed left-0 top-0 bottom-0 w-2 hover:w-3 z-30 bg-cyan-500/10 hover:bg-cyan-500/30 transition-all cursor-pointer items-center justify-center group"
+          title="Abrir menu"
+        >
+          <Menu size={14} className="text-cyan-300/0 group-hover:text-cyan-200 transition-colors" />
+        </div>
+      )}
+
       {/* SIDEBAR DESKTOP */}
-      <aside className="hidden lg:flex w-72 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-10 transition-all duration-300 text-slate-200">
-        <div className="flex flex-col items-center px-6 py-8 border-b border-slate-800 gap-4">
+      <aside
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+        className={cn(
+          "hidden lg:flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-20 transition-all duration-300 text-slate-200 overflow-hidden",
+          sidebarVisible ? "w-72" : "w-0 border-r-0"
+        )}
+      >
+        <div className="relative flex flex-col items-center px-6 py-8 border-b border-slate-800 gap-4 min-w-[18rem]">
+          <button
+            onClick={togglePin}
+            title={sidebarPinned ? "Desafixar menu" : "Fixar menu"}
+            className={cn(
+              "absolute top-3 right-3 p-1.5 rounded-lg transition-colors",
+              sidebarPinned
+                ? "bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30"
+                : "text-slate-500 hover:text-cyan-300 hover:bg-slate-800"
+            )}
+          >
+            {sidebarPinned ? <Pin size={14} /> : <PinOff size={14} />}
+          </button>
           <div className="w-24 h-24 flex items-center justify-center group overflow-visible">
              <img src={novaesLogo} alt="NVS Logo" className="w-full h-full object-contain drop-shadow-[0_15px_30px_rgba(59,130,246,0.2)] transition-transform duration-700 group-hover:scale-110" />
           </div>
@@ -96,7 +155,7 @@ export default function Layout() {
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5">
+        <div className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 min-w-[18rem]">
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
@@ -151,7 +210,7 @@ export default function Layout() {
 
         </div>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 min-w-[18rem]">
           <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-slate-800/80 border border-slate-700 mb-2">
             <div className="w-8 h-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-sm uppercase">
               {operator?.name?.charAt(0) || 'O'}

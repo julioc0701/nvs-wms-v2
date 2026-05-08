@@ -207,6 +207,22 @@ export default function BatchDetail() {
   const [shortageItems, setShortageItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [extraOpen, setExtraOpen] = useState(false)
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
+
+  async function handleDeleteAllSessions() {
+    if (!batch?.sessions?.length) { setDeleteAllConfirm(false); return }
+    setDeletingAll(true)
+    try {
+      await Promise.all(batch.sessions.map(s => api.deleteSession(s.id)))
+      setDeleteAllConfirm(false)
+      load()
+    } catch (err) {
+      notify('Erro ao apagar listas: ' + (err.message || err), 'error')
+    } finally {
+      setDeletingAll(false)
+    }
+  }
 
   function load() {
     api.listBatches()
@@ -295,6 +311,15 @@ export default function BatchDetail() {
                 <RefreshCcw size={14} />
                 Atualizar
               </Button>
+              {batch.sessions.length > 0 && (
+                <button
+                  onClick={() => setDeleteAllConfirm(true)}
+                  title="Apagar todas as listas deste lote"
+                  className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -346,6 +371,35 @@ export default function BatchDetail() {
             load()
           }}
         />
+      )}
+
+      {deleteAllConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Trash2 size={28} className="text-red-500" />
+              <div>
+                <p className="font-bold text-gray-900 text-lg">Apagar todas as listas?</p>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {batch.sessions.length} lista(s) deste lote serão apagadas
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3 mb-5">
+              ⚠️ Esta ação não pode ser desfeita. Todos os itens e histórico de bipagem serão removidos.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteAllConfirm(false)} disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
+                Não, cancelar
+              </button>
+              <button onClick={handleDeleteAllSessions} disabled={deletingAll}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 text-white text-sm font-bold hover:bg-red-600 disabled:opacity-50 transition-colors">
+                {deletingAll ? 'Apagando...' : 'Sim, apagar tudo'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
