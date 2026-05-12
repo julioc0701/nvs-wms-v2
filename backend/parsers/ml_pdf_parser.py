@@ -91,9 +91,11 @@ def _extract_ean(produto: str) -> str | None:
 
 def _extract_description(produto: str, sku: str) -> str:
     lines = produto.split("\n")
-    # Find the line containing the SKU value, then take following lines as description
+    # SKU já vem em UPPERCASE do _extract_sku, mas o PDF pode tê-lo em case misto.
+    # Comparar case-insensitive pra achar a linha do SKU.
+    sku_lc = sku.lower()
     for i, line in enumerate(lines):
-        if sku in line:
+        if sku_lc in line.lower():
             desc_parts = [l.strip() for l in lines[i + 1:] if l.strip()]
             return " ".join(desc_parts)[:200]
     return ""

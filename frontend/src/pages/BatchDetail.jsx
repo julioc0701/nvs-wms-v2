@@ -325,39 +325,51 @@ export default function BatchDetail() {
 
           {batch.sessions.length === 0 ? (
             <p className="text-center text-slate-400 py-12">Nenhuma lista neste lote.</p>
-          ) : (
+          ) : (() => {
+            // Ordena: mono-SKU primeiro, depois por items_total desc
+            const sortMonoFirst = (arr) => [...arr].sort((a, b) => {
+              const monoA = a.unique_sku_count === 1 ? 0 : 1
+              const monoB = b.unique_sku_count === 1 ? 0 : 1
+              if (monoA !== monoB) return monoA - monoB
+              return (b.items_total || 0) - (a.items_total || 0)
+            })
+            const inProgress = sortMonoFirst(batch.sessions.filter(s => s.status === 'in_progress'))
+            const opens      = sortMonoFirst(batch.sessions.filter(s => s.status === 'open'))
+            const dones      = sortMonoFirst(batch.sessions.filter(s => s.status === 'completed'))
+            return (
             <div className="px-6 divide-y divide-slate-50">
               {/* In progress */}
-              {batch.sessions.filter(s => s.status === 'in_progress').length > 0 && (
+              {inProgress.length > 0 && (
                 <div className="py-2">
                   <p className="text-xs font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2 mb-2 mt-2">
                     <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse inline-block" /> Em Andamento
                   </p>
-                  {batch.sessions.filter(s => s.status === 'in_progress').map(s => (
+                  {inProgress.map(s => (
                     <SessionRow key={s.id} s={s} onDeleted={load} />
                   ))}
                 </div>
               )}
               {/* Open */}
-              {batch.sessions.filter(s => s.status === 'open').length > 0 && (
+              {opens.length > 0 && (
                 <div className="py-2">
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 mt-2">Disponíveis</p>
-                  {batch.sessions.filter(s => s.status === 'open').map(s => (
+                  {opens.map(s => (
                     <SessionRow key={s.id} s={s} onDeleted={load} />
                   ))}
                 </div>
               )}
               {/* Done */}
-              {batch.sessions.filter(s => s.status === 'completed').length > 0 && (
+              {dones.length > 0 && (
                 <div className="py-2">
                   <p className="text-xs font-bold text-green-600 uppercase tracking-widest mb-2 mt-2">Concluídas</p>
-                  {batch.sessions.filter(s => s.status === 'completed').map(s => (
+                  {dones.map(s => (
                     <SessionRow key={s.id} s={s} onDeleted={load} />
                   ))}
                 </div>
               )}
             </div>
-          )}
+            )
+          })()}
         </Card>
       </div>
 

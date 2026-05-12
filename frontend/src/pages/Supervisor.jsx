@@ -1177,7 +1177,12 @@ export default function Supervisor() {
                                     </div>
                                   </summary>
                                   <div className="border-t border-slate-100 divide-y divide-slate-50 bg-slate-50/30">
-                                    {dateSessions.sort((a, b) => b.id - a.id).map(s => (
+                                    {[...dateSessions].sort((a, b) => {
+                                      const monoA = a.unique_sku_count === 1 ? 0 : 1
+                                      const monoB = b.unique_sku_count === 1 ? 0 : 1
+                                      if (monoA !== monoB) return monoA - monoB
+                                      return (b.items_total || 0) - (a.items_total || 0)
+                                    }).map(s => (
                                       <SessionRow key={s.id} s={s} onDeleted={refresh} />
                                     ))}
                                   </div>

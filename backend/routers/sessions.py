@@ -70,6 +70,7 @@ def list_batches(db: DBSession = Depends(get_db)):
         for s in b.sessions:
             s_total  = sum(i.qty_required for i in s.items)
             s_picked = sum(i.qty_picked   for i in s.items)
+            s_unique_skus = len({i.sku for i in s.items})
             sess_data.append({
                 "id": s.id,
                 "session_code": s.session_code,
@@ -77,6 +78,7 @@ def list_batches(db: DBSession = Depends(get_db)):
                 "status": s.status,
                 "items_total": s_total,
                 "items_picked": s_picked,
+                "unique_sku_count": s_unique_skus,
             })
         total_items  = sum(sd["items_total"]  for sd in sess_data)
         total_picked = sum(sd["items_picked"] for sd in sess_data)
@@ -457,6 +459,7 @@ def list_sessions(db: DBSession = Depends(get_db)):
     for s in sessions:
         total = sum(i.qty_required for i in s.items)
         picked = sum(i.qty_picked for i in s.items)
+        unique_sku_count = len({i.sku for i in s.items})
         result.append({
             "id": s.id,
             "session_code": s.session_code,
@@ -467,6 +470,7 @@ def list_sessions(db: DBSession = Depends(get_db)):
             "created_at": s.created_at.isoformat(),
             "items_total": total,
             "items_picked": picked,
+            "unique_sku_count": unique_sku_count,
         })
     return result
 
@@ -723,6 +727,7 @@ def shortage_report(db: DBSession = Depends(get_db)):
 def get_all_pending(db: DBSession = Depends(get_db)):
     """
     Returns all items with 'pending' status from all active (non-completed) sessions.
+    Ordered by remaining quantity desc.
     Used for the cross-session pending items list.
     """
     rows = (
@@ -731,7 +736,7 @@ def get_all_pending(db: DBSession = Depends(get_db)):
         .outerjoin(Operator, Operator.id == Session.operator_id)
         .filter(Session.status != "completed")
         .filter(PickingItem.status == "pending")
-        .order_by(PickingItem.sku)
+        .order_by((PickingItem.qty_required - PickingItem.qty_picked).desc())
         .all()
     )
     return [
@@ -745,7 +750,7 @@ def get_all_pending(db: DBSession = Depends(get_db)):
             "marketplace": r[1].marketplace, # INJETADO
             "qty_picked": r[0].qty_picked,
             "qty_required": r[0].qty_required,
-            "status": r[0].status
+            "status": r[0].status,
         } for r in rows
     ]
 

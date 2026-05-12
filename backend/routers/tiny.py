@@ -1010,9 +1010,23 @@ async def get_separacao_detail(sep_id: str, token: Optional[str] = None, db: Ses
 
 @router.get("/picking-lists")
 async def list_picking_lists(db: Session = Depends(get_db)):
-    """Lista o histórico de listas de separação geradas."""
+    """Lista o histórico de listas de separação geradas.
+    Inclui unique_sku_count e total_quantity para ordenação no frontend (mono-SKU primeiro)."""
     lists = db.query(TinyPickingList).order_by(TinyPickingList.created_at.desc()).all()
-    return lists
+    result = []
+    for plist in lists:
+        items = plist.items
+        unique_sku_count = len({it.sku for it in items})
+        total_quantity = sum(it.quantity for it in items)
+        result.append({
+            "id": plist.id,
+            "name": plist.name,
+            "status": plist.status,
+            "created_at": plist.created_at.isoformat() if plist.created_at else None,
+            "unique_sku_count": unique_sku_count,
+            "total_quantity": total_quantity,
+        })
+    return result
 
 @router.delete("/picking-lists/{list_id}")
 async def delete_picking_list(list_id: int, db: Session = Depends(get_db)):

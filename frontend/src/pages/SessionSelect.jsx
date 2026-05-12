@@ -48,17 +48,25 @@ export default function SessionSelect() {
       .finally(() => setLoading(false))
   }
 
-  const mySessions = sessions.filter(
+  // Ordena: mono-SKU primeiro (unique_sku_count===1), depois por items_total desc
+  const sortMonoFirst = (arr) => [...arr].sort((a, b) => {
+    const monoA = a.unique_sku_count === 1 ? 0 : 1
+    const monoB = b.unique_sku_count === 1 ? 0 : 1
+    if (monoA !== monoB) return monoA - monoB
+    return (b.items_total || 0) - (a.items_total || 0)
+  })
+
+  const mySessions = sortMonoFirst(sessions.filter(
     s => s.operator_id === operator?.id && s.status !== 'completed'
-  )
+  ))
 
-  const available = sessions.filter(s =>
+  const available = sortMonoFirst(sessions.filter(s =>
     s.status === 'open' && !s.operator_id
-  )
+  ))
 
-  const myDone = sessions.filter(
+  const myDone = sortMonoFirst(sessions.filter(
     s => s.operator_id === operator?.id && s.status === 'completed'
-  )
+  ))
   const totalOpen = sessions.filter(s => s.status === 'open' && !s.operator_id).length
   const totalMine = sessions.filter(s => s.operator_id === operator?.id && s.status !== 'completed').length
 

@@ -43,10 +43,19 @@ export default function PickingListsHistory() {
     loadLists()
   }, [])
 
-  const filtered = lists.filter(l => 
-    l.name.toLowerCase().includes(search.toLowerCase()) ||
-    l.id.toString().includes(search)
-  )
+  // Ordena: mono-SKU primeiro (unique_sku_count===1), depois por total_quantity desc
+  const filtered = lists
+    .filter(l =>
+      l.name.toLowerCase().includes(search.toLowerCase()) ||
+      l.id.toString().includes(search)
+    )
+    .slice()
+    .sort((a, b) => {
+      const monoA = a.unique_sku_count === 1 ? 0 : 1
+      const monoB = b.unique_sku_count === 1 ? 0 : 1
+      if (monoA !== monoB) return monoA - monoB
+      return (b.total_quantity || 0) - (a.total_quantity || 0)
+    })
 
   return (
     <div className="flex-1 flex flex-col bg-white p-6 font-sans">
