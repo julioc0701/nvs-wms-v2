@@ -400,3 +400,42 @@ def init_db():
         conn.commit()
         if rows:
             print(f"--- DATABASE MIGRATION: {len(rows)} picking list(s) renomeadas com sequencia L{{N}} ---")
+
+        # ── LIMPEZA DE FALTAS FANTASMA (idempotente) ──────────────────────────
+        # Bug histórico: Picking.jsx fazia dupla escrita (api.shortage + api.reportShortage),
+        # gerando registro fantasma na tabela `shortages` sem marketplace, duplicando
+        # PickingItem.shortage_qty já existente. Frontend foi corrigido — aqui limpamos
+        # as duplicatas históricas. Critério: mesmo SKU + mesma sessão + mesma qty.
+        # Faltas orgânicas e legítimas (sem match em PickingItem) NÃO são tocadas.
+        try:
+            res = conn.execute(text("""
+                SELECT COUNT(*), COALESCE(SUM(s.quantity), 0)
+                FROM shortages s
+                INNER JOIN picking_items p
+                  ON p.sku = s.sku
+                  AND CAST(p.session_id AS TEXT) = s.list_id
+                  AND p.shortage_qty = s.quantity
+                WHERE s.category = 'full'
+                  AND p.shortage_qty > 0
+            """)).fetchone()
+            dup_count, dup_units = (res[0] or 0), (res[1] or 0)
+            if dup_count > 0:
+                conn.execute(text("""
+                    DELETE FROM shortages
+                    WHERE category = 'full'
+                      AND id IN (
+                        SELECT s.id FROM shortages s
+                        INNER JOIN picking_items p
+                          ON p.sku = s.sku
+                          AND CAST(p.session_id AS TEXT) = s.list_id
+                          AND p.shortage_qty = s.quantity
+                        WHERE s.category = 'full'
+                          AND p.shortage_qty > 0
+                      )
+                """))
+                conn.commit()
+                print(f"--- LIMPEZA_FANTASMA: removidos {dup_count} registros, {int(dup_units)} unidades duplicadas ---")
+            else:
+                print("--- LIMPEZA_FANTASMA: nenhuma duplicata encontrada (skip) ---")
+        except Exception as e:
+            print(f"--- LIMPEZA_FANTASMA ERROR: {e} ---")

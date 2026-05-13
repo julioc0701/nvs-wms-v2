@@ -448,12 +448,16 @@ def claim_session(session_id: int, body: ClaimBody, db: DBSession = Depends(get_
 # ── List & Get ────────────────────────────────────────────────────────────────
 
 @router.get("/")
-def list_sessions(db: DBSession = Depends(get_db)):
-    # Para não sobrecarregar com histórico infinito, limitaremos as sessões aqui.
-    # Retorna o histórico das últimas 100 sessões criadas.
-    sessions = db.query(Session).order_by(Session.id.desc()).limit(100).all()
-    # Inverte a lista para mostrar a ordem correta no frontend (antigas primeiro) se necessário,
-    # mas o frontend aceita desordenado de forma tranquila.
+def list_sessions(
+    marketplace: str | None = Query(None, description="Filtra por marketplace (ex: 'ml', 'shopee')"),
+    db: DBSession = Depends(get_db),
+):
+    # LIMIT removido — o filtro de marketplace no DB evita carregar sessões de outros marketplaces.
+    # Bug histórico: LIMIT 100 escondia sessões antigas do painel quando o total cruzava 100.
+    q = db.query(Session)
+    if marketplace:
+        q = q.filter(Session.marketplace == marketplace)
+    sessions = q.order_by(Session.id.desc()).all()
     operators = {o.id: o.name for o in db.query(Operator).all()}
     result = []
     for s in sessions:

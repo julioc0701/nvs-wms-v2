@@ -754,7 +754,7 @@ export default function Supervisor() {
     if (!agentCheckRef.current) { agentCheckRef.current = true; checkAgent() }
     refreshIntervalRef.current = setInterval(refresh, 60_000)
     return () => clearInterval(refreshIntervalRef.current)
-  }, [])
+  }, [marketplaceView])
 
   function checkAgent() {
     setAgentInfo(null)
@@ -768,7 +768,8 @@ export default function Supervisor() {
   }
 
   function refresh() {
-    Promise.all([api.getSessions(), api.getPrinters(), api.listBatches(), api.getShortages()]).then(([s, p, b, sh]) => {
+    // Passa marketplaceView pro backend filtrar — evita LIMIT 100 cortando sessões antigas do painel.
+    Promise.all([api.getSessions(marketplaceView), api.getPrinters(), api.listBatches(), api.getShortages()]).then(([s, p, b, sh]) => {
       setSessions(s); setPrinters(p); setBatches(b)
       setShortageItems(Array.isArray(sh) ? sh : [])
       setLastRefresh(new Date())

@@ -30,7 +30,7 @@ export const api = {
   loginOperator: (operatorId, pinCode) => req('POST', '/operators/login', { operator_id: operatorId, pin_code: pinCode }),
 
   // Sessions
-  getSessions: () => req('GET', '/sessions/'),
+  getSessions: (marketplace) => req('GET', marketplace ? `/sessions/?marketplace=${encodeURIComponent(marketplace)}` : '/sessions/'),
   getSession: (id) => req('GET', `/sessions/${id}`),
   getItems: (id) => req('GET', `/sessions/${id}/items`),
   uploadSession: (formData) => req('POST', '/sessions/upload', formData, true),
