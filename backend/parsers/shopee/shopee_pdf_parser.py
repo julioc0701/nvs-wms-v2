@@ -227,12 +227,34 @@ def _peek_next(lines: List[str], start: int) -> str:
     return ""
 
 
+def _filter_total_footer_leaks(lines: List[str]) -> List[str]:
+    """Remove o número que aparece logo após 'Total' ou 'Notas'.
+    Bug observado: rodapé 'Total\\n<NNNN>' da página anterior vaza no topo
+    da próxima página e <NNNN> (1-6 dígitos) escapa do _is_skip_line."""
+    out: List[str] = []
+    skip_next_digits = False
+    for raw in lines:
+        line = raw.strip()
+        if skip_next_digits and re.match(r"^\d{1,6}$", line):
+            skip_next_digits = False
+            continue  # consome o número de footer e segue
+        if line in ("Total", "Notas"):
+            skip_next_digits = True
+        else:
+            if line:
+                skip_next_digits = False
+        out.append(raw)
+    return out
+
+
 def _parse_page_lines(lines: List[str]) -> List[SKU]:
     """
     State machine parser. States:
       VENDOR → ID2 → NOME → ARMAZEM → QTY → (back to VENDOR)
     Transition anchor: lines matching _SKU_ID_RE (Shopee SKU ID pattern).
     """
+    lines = _filter_total_footer_leaks(lines)
+
     S_VENDOR = 0
     S_ID2 = 1
     S_NOME = 2
@@ -249,6 +271,10 @@ def _parse_page_lines(lines: List[str]) -> List[SKU]:
     armazem_parts: List[str] = []
     qty_parts: List[str] = []
     seen_gtin = False
+    # Sufixo do vendor SKU ainda a ser consumido pela célula Armazém
+    # (resolve bug onde vendor termina com dígito tipo "V+L4" e o "4" é split
+    # numa linha separada que parser confundia com início de qty).
+    gtin_pending_suffix = ""
 
     def _flush() -> None:
         """
@@ -256,7 +282,7 @@ def _parse_page_lines(lines: List[str]) -> List[SKU]:
         vendor_parts is only reset when an item was actually saved —
         otherwise it contains the vendor accumulation for the UPCOMING item.
         """
-        nonlocal vendor_parts, id_p1, id_p2, nome_parts, armazem_parts, qty_parts, seen_gtin
+        nonlocal vendor_parts, id_p1, id_p2, nome_parts, armazem_parts, qty_parts, seen_gtin, gtin_pending_suffix
 
         if id_p1:
             sku_vendedor = "".join(vendor_parts)
@@ -290,6 +316,7 @@ def _parse_page_lines(lines: List[str]) -> List[SKU]:
             armazem_parts = []
             qty_parts = []
             seen_gtin = False
+            gtin_pending_suffix = ""
         else:
             # No item in progress — only reset non-vendor buffers.
             # vendor_parts stays: it has the upcoming item's vendor accumulated so far.
@@ -298,6 +325,7 @@ def _parse_page_lines(lines: List[str]) -> List[SKU]:
             armazem_parts = []
             qty_parts = []
             seen_gtin = False
+            gtin_pending_suffix = ""
 
     def _start_item(anchor_line: str) -> None:
         """Start a new item from a line containing the SKU ID anchor."""
@@ -370,6 +398,18 @@ def _parse_page_lines(lines: List[str]) -> List[SKU]:
             elif "GTIN" in line:
                 armazem_parts.append(line)
                 seen_gtin = True
+                # Calcula sufixo do vendor SKU ainda pendente na célula Armazém.
+                # Ex: vendor="V+L4", linha="GTIN,V+L" → pending="4" (split em linha separada).
+                vendor_so_far = "".join(vendor_parts)
+                if vendor_so_far and "GTIN," in line:
+                    armazem_suffix_so_far = line.split("GTIN,", 1)[1]
+                    if vendor_so_far.startswith(armazem_suffix_so_far):
+                        gtin_pending_suffix = vendor_so_far[len(armazem_suffix_so_far):]
+            elif seen_gtin and gtin_pending_suffix and gtin_pending_suffix.startswith(line):
+                # Linha (mesmo que dígito) completa o vendor SKU repetido em Armazém.
+                # Resolve bug "V+L4": "4" pertence ao Armazém, não é início de qty.
+                gtin_pending_suffix = gtin_pending_suffix[len(line):]
+                armazem_parts.append(line)
             elif seen_gtin and _DIGITS_ONLY_RE.match(line):
                 qty_parts.append(line)
                 state = S_QTY
