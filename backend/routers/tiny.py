@@ -458,6 +458,7 @@ async def get_tracked_separacoes(
                 sa_func.max(TinyErpSendLog.sent_at).label("max_sent")
             )
             .filter(TinyErpSendLog.separation_id.in_(erp_log_ids))
+            .filter(TinyErpSendLog.triggered_by != "revert")
             .group_by(TinyErpSendLog.separation_id)
             .subquery()
         )
@@ -465,14 +466,39 @@ async def get_tracked_separacoes(
             db.query(TinyErpSendLog)
             .join(subq, (TinyErpSendLog.separation_id == subq.c.separation_id) &
                         (TinyErpSendLog.sent_at == subq.c.max_sent))
+            .filter(TinyErpSendLog.triggered_by != "revert")
             .all()
         )
         last_erp_logs = {l.separation_id: l for l in logs}
+
+    # Último log de revert por doc (para toast no front quando falha)
+    last_revert_logs: dict = {}
+    if sep_ids:
+        from sqlalchemy import func as sa_func
+        subq_rev = (
+            db.query(
+                TinyErpSendLog.separation_id,
+                sa_func.max(TinyErpSendLog.sent_at).label("max_sent")
+            )
+            .filter(TinyErpSendLog.separation_id.in_(sep_ids))
+            .filter(TinyErpSendLog.triggered_by == "revert")
+            .group_by(TinyErpSendLog.separation_id)
+            .subquery()
+        )
+        revert_logs = (
+            db.query(TinyErpSendLog)
+            .join(subq_rev, (TinyErpSendLog.separation_id == subq_rev.c.separation_id) &
+                            (TinyErpSendLog.sent_at == subq_rev.c.max_sent))
+            .filter(TinyErpSendLog.triggered_by == "revert")
+            .all()
+        )
+        last_revert_logs = {l.separation_id: l for l in revert_logs}
 
     result = []
     for s in statuses:
         h = headers.get(s.separation_id)
         last_log = last_erp_logs.get(s.separation_id)
+        rev_log = last_revert_logs.get(s.separation_id)
         result.append({
             "id": s.separation_id,
             "numero": h.numero if h else None,
@@ -492,6 +518,12 @@ async def get_tracked_separacoes(
                 "error_message": last_log.error_message,
                 "sent_at": last_log.sent_at.isoformat(),
             } if last_log else None,
+            "last_revert_log": {
+                "id": rev_log.id,
+                "status": rev_log.status,
+                "error_message": rev_log.error_message,
+                "sent_at": rev_log.sent_at.isoformat(),
+            } if rev_log else None,
         })
 
     return {"separacoes": result, "backfill_triggered": backfill_triggered}
@@ -786,17 +818,20 @@ class RevertStatusRequest(BaseModel):
     separation_ids: List[str]
 
 @router.post("/separation-statuses/revert")
-async def revert_separation_statuses(req: RevertStatusRequest, db: Session = Depends(get_db)):
+async def revert_separation_statuses(req: RevertStatusRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Devolve documentos para 'Aguardando Separação' localmente.
     - Se tem registro local (criado por nós): apaga o registro (volta a depender do Tiny).
     - Se não tem registro (Tiny diz situacao=4): cria um override 'aguardando' para sobrescrever o Tiny.
-    Tiny é somente-leitura — nunca escrevemos de volta."""
+    - Se o doc estava enviada_erp/erro_envio_erp: também chama Tiny situacao=1 (revert real)."""
     reverted = 0
+    sep_ids_to_revert_tiny: List[str] = []
     for sep_id in req.separation_ids:
         existing = db.query(TinySeparationStatus).filter(
             TinySeparationStatus.separation_id == str(sep_id)
         ).first()
         if existing:
+            if existing.status in ("enviada_erp", "erro_envio_erp"):
+                sep_ids_to_revert_tiny.append(str(sep_id))
             if existing.status == "em_separacao":
                 # Criado por nós — apaga para cair no fallback do Tiny (situacao=1)
                 db.delete(existing)
@@ -812,8 +847,13 @@ async def revert_separation_statuses(req: RevertStatusRequest, db: Session = Dep
             ))
         reverted += 1
     db.commit()
-    log.info(f"REVERT_STATUS {reverted} docs devolvidos para aguardando: {req.separation_ids}")
-    return {"status": "success", "reverted": reverted}
+
+    # Revert manual no Tiny — sem debounce (ação explícita do operador)
+    for sep_id in sep_ids_to_revert_tiny:
+        background_tasks.add_task(_revert_separation_status_to_olist, sep_id)
+
+    log.info(f"REVERT_STATUS {reverted} docs devolvidos para aguardando: {req.separation_ids} (tiny_revert={len(sep_ids_to_revert_tiny)})")
+    return {"status": "success", "reverted": reverted, "tiny_revert_scheduled": len(sep_ids_to_revert_tiny)}
 
 
 class DeleteStatusRequest(BaseModel):
@@ -862,6 +902,86 @@ async def _push_separation_status_to_olist(sep_id: str):
     except Exception as e:
         log.error(f"[OLIST_SYNC ERRO] sep_id={sep_id}: {e}", exc_info=True)
         # Não re-raise: o pick já foi salvo localmente com sucesso
+
+
+# ── Revert de docs já enviados ao Tiny (situacao 2 → 1) ──────────────────────
+# Debounce em memória por sep_id: cada agendamento cancela o anterior.
+# Após 2s sem nova mudança, dispara revert no Tiny.
+_REVERT_PENDING: Dict[str, "asyncio.Task"] = {}
+_REVERT_DEBOUNCE_SECONDS = 2.0
+
+
+def _schedule_revert(sep_id: str) -> None:
+    """Agenda revert do doc no Tiny com debounce.
+    Se já existe task pendente pra esse sep_id, cancela e reagenda."""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        log.warning(f"REVERT_DEBOUNCE sep_id={sep_id}: sem event loop, ignorado")
+        return
+
+    existing = _REVERT_PENDING.get(sep_id)
+    if existing and not existing.done():
+        existing.cancel()
+
+    _REVERT_PENDING[sep_id] = loop.create_task(_revert_after_delay(sep_id))
+    log.info(f"REVERT_DEBOUNCE sep_id={sep_id} agendado em {_REVERT_DEBOUNCE_SECONDS}s")
+
+
+async def _revert_after_delay(sep_id: str) -> None:
+    try:
+        await asyncio.sleep(_REVERT_DEBOUNCE_SECONDS)
+        await _revert_separation_status_to_olist(sep_id)
+    except asyncio.CancelledError:
+        log.info(f"REVERT_DEBOUNCE sep_id={sep_id} cancelado (nova mudança)")
+    finally:
+        _REVERT_PENDING.pop(sep_id, None)
+
+
+async def _revert_separation_status_to_olist(sep_id: str) -> None:
+    """Chama Tiny pra voltar a separação pra situacao=1 (aguardando).
+    Loga sucesso/falha em TinyErpSendLog com triggered_by='revert'.
+    Nunca lança — falha é registrada no log e exibida ao operador via toast."""
+    if not ENABLE_OLIST_SYNC:
+        log.info(f"[REVERT DRY-RUN] sep_id={sep_id} — ENABLE_OLIST_SYNC=false")
+        return
+    if not TINY_TOKEN:
+        log.warning(f"[REVERT] sep_id={sep_id} sem TINY_TOKEN configurado")
+        return
+
+    db = SessionLocal()
+    try:
+        svc = TinyService(TINY_TOKEN)
+        resp_json_str: Optional[str] = None
+        error_msg: Optional[str] = None
+        ok = False
+        try:
+            resp = await svc._post("separacao.alterar.situacao.php", {
+                "id": sep_id,
+                "situacao": 1,
+            })
+            resp_json_str = json.dumps(resp, ensure_ascii=False) if isinstance(resp, dict) else str(resp)
+            retorno = resp.get("retorno", resp) if isinstance(resp, dict) else {}
+            ok = str(retorno.get("status", "")).upper() == "OK"
+            if not ok:
+                error_msg = f"Tiny NOK: {resp_json_str[:300]}"
+        except Exception as exc:
+            error_msg = str(exc)
+            log.error(f"[REVERT ERRO] sep_id={sep_id}: {error_msg}")
+
+        db.add(TinyErpSendLog(
+            separation_id=sep_id,
+            triggered_by="revert",
+            status="success" if ok else "error",
+            response_json=resp_json_str,
+            error_message=error_msg,
+            sent_at=datetime.utcnow(),
+        ))
+        db.commit()
+        if ok:
+            log.info(f"[REVERT OK] sep_id={sep_id}")
+    finally:
+        db.close()
 
 
 def _check_and_advance_doc_statuses(list_id: int, db) -> list:
@@ -920,6 +1040,15 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
 
         if record:
             if record.status in IMMUTABLE:
+                # Doc já está como "separado" no Tiny. Só reage se a nova
+                # avaliação for diferente de "concluida" (ou seja, precisamos
+                # voltar atrás no Tiny). Se target == "concluida", nada a fazer.
+                if target == "concluida":
+                    continue
+                old = record.status
+                record.status = target
+                log.info(f"DOC_STATUS_REVERT sep_id={sep_id} list_id={list_id} {old} → {target}")
+                _schedule_revert(sep_id)
                 continue
             if record.status != target:
                 old = record.status
@@ -1384,12 +1513,12 @@ async def register_item_pick(item_id: int, request: PickRequest, background_task
 
 
 @router.post("/picking-items/{item_id}/unpick")
-async def register_item_unpick(item_id: int, db: Session = Depends(get_db)):
+async def register_item_unpick(item_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Remove o registro de coleta de um item (desfaz)."""
     item = db.query(TinyPickingListItem).filter(TinyPickingListItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
-    
+
     sku = item.sku
     list_id = item.list_id
 
@@ -1411,6 +1540,16 @@ async def register_item_unpick(item_id: int, db: Session = Depends(get_db)):
         master_list.status = "em_andamento"
 
     db.commit()
+
+    # Reavalia status dos docs — se doc estava enviada_erp e agora item não está
+    # mais coletado, _check_and_advance dispara revert no Tiny via debounce.
+    try:
+        concluded_ids = _check_and_advance_doc_statuses(list_id, db)
+        for sep_id in (concluded_ids or []):
+            background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+    except Exception as ce:
+        log.error(f"ERRO ao reavaliar status docs (unpick) item={item_id}: {ce}", exc_info=True)
+
     log.info(f"UNPICK id={item_id} sku={sku} — shortage removido")
     return {"status": "success", "item": {"id": item_id, "qty_picked": 0.0, "qty_shortage": 0.0, "is_shortage": False, "notes": None}}
 

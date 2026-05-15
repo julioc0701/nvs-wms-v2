@@ -84,7 +84,28 @@ export default function SeparacaoOlist() {
     setLoading(true)
     try {
       const data = await api.getTrackedSeparacoes()
-      setTrackedSeparacoes(data?.separacoes || [])
+      const items = data?.separacoes || []
+      setTrackedSeparacoes(items)
+
+      // Detecta reverts falhados ainda não vistos → toast vermelho
+      const SEEN_KEY = 'nvs.revertLogSeenAt'
+      const lastSeenStr = localStorage.getItem(SEEN_KEY) || '1970-01-01T00:00:00.000Z'
+      const lastSeen = new Date(lastSeenStr).getTime()
+      let maxSeen = lastSeen
+      items.forEach(s => {
+        const rlog = s.last_revert_log
+        if (!rlog) return
+        const ts = new Date(rlog.sent_at).getTime()
+        if (ts > maxSeen) maxSeen = ts
+        if (rlog.status === 'error' && ts > lastSeen) {
+          const numero = s.numero || s.id
+          notify(`Falha ao reverter doc ${numero} no Tiny — verifique manualmente`, 'error')
+        }
+      })
+      if (maxSeen > lastSeen) {
+        localStorage.setItem(SEEN_KEY, new Date(maxSeen).toISOString())
+      }
+
       // Backend disparou backfill em background → avisa e re-busca após ~8s
       if (data?.backfill_triggered) {
         setBackfilling(true)
