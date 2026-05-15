@@ -328,10 +328,11 @@ export default function SeparacaoOlist() {
 
     const q = searchQuery.toLowerCase()
 
-    // em_separacao, separadas e enviada_erp: sempre do DB local — sem filtro de data
-    if (activeTab === 'em_separacao' || activeTab === 'separadas' || activeTab === 'enviada_erp') {
+    // em_separacao, separadas, sem_estoque e enviada_erp: sempre do DB local — sem filtro de data
+    if (activeTab === 'em_separacao' || activeTab === 'separadas' || activeTab === 'sem_estoque' || activeTab === 'enviada_erp') {
       const targetStatuses = activeTab === 'em_separacao' ? ['em_separacao']
         : activeTab === 'separadas' ? ['concluida']
+        : activeTab === 'sem_estoque' ? ['sem_estoque']
         : ['enviada_erp', 'erro_envio_erp']
       return trackedSeparacoes.filter(s =>
         targetStatuses.includes(s.local_status) &&
@@ -352,13 +353,14 @@ export default function SeparacaoOlist() {
   }, [separacoes, trackedSeparacoes, searchQuery, activeTab, marketplaceFilter, localStatuses])
 
   const stats = useMemo(() => {
-    const counts = { aguardando: 0, em_separacao: 0, separadas: 0, embaladas: 0, enviada_erp: 0 }
+    const counts = { aguardando: 0, em_separacao: 0, separadas: 0, sem_estoque: 0, embaladas: 0, enviada_erp: 0 }
 
-    // em_separacao, separadas e enviada_erp: contagem do DB local (sem filtro de data)
+    // em_separacao, separadas, sem_estoque e enviada_erp: contagem do DB local (sem filtro de data)
     trackedSeparacoes.forEach(s => {
       if (!matchMarketplace(s, marketplaceFilter)) return
       if (s.local_status === 'em_separacao') counts.em_separacao++
       else if (s.local_status === 'concluida') counts.separadas++
+      else if (s.local_status === 'sem_estoque') counts.sem_estoque++
       else if (s.local_status === 'enviada_erp' || s.local_status === 'erro_envio_erp') counts.enviada_erp++
     })
 
@@ -638,6 +640,17 @@ export default function SeparacaoOlist() {
         >
           <span className="text-sm font-medium text-slate-600">separadas</span>
           <span className="text-2xl font-light text-slate-800">{stats.separadas}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('sem_estoque')}
+          className={cn(
+            "pb-4 flex flex-col items-center gap-1 transition-all border-b-2 px-4",
+            activeTab === 'sem_estoque' ? "border-red-500" : "border-transparent opacity-50"
+          )}
+        >
+          <span className="text-sm font-medium text-slate-600">sem estoque</span>
+          <span className="text-2xl font-light text-slate-800">{stats.sem_estoque}</span>
         </button>
 
         <button

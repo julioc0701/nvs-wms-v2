@@ -410,7 +410,7 @@ async def get_tracked_separacoes(
     Completamente independente de filtro de data do Tiny — retorna TUDO.
     Se houver docs sem header, dispara backfill automático em background."""
     statuses = db.query(TinySeparationStatus).filter(
-        TinySeparationStatus.status.in_(["em_separacao", "concluida", "enviada_erp", "erro_envio_erp"])
+        TinySeparationStatus.status.in_(["em_separacao", "concluida", "sem_estoque", "enviada_erp", "erro_envio_erp"])
     ).all()
 
     if not statuses:
@@ -865,25 +865,28 @@ async def _push_separation_status_to_olist(sep_id: str):
 
 
 def _check_and_advance_doc_statuses(list_id: int, db) -> list:
-    """Verifica se algum documento da lista teve todos os seus SKUs concluídos
-    (picked ou shortage) e avança o status local para 'concluida'.
-    Chamado após cada pick ou registro de falta.
-    Retorna lista de sep_ids recém-avançados para 'concluida' (para sync Olist).
+    """Reavalia o status local de cada doc da lista com base nos itens.
 
-    Cobre dois cenários de quebra:
-    A) sep_id em source_separation_ids mas sem registro TinySeparationStatus → cria como 'concluida'
-    B) sep_id com status 'em_separacao' no banco mas sem itens em doc_items (cache vazio na criação)
-       → avança vacuously (zero itens = nada a coletar = concluído)
+    Regras:
+    - Algum item ainda não coletado nem em falta → 'em_separacao'
+    - Todos itens coletados ou em falta E existe pelo menos 1 falta → 'sem_estoque'
+      (NÃO envia pro Tiny — fica em coluna separada)
+    - Todos itens coletados sem nenhuma falta → 'concluida' (envia pro Tiny)
+
+    Função idempotente e bidirecional: pode promover (em_separacao→concluida),
+    desviar (em_separacao→sem_estoque) ou rebaixar (concluida→sem_estoque,
+    sem_estoque→em_separacao, sem_estoque→concluida) conforme o estado dos itens.
+    Status enviada_erp / erro_envio_erp são imutáveis (não retoca).
+
+    Retorna lista de sep_ids que viraram 'concluida' nesta passagem
+    (consumida pelo background task que empurra pro Tiny).
     """
-    # Expira cache de sessão — garante valores frescos após o commit do pick
     db.expire_all()
 
-    # Todos os itens da lista
     items = db.query(TinyPickingListItem).filter(TinyPickingListItem.list_id == list_id).all()
     if not items:
         return []
 
-    # Monta mapa: sep_id → [items que contêm esse doc]
     from collections import defaultdict
     doc_items: dict = defaultdict(list)
     for it in items:
@@ -895,38 +898,44 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
                 doc_items[sep_id].append(it)
 
     newly_concluded: list = []
+    IMMUTABLE = {"enviada_erp", "erro_envio_erp"}
 
-    # ── Cenário normal + Cenário A: sep_ids que aparecem em source_separation_ids ──
     for sep_id, its in doc_items.items():
         all_done = all(
             (it.qty_picked is not None and it.qty_picked >= it.quantity - 0.001) or it.is_shortage
             for it in its
         )
+        has_shortage = any(it.is_shortage for it in its)
+
         if not all_done:
-            pending = [(it.sku, it.qty_picked, it.quantity) for it in its
-                       if not ((it.qty_picked is not None and it.qty_picked >= it.quantity - 0.001) or it.is_shortage)]
-            log.debug(f"SEP_PENDENTE sep_id={sep_id} itens_pendentes={pending}")
-            continue
+            target = "em_separacao"
+        elif has_shortage:
+            target = "sem_estoque"
+        else:
+            target = "concluida"
 
         record = db.query(TinySeparationStatus).filter(
             TinySeparationStatus.separation_id == sep_id
         ).first()
 
-        if record and record.status == "em_separacao":
-            # Caso normal
-            record.status = "concluida"
-            newly_concluded.append(sep_id)
-            log.info(f"DOC_CONCLUIDO sep_id={sep_id} list_id={list_id}")
-        elif not record:
-            # Cenário A: sem registro → cria direto como 'concluida'
+        if record:
+            if record.status in IMMUTABLE:
+                continue
+            if record.status != target:
+                old = record.status
+                record.status = target
+                log.info(f"DOC_STATUS sep_id={sep_id} list_id={list_id} {old} → {target}")
+                if target == "concluida":
+                    newly_concluded.append(sep_id)
+        else:
             db.add(TinySeparationStatus(
                 separation_id=sep_id,
-                status="concluida",
+                status=target,
                 list_id=list_id,
             ))
-            newly_concluded.append(sep_id)
-            log.warning(f"DOC_CONCLUIDO_SEM_REGISTRO sep_id={sep_id} list_id={list_id} — criado direto como concluida")
-        # se record.status == "concluida" já → nada a fazer
+            log.warning(f"DOC_STATUS_SEM_REGISTRO sep_id={sep_id} list_id={list_id} → {target}")
+            if target == "concluida":
+                newly_concluded.append(sep_id)
 
     # ── Cenário B: sep_ids com em_separacao neste list_id mas sem nenhum item em doc_items ──
     # (cache estava vazio quando a lista foi criada — vacuously done)
@@ -1417,15 +1426,15 @@ class ShortageRequest(BaseModel):
     marketplace: str | None = None  # ml | shopee | None=organico
 
 @router.post("/picking-items/{item_id}/clear-shortage")
-async def clear_item_shortage(item_id: int, db: Session = Depends(get_db)):
+async def clear_item_shortage(item_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Remove a marcação de falta de um item e o registro no relatório."""
     item = db.query(TinyPickingListItem).filter(TinyPickingListItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
-    
+
     item.is_shortage = False
-    
-    # Busca e remove da tabela Shortage para manter consistência
+    list_id = item.list_id
+
     try:
         from models import Shortage
         db.query(Shortage).filter(
@@ -1436,6 +1445,15 @@ async def clear_item_shortage(item_id: int, db: Session = Depends(get_db)):
         print(f"Erro ao deletar registro de falta relacionado: {e}")
 
     db.commit()
+
+    # Reavalia status dos docs — pode sair de sem_estoque para em_separacao/concluida
+    try:
+        concluded_ids = _check_and_advance_doc_statuses(list_id, db)
+        for sep_id in (concluded_ids or []):
+            background_tasks.add_task(_push_separation_status_to_olist, sep_id)
+    except Exception as ce:
+        log.error(f"ERRO ao reavaliar status docs (clear-shortage) item={item_id}: {ce}", exc_info=True)
+
     return {"status": "success", "cleared": True}
 
 @router.post("/report-shortage")
