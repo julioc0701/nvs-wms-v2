@@ -16,6 +16,7 @@ OLIST_OPERATIONAL_BUCKET = {"faturado", "pronto para envio", "enviado", "entregu
 SYNC_LOCK = asyncio.Lock()
 SCHEDULER_TASK: asyncio.Task | None = None
 ERP_SYNC_TASK: asyncio.Task | None = None
+AUTO_SEP_TASK: asyncio.Task | None = None
 SCHEDULER_STOP = False
 
 
@@ -629,6 +630,39 @@ async def erp_sync_loop(token: str) -> None:
         await asyncio.sleep(interval_seconds)
 
 
+async def auto_separation_loop(token: str) -> None:
+    """Loop que checa a cada minuto se é hora de rodar o job de auto-separação.
+    Janela: seg-sex 06:00-06:30 BR. Idempotência via AutoSeparationState."""
+    global SCHEDULER_STOP
+    from services.auto_separation import should_run_now, executar_job
+
+    log.info("[AUTO_SEP] Loop iniciado — checa janela 06:00-06:30 BR seg-sex")
+    last_attempt_at = None
+
+    while not SCHEDULER_STOP:
+        try:
+            if should_run_now():
+                now = datetime.utcnow()
+                if last_attempt_at and (now - last_attempt_at) < timedelta(minutes=10):
+                    pass
+                else:
+                    last_attempt_at = now
+                    log.info("[AUTO_SEP] Janela atingida — executando job")
+                    result = await executar_job(token, force=False)
+                    log.info(f"[AUTO_SEP] Resultado: {result.get('status')} — {result.get('lists', [])}")
+
+                    # Retry interno em falha
+                    if result.get("status") in ("failed_single", "error"):
+                        log.warning("[AUTO_SEP] Falha — agendando retry em 5min")
+                        await asyncio.sleep(300)
+                        if not SCHEDULER_STOP:
+                            retry_result = await executar_job(token, force=True)
+                            log.info(f"[AUTO_SEP] Retry: {retry_result.get('status')}")
+        except Exception as exc:
+            log.exception(f"[AUTO_SEP] Erro inesperado no loop: {exc}")
+        await asyncio.sleep(60)  # checa a cada minuto
+
+
 async def scheduler_loop(token: str) -> None:
     global SCHEDULER_STOP
     interval_minutes = int(os.getenv("SYNC_INCREMENTAL_INTERVAL_MINUTES", "10"))
@@ -659,7 +693,7 @@ async def scheduler_loop(token: str) -> None:
 
 
 def start_local_scheduler(token: str) -> asyncio.Task | None:
-    global SCHEDULER_TASK, ERP_SYNC_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, SCHEDULER_STOP
     if not token:
         log.warning("Scheduler local não iniciado: TINY_API_TOKEN ausente")
         return None
@@ -668,14 +702,15 @@ def start_local_scheduler(token: str) -> asyncio.Task | None:
     SCHEDULER_STOP = False
     SCHEDULER_TASK = asyncio.create_task(scheduler_loop(token))
     ERP_SYNC_TASK = asyncio.create_task(erp_sync_loop(token))
-    log.info("Scheduler local de sync + ERP auto-send iniciado")
+    AUTO_SEP_TASK = asyncio.create_task(auto_separation_loop(token))
+    log.info("Scheduler local de sync + ERP auto-send + auto-separação iniciado")
     return SCHEDULER_TASK
 
 
 async def stop_local_scheduler() -> None:
-    global SCHEDULER_TASK, ERP_SYNC_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, SCHEDULER_STOP
     SCHEDULER_STOP = True
-    for task in (SCHEDULER_TASK, ERP_SYNC_TASK):
+    for task in (SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK):
         if task and not task.done():
             task.cancel()
             try:
@@ -683,3 +718,5 @@ async def stop_local_scheduler() -> None:
             except asyncio.CancelledError:
                 pass
     SCHEDULER_TASK = None
+    ERP_SYNC_TASK = None
+    AUTO_SEP_TASK = None
