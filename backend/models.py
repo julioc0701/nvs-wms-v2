@@ -268,6 +268,7 @@ class TinyPickingList(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pendente") # pendente, em_andamento, concluida
+    source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | auto
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     items: Mapped[list["TinyPickingListItem"]] = relationship(back_populates="list", cascade="all, delete-orphan")
@@ -372,3 +373,18 @@ class Shortage(Base):
     marketplace: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ml | shopee | None=organico
 
     operator: Mapped["Operator | None"] = relationship()
+
+
+class AutoSeparationState(Base):
+    """Estado singleton do job de geração automática de listas (id=1 sempre).
+    Rastreia última execução, status, e falhas consecutivas pra exibir banner."""
+    __tablename__ = "auto_separation_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_status: Mapped[str] = mapped_column(String(30), default="never_ran")
+    # never_ran | success | failed_visible | no_docs
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    last_error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ex: "ml=30 shopee=12" ou "ml=ok shopee=fail (timeout)"
