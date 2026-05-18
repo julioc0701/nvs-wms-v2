@@ -101,61 +101,71 @@ export default function PickingListsHistory() {
           </div>
         ) : (
           <div className="space-y-2">
-            {filtered.map(list => (
+            {filtered.map((list, idx) => {
+              const isZebra = idx % 2 === 0  // alterna: 0=zebra azul, 1=branco, 2=zebra azul...
+              return (
               <div key={list.id} className="w-full flex items-center gap-2">
               <button
                 onClick={() => navigate(`/separacao/listas/${list.id}`)}
-                className="flex-1 flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left"
+                className={cn(
+                  "flex-1 flex items-center gap-4 p-5 rounded-2xl border-l-4 border border-slate-100 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left",
+                  isZebra
+                    ? "bg-blue-50/40 border-l-blue-300 hover:bg-blue-50/70 hover:border-l-blue-500"
+                    : "bg-white border-l-slate-200 hover:bg-slate-50 hover:border-l-blue-400"
+                )}
               >
                 <div className={cn(
-                  "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors p-1.5",
+                  "w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors p-1.5",
                   list.marketplace
-                    ? "bg-white border border-slate-200"
+                    ? "bg-white border border-slate-200 shadow-sm"
                     : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
                 )}>
                    {list.marketplace
-                     ? <MarketplaceLogo marketplace={list.marketplace} size={24} />
-                     : <ListIcon size={18} />}
+                     ? <MarketplaceLogo marketplace={list.marketplace} size={26} />
+                     : <ListIcon size={20} />}
                 </div>
-                
+
                 <div className="flex-1 min-w-0">
-                   <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <h3 className="text-sm font-bold text-slate-700 truncate group-hover:text-blue-600 transition-colors">
+                   <div className="flex items-center justify-between gap-2 mb-1">
+                      <h3 className="text-base font-black text-slate-900 truncate group-hover:text-blue-700 transition-colors">
                          {list.name}
                       </h3>
-                      <span className="text-[10px] font-black text-slate-300 uppercase shrink-0">#{list.id}</span>
+                      <span className="text-xs font-black text-slate-500 shrink-0 tabular-nums">#{list.id}</span>
                    </div>
-                   
-                   <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                         <Calendar size={12} className="opacity-50" />
+
+                   <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-700 font-bold uppercase tracking-wider">
+                         <Calendar size={12} className="text-slate-500" />
                          {new Date(list.created_at).toLocaleDateString()}
-                         <span className="opacity-30">•</span>
-                         {new Date(list.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                         <span className="opacity-40">•</span>
+                         <span className="tabular-nums">{new Date(list.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      
-                      <div className="flex items-center gap-1.5">
-                         <div className={cn(
-                           "w-1.5 h-1.5 rounded-full",
-                           list.status === 'concluida' ? "bg-emerald-500" : "bg-blue-500"
-                         )} />
-                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{list.status}</span>
-                      </div>
+
+                      <span className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest",
+                        list.status === 'concluida'
+                          ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                          : "bg-blue-100 text-blue-700 border border-blue-200"
+                      )}>
+                        {list.status}
+                      </span>
                    </div>
                 </div>
 
-                <div className="p-2 text-slate-300 group-hover:text-blue-600 transition-colors">
-                   <ChevronRight size={18} />
+                <div className="p-2 text-slate-400 group-hover:text-blue-600 transition-colors">
+                   <ChevronRight size={20} />
                 </div>
               </button>
               <button
                 onClick={() => setConfirmDelete(list)}
-                className="w-10 h-10 flex items-center justify-center rounded-xl border border-slate-100 text-slate-300 hover:text-red-500 hover:border-red-100 hover:bg-red-50 transition-all shrink-0"
+                title="Excluir lista"
+                className="w-11 h-11 flex items-center justify-center rounded-xl border border-red-100 bg-red-50/60 text-red-500 hover:bg-red-500 hover:text-white hover:border-red-500 hover:shadow-lg hover:shadow-red-100 transition-all shrink-0 active:scale-95"
               >
-                <Trash2 size={16} />
+                <Trash2 size={18} />
               </button>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
