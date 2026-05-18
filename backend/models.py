@@ -269,6 +269,7 @@ class TinyPickingList(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pendente") # pendente, em_andamento, concluida
     source: Mapped[str] = mapped_column(String(20), default="manual")  # manual | auto
+    marketplace: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ml | shopee | None (misto)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     items: Mapped[list["TinyPickingListItem"]] = relationship(back_populates="list", cascade="all, delete-orphan")

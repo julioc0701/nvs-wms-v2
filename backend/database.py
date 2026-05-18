@@ -325,6 +325,13 @@ def init_db():
                 conn.commit()
                 print("--- DATABASE MIGRATION: source added to tiny_picking_lists ---")
 
+            # MIGRATION: marketplace column em tiny_picking_lists (ml | shopee | null)
+            tpl_cols = [c["name"] for c in insp.get_columns("tiny_picking_lists")]
+            if "marketplace" not in tpl_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_lists ADD COLUMN marketplace VARCHAR(20)"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: marketplace added to tiny_picking_lists ---")
+
             # MIGRATION PARA SHORTAGES (OPERADOR)
             shortage_cols = [c["name"] for c in insp.get_columns("shortages")]
             if "operator_id" not in shortage_cols:

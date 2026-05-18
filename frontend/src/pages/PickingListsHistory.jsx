@@ -4,6 +4,7 @@ import { useFeedback } from '../components/ui/FeedbackProvider'
 import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
+import MarketplaceLogo from '../components/MarketplaceLogo'
 
 export default function PickingListsHistory() {
   const { notify } = useFeedback()
@@ -106,8 +107,15 @@ export default function PickingListsHistory() {
                 onClick={() => navigate(`/separacao/listas/${list.id}`)}
                 className="flex-1 flex items-center gap-4 bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left"
               >
-                <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                   <ListIcon size={18} />
+                <div className={cn(
+                  "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors p-1.5",
+                  list.marketplace
+                    ? "bg-white border border-slate-200"
+                    : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                )}>
+                   {list.marketplace
+                     ? <MarketplaceLogo marketplace={list.marketplace} size={24} />
+                     : <ListIcon size={18} />}
                 </div>
                 
                 <div className="flex-1 min-w-0">

@@ -129,11 +129,12 @@ async def _create_list_for_marketplace(
     now_local = datetime.now()
     list_name = f"L{seq} - {now_local.strftime('%d/%m/%Y %H:%M')} - Aut"
 
-    # 4. Cria mestre da lista (source='auto')
+    # 4. Cria mestre da lista (source='auto', marketplace explícito)
     new_list = TinyPickingList(
         name=list_name,
         status="pendente",
         source="auto",
+        marketplace=marketplace,
         created_at=datetime.utcnow()
     )
     db.add(new_list)

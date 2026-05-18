@@ -723,11 +723,22 @@ async def create_picking_list(req: PickingListRequest, db: Session = Depends(get
             now_local = datetime.now()
             list_name = f"L{seq} - {now_local.strftime('%d/%m/%Y %H:%M')} - Man"
 
+        # 2.5. Detecta marketplace dominante via TinySeparationHeader.id_forma_envio
+        # ml=735794407, shopee=735725326. Se todos do mesmo marketplace → seta; misto → NULL.
+        MARKETPLACE_BY_FORMA = {"735794407": "ml", "735725326": "shopee"}
+        headers = db.query(TinySeparationHeader).filter(
+            TinySeparationHeader.separation_id.in_([str(sid) for sid in req.separation_ids])
+        ).all()
+        marketplaces_found = {MARKETPLACE_BY_FORMA.get(str(h.id_forma_envio or "")) for h in headers}
+        marketplaces_found.discard(None)
+        list_marketplace = marketplaces_found.pop() if len(marketplaces_found) == 1 else None
+
         # 3. Cria o mestre da lista (source='manual' — distinguir de listas auto-geradas)
         new_list = TinyPickingList(
             name=list_name,
             status="pendente",
             source="manual",
+            marketplace=list_marketplace,
             created_at=datetime.utcnow()
         )
         db.add(new_list)
@@ -1161,6 +1172,8 @@ async def list_picking_lists(db: Session = Depends(get_db)):
             "id": plist.id,
             "name": plist.name,
             "status": plist.status,
+            "source": getattr(plist, "source", "manual"),
+            "marketplace": getattr(plist, "marketplace", None),
             "created_at": plist.created_at.isoformat() if plist.created_at else None,
             "unique_sku_count": unique_sku_count,
             "total_quantity": total_quantity,
