@@ -715,18 +715,19 @@ async def create_picking_list(req: PickingListRequest, db: Session = Depends(get
         if not items:
             raise HTTPException(status_code=400, detail="Nenhum item encontrado nos pedidos selecionados.")
 
-        # 2. Gera nome sequencial L{N} - DD/MM/YYYY HH:MM (ou usa nome customizado se informado)
+        # 2. Gera nome sequencial L{N} - DD/MM/YYYY HH:MM - Man (ou usa nome customizado se informado)
         if req.name:
             list_name = req.name
         else:
             seq = db.query(TinyPickingList).count() + 1
             now_local = datetime.now()
-            list_name = f"L{seq} - {now_local.strftime('%d/%m/%Y %H:%M')}"
+            list_name = f"L{seq} - {now_local.strftime('%d/%m/%Y %H:%M')} - Man"
 
-        # 3. Cria o mestre da lista
+        # 3. Cria o mestre da lista (source='manual' — distinguir de listas auto-geradas)
         new_list = TinyPickingList(
             name=list_name,
             status="pendente",
+            source="manual",
             created_at=datetime.utcnow()
         )
         db.add(new_list)
