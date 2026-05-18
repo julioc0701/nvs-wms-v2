@@ -213,6 +213,24 @@ def init_db():
             conn.commit()
             print("--- DATABASE MIGRATION: marketplace added to batches ---")
 
+        if "lifecycle" not in batch_cols:
+            conn.execute(text("ALTER TABLE batches ADD COLUMN lifecycle VARCHAR(20) NOT NULL DEFAULT 'pendente'"))
+            conn.commit()
+            # Backfill inteligente para lotes existentes:
+            # Se algum item já foi bipado em qualquer sessão do batch → 'em_andamento'
+            conn.execute(text("""
+                UPDATE batches
+                SET lifecycle = 'em_andamento'
+                WHERE id IN (
+                    SELECT DISTINCT s.batch_id
+                    FROM sessions s
+                    INNER JOIN picking_items p ON p.session_id = s.id
+                    WHERE s.batch_id IS NOT NULL AND p.qty_picked > 0
+                )
+            """))
+            conn.commit()
+            print("--- DATABASE MIGRATION: lifecycle added to batches (backfilled em_andamento for active batches) ---")
+
         sess_cols = [c["name"] for c in insp.get_columns("sessions")]
         if "batch_id" not in sess_cols:
             conn.execute(text("ALTER TABLE sessions ADD COLUMN batch_id INTEGER REFERENCES batches(id)"))

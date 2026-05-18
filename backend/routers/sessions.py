@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch, PrintJob
+from models import Session, PickingItem, Label, Barcode, Operator, ScanEvent, Batch, PrintJob, Shortage
 from parsers.ml_pdf_parser import parse_picking_pdf
 from parsers.ml_zpl_parser import parse_zpl_file, get_ml_barcodes
 from services import picking as svc
@@ -62,7 +62,14 @@ def _archive_batch(batch: Batch, db: DBSession):
 
 @router.get("/batches")
 def list_batches(db: DBSession = Depends(get_db)):
-    """Return all batches with per-batch progress summary."""
+    """Return all batches with per-batch progress summary and lifecycle.
+
+    Lifecycle (controle manual com 1 auto-transição):
+      - 'pendente': criado, nada bipado ainda
+      - 'em_andamento': auto-atribuído no 1º bip/falta de qualquer sessão do lote
+      - 'finalizado': MANUAL (master clica pra fechar a operação)
+      - 'archived': lote arquivado (override de tudo)
+    """
     batches = db.query(Batch).order_by(Batch.full_date.asc(), Batch.seq.asc()).all()
     result = []
     for b in batches:
@@ -83,12 +90,16 @@ def list_batches(db: DBSession = Depends(get_db)):
         total_items  = sum(sd["items_total"]  for sd in sess_data)
         total_picked = sum(sd["items_picked"] for sd in sess_data)
         pct = round((total_picked / total_items) * 100) if total_items else 0
+        # Phase: archived sobrepõe lifecycle; senão usa lifecycle real do DB
+        phase = "archived" if b.status == "archived" else b.lifecycle
         result.append({
             "id": b.id,
             "name": b.name,
             "full_date": b.full_date.isoformat(),
             "seq": b.seq,
             "status": b.status,
+            "lifecycle": b.lifecycle,
+            "phase": phase,
             "marketplace": b.marketplace,
             "created_at": b.created_at.isoformat(),
             "total_items": total_items,
@@ -97,6 +108,27 @@ def list_batches(db: DBSession = Depends(get_db)):
             "sessions": sess_data,
         })
     return result
+
+
+class LifecycleBody(BaseModel):
+    lifecycle: str  # em_andamento | finalizado
+
+
+@router.patch("/batches/{batch_id}/lifecycle")
+def set_batch_lifecycle(batch_id: int, body: LifecycleBody, db: DBSession = Depends(get_db)):
+    """Altera manualmente o lifecycle do lote. Valores permitidos: 'em_andamento' | 'finalizado'.
+    'pendente' nunca é manual (só estado inicial). 'archived' usa endpoint próprio."""
+    if body.lifecycle not in ("em_andamento", "finalizado"):
+        raise HTTPException(400, "Valor inválido. Use 'em_andamento' ou 'finalizado'.")
+    batch = db.query(Batch).filter(Batch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(404, "Lote não encontrado")
+    if batch.status == "archived":
+        raise HTTPException(409, "Lote arquivado — desarquive antes de alterar lifecycle.")
+    batch.lifecycle = body.lifecycle
+    db.commit()
+    logger.info("BATCH_LIFECYCLE batch_id=%s lifecycle=%s", batch_id, body.lifecycle)
+    return {"status": "ok", "batch_id": batch_id, "lifecycle": batch.lifecycle}
 
 
 @router.delete("/batches/{batch_id}", status_code=200)
@@ -915,11 +947,43 @@ def reopen_session(session_id: int, db: DBSession = Depends(get_db)):
     sess = _session_or_404(db, session_id)
     if sess.status not in ("completed", "in_progress"):
         raise HTTPException(409, "Apenas listas concluídas ou em andamento podem ser reinicializadas")
+
+    # Reseta APENAS itens com problema (out_of_stock / partial). Itens completos preservados.
+    problem_items = (
+        db.query(PickingItem)
+        .filter(PickingItem.session_id == session_id)
+        .filter(PickingItem.status.in_(("out_of_stock", "partial")))
+        .all()
+    )
+    reset_skus = []
+    for item in problem_items:
+        reset_skus.append(item.sku)
+        item.qty_picked = 0
+        item.shortage_qty = 0
+        item.status = "pending"
+        item.completed_at = None
+        item.labels_printed = False
+        item.notes = None
+
+    # Apaga registros de Shortage ligados a esta lista para os SKUs resetados
+    if reset_skus:
+        db.query(Shortage).filter(
+            Shortage.list_id == str(session_id),
+            Shortage.sku.in_(reset_skus),
+        ).delete(synchronize_session=False)
+
     sess.status = "open"
     sess.operator_id = None
     sess.completed_at = None
     db.commit()
-    return {"session_id": sess.id, "status": "open"}
+    logger.info("REOPEN_SESSION session_id=%s items_reset=%d skus=%s",
+                session_id, len(problem_items), reset_skus)
+    return {
+        "session_id": sess.id,
+        "status": "open",
+        "items_reset": len(problem_items),
+        "reset_skus": reset_skus,
+    }
 
 
 # ── Delete ────────────────────────────────────────────────────────────────────

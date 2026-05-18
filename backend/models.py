@@ -13,6 +13,7 @@ class Batch(Base):
     seq: Mapped[int] = mapped_column(Integer, default=1)            # 1, 2... se mesma data
     name: Mapped[str] = mapped_column(String(100), nullable=False)  # ex: "19/03/2026"
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | archived
+    lifecycle: Mapped[str] = mapped_column(String(20), default="pendente")  # pendente | em_andamento | finalizado
     marketplace: Mapped[str] = mapped_column(String(20), default="ml") # ml | shopee
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

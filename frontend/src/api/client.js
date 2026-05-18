@@ -37,6 +37,7 @@ export const api = {
   listBatches: () => req('GET', '/sessions/batches'),
   archiveBatch: (batchId) => req('POST', `/sessions/batches/${batchId}/archive`),
   deleteBatch: (batchId) => req('DELETE', `/sessions/batches/${batchId}`),
+  setBatchLifecycle: (batchId, lifecycle) => req('PATCH', `/sessions/batches/${batchId}/lifecycle`, { lifecycle }),
   claimSession: (sessionId, operatorId) => req('POST', `/sessions/${sessionId}/claim`, { operator_id: operatorId }),
   deleteSession: (sessionId) => req('DELETE', `/sessions/${sessionId}`),
   reopenSession: (sessionId) => req('POST', `/sessions/${sessionId}/reopen-session`),

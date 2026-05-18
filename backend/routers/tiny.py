@@ -3,7 +3,7 @@ from logger import get_logger
 log = get_logger("tiny")
 from sqlalchemy.orm import Session
 from database import get_db, SessionLocal
-from models import TinyOrderSync, TinyOrderItem, TinyPickingList, TinyPickingListItem, Barcode, Shortage, PickingItem, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog
+from models import TinyOrderSync, TinyOrderItem, TinyPickingList, TinyPickingListItem, Barcode, Shortage, PickingItem, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, Session as PickSessionModel, Batch
 from pydantic import BaseModel
 import asyncio
 import json
@@ -1836,27 +1836,92 @@ async def delete_shortage(shortage_id: int, db: Session = Depends(get_db)):
     return {"status": "ok"}
 
 
+def _lote_is_closed(session_id: int | None, db: Session) -> tuple[bool, "PickSessionModel | None"]:
+    """Retorna (lote_fechado, sessao). Lote fechado = Batch.status == 'archived'
+    OU Batch.lifecycle == 'finalizado' (master marcou como concluído manualmente).
+    Lista avulsa (sem batch) ou lote em_andamento/pendente → não fechado."""
+    if not session_id:
+        return False, None
+    sess = db.query(PickSessionModel).filter(PickSessionModel.id == session_id).first()
+    if not sess or not sess.batch_id:
+        return False, sess
+    batch = db.query(Batch).filter(Batch.id == sess.batch_id).first()
+    if not batch:
+        return False, sess
+    closed = batch.status == "archived" or batch.lifecycle == "finalizado"
+    return closed, sess
+
+
 @router.delete("/shortages/{shortage_id}")
 async def delete_shortage_rest(shortage_id: int, db: Session = Depends(get_db)):
-    """Remove falta — Shortage table (novo) ou PickingItem legacy."""
-    # Legacy item: id começa com "legacy_" — não aplicável via int, tratado separado
+    """Remove falta da tabela Shortage. Se o lote da lista estiver ATIVO,
+    também reseta o PickingItem correspondente e reabre a sessão se necessário.
+    Se o lote estiver ARQUIVADO, apenas remove o registro de falta."""
     item = db.query(Shortage).filter(Shortage.id == shortage_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    try:
+        sid = int(item.list_id) if item.list_id else None
+    except (ValueError, TypeError):
+        sid = None
+
+    lote_closed, sess = _lote_is_closed(sid, db)
+    items_reset = 0
+
+    if not lote_closed and sid and item.sku:
+        pi = db.query(PickingItem).filter(
+            PickingItem.session_id == sid,
+            PickingItem.sku == item.sku,
+            PickingItem.status.in_(("out_of_stock", "partial")),
+        ).first()
+        if pi:
+            pi.qty_picked = 0
+            pi.shortage_qty = 0
+            pi.status = "pending"
+            pi.completed_at = None
+            pi.labels_printed = False
+            pi.notes = None
+            items_reset = 1
+            if sess and sess.status == "completed":
+                sess.status = "open"
+                sess.operator_id = None
+                sess.completed_at = None
+
     db.delete(item)
     db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "lote_closed": lote_closed, "items_reset": items_reset}
 
 
 @router.delete("/shortages/legacy/{item_id}")
 async def delete_shortage_legacy(item_id: int, db: Session = Depends(get_db)):
-    """Zera shortage_qty de um PickingItem legado (remove da tela de faltas)."""
+    """Remove falta de um PickingItem legacy. Se o lote estiver ATIVO,
+    reseta completo o item (qty_picked=0, status=pending) e reabre sessão.
+    Se ARQUIVADO, apenas zera shortage_qty (limpa do relatório, mantém histórico)."""
     item = db.query(PickingItem).filter(PickingItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
-    item.shortage_qty = 0
+
+    lote_closed, sess = _lote_is_closed(item.session_id, db)
+
+    if lote_closed:
+        # Lote arquivado: só limpa do relatório, mantém item out_of_stock no histórico
+        item.shortage_qty = 0
+    else:
+        # Lote ativo: reset completo, item volta a poder ser bipado
+        item.qty_picked = 0
+        item.shortage_qty = 0
+        item.status = "pending"
+        item.completed_at = None
+        item.labels_printed = False
+        item.notes = None
+        if sess and sess.status == "completed":
+            sess.status = "open"
+            sess.operator_id = None
+            sess.completed_at = None
+
     db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "lote_closed": lote_closed}
 
 
 @router.patch("/shortages/{shortage_id}/status")

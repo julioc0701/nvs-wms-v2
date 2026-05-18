@@ -1048,6 +1048,49 @@ export default function Supervisor() {
                                     <div className={cn("h-full rounded-full transition-all duration-700", bPct >= 90 ? "bg-emerald-500" : bPct >= 50 ? "bg-blue-500" : "bg-amber-500")} style={{ width: `${bPct}%` }} />
                                   </div>
                                   <div className="flex gap-2 flex-wrap">
+                                    {batch.phase === 'pendente' && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider bg-sky-50 border border-sky-200 text-sky-700 px-2.5 py-1 rounded-md flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" /> Pendente
+                                      </span>
+                                    )}
+                                    {batch.phase === 'em_andamento' && (
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          if (!window.confirm(`Marcar lote "${batch.name}" como FINALIZADO?\n\nApós isso, faltas vinculadas só poderão ser limpas do relatório (sem reabrir listas).`)) return
+                                          try {
+                                            await api.setBatchLifecycle(batch.id, 'finalizado')
+                                            refresh()
+                                          } catch (err) {
+                                            alert('Erro ao finalizar: ' + (err.message || err))
+                                          }
+                                        }}
+                                        title="Marcar como Finalizado (manual)"
+                                        className="text-[10px] font-bold uppercase tracking-wider bg-orange-50 border border-orange-200 text-orange-700 px-2.5 py-1 rounded-md flex items-center gap-1 hover:bg-orange-100 hover:border-orange-300 transition-colors"
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" /> Em Andamento
+                                        <span className="opacity-50 ml-1">▸</span>
+                                      </button>
+                                    )}
+                                    {batch.phase === 'finalizado' && (
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation()
+                                          if (!window.confirm(`Reabrir lote "${batch.name}" para Em Andamento?`)) return
+                                          try {
+                                            await api.setBatchLifecycle(batch.id, 'em_andamento')
+                                            refresh()
+                                          } catch (err) {
+                                            alert('Erro ao reabrir: ' + (err.message || err))
+                                          }
+                                        }}
+                                        title="Reabrir lote (volta para Em Andamento)"
+                                        className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-200 text-emerald-700 px-2.5 py-1 rounded-md flex items-center gap-1 hover:bg-emerald-100 hover:border-emerald-300 transition-colors"
+                                      >
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Finalizado
+                                        <span className="opacity-50 ml-1">↺</span>
+                                      </button>
+                                    )}
                                     {active > 0    && <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-50 border border-blue-100 text-blue-700 px-2.5 py-1 rounded-md">Ativas {active}</span>}
                                     {available > 0 && <span className="text-[10px] font-bold uppercase tracking-wider bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-1 rounded-md">Abertas {available}</span>}
                                     {done > 0      && <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 border border-emerald-100 text-emerald-700 px-2.5 py-1 rounded-md">Picks {done}</span>}
@@ -1077,7 +1120,10 @@ export default function Supervisor() {
                               className="bg-white text-left rounded-xl border border-slate-200 shadow-sm opacity-70 hover:opacity-100 transition-all group overflow-hidden cursor-pointer">
                               <div className="p-4 flex items-center justify-between gap-2">
                                 <div className="min-w-0 flex-1">
-                                  <p className="font-bold text-slate-700 truncate">{batch.name}</p>
+                                  <p className="font-bold text-slate-700 truncate flex items-center gap-2">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider bg-slate-200 border border-slate-300 text-slate-600 px-1.5 py-0.5 rounded">Arquivado</span>
+                                    <span className="truncate">{batch.name}</span>
+                                  </p>
                                   <p className="text-xs text-slate-400 mt-0.5">{batch.sessions.length} listas integradas</p>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">

@@ -2,7 +2,19 @@
 from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session as DBSession
-from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob, Operator
+from models import PickingItem, Barcode, ScanEvent, Session, Label, PrintJob, Operator, Batch
+
+
+def _maybe_advance_batch_lifecycle(db: DBSession, session_id: int) -> None:
+    """Auto-transição: se o lote da sessão está 'pendente', avança pra 'em_andamento'.
+    Chamado após qualquer ação que indique início efetivo da operação (scan/shortage/oos).
+    No-op se já avançou ou se sessão não pertence a lote."""
+    sess = db.query(Session).filter(Session.id == session_id).first()
+    if not sess or not sess.batch_id:
+        return
+    batch = db.query(Batch).filter(Batch.id == sess.batch_id).first()
+    if batch and batch.lifecycle == "pendente":
+        batch.lifecycle = "em_andamento"
 
 
 def get_current_item(db: DBSession, session_id: int) -> PickingItem | None:
@@ -175,6 +187,7 @@ def process_scan(
             sess.operator_id = operator_id
 
     log_event(db, session_id, item.id, barcode, operator_id, "scan", 1)
+    _maybe_advance_batch_lifecycle(db, session_id)
 
     if item.qty_picked >= item.qty_required:
         item.status = "complete"
@@ -316,6 +329,7 @@ def process_scan_box(
             sess.operator_id = operator_id
 
     log_event(db, session_id, item.id, barcode, operator_id, "scan_box", delta)
+    _maybe_advance_batch_lifecycle(db, session_id)
     _auto_complete_session(db, session_id)
     _create_print_job(db, session_id, item.sku, operator_id)
     db.commit()
@@ -351,6 +365,7 @@ def mark_shortage(db: DBSession, session_id: int, sku: str, qty_found: int, oper
     item.completed_at = datetime.utcnow()
 
     log_event(db, session_id, item.id, "SHORTAGE", operator_id, "shortage", qty_found)
+    _maybe_advance_batch_lifecycle(db, session_id)
     _auto_complete_session(db, session_id)
     if item.qty_picked > 0:
         _create_print_job(db, session_id, item.sku, operator_id)
@@ -370,6 +385,7 @@ def mark_out_of_stock(db: DBSession, session_id: int, sku: str, operator_id: int
     item.completed_at = datetime.utcnow()
 
     log_event(db, session_id, item.id, "OOS", operator_id, "out_of_stock", 0)
+    _maybe_advance_batch_lifecycle(db, session_id)
     _auto_complete_session(db, session_id)
     if item.qty_picked > 0:
         _create_print_job(db, session_id, item.sku, operator_id)
