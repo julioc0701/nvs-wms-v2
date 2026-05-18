@@ -70,6 +70,8 @@ export default function SeparacaoOlist() {
   const [erpSending, setErpSending] = useState(false)
   const [erpLogs, setErpLogs] = useState([])           // logs do drawer
   const [erpLogsLoading, setErpLogsLoading] = useState(false)
+  const [autoSepStatus, setAutoSepStatus] = useState(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
 
   async function fetchLocalStatuses() {
     try {
@@ -321,6 +323,10 @@ export default function SeparacaoOlist() {
     // fetchSeparacoes() — não carrega automaticamente. Usuário seleciona período e clica Aplicar.
     fetchLocalStatuses()
     fetchTrackedSeparacoes() // em_separacao + separadas do DB local — sem filtro de data
+    // Status do job auto-separation pra mostrar banner em falha consecutiva
+    api.getAutoSeparationStatus()
+      .then(setAutoSepStatus)
+      .catch(() => {})
   }, [])
 
   const matchMarketplace = (s, filter) => {
@@ -419,6 +425,25 @@ export default function SeparacaoOlist() {
       </div>
 
       <h1 className="text-xl sm:text-2xl font-medium text-slate-800 mb-6 px-2">Separação de Mercadorias</h1>
+
+      {/* BANNER DE FALHA DO JOB AUTO-SEPARATION (sutil, dismissable) */}
+      {autoSepStatus?.show_banner && !bannerDismissed && (
+        <div className="mx-2 mb-4 flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-semibold text-amber-800">
+          <AlertCircle size={14} className="shrink-0" />
+          <span className="flex-1">
+            Geração automática falhou hoje
+            {autoSepStatus.last_run_at && ` (${new Date(autoSepStatus.last_run_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})`}
+            . Gere manualmente abaixo ou aguarde retry.
+          </span>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            className="p-1 hover:bg-amber-100 rounded transition-colors"
+            title="Dispensar aviso"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* BANNER DE BACKFILL AUTOMÁTICO */}
       {backfilling && (
