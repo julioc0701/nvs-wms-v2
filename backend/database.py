@@ -139,7 +139,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -317,7 +317,14 @@ def init_db():
                 conn.execute(text("ALTER TABLE tiny_picking_list_items ADD COLUMN notes TEXT"))
                 conn.commit()
                 print("--- DATABASE MIGRATION: notes added to tiny_picking_list_items ---")
-            
+
+            # MIGRATION: source column em tiny_picking_lists (auto | manual)
+            tpl_cols = [c["name"] for c in insp.get_columns("tiny_picking_lists")]
+            if "source" not in tpl_cols:
+                conn.execute(text("ALTER TABLE tiny_picking_lists ADD COLUMN source VARCHAR(20) NOT NULL DEFAULT 'manual'"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: source added to tiny_picking_lists ---")
+
             # MIGRATION PARA SHORTAGES (OPERADOR)
             shortage_cols = [c["name"] for c in insp.get_columns("shortages")]
             if "operator_id" not in shortage_cols:
@@ -403,6 +410,25 @@ def init_db():
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_erp_logs_sent_at ON tiny_erp_send_logs (sent_at)"))
         conn.commit()
         print("--- DATABASE MIGRATION: tiny_erp_send_logs table verified/created ---")
+
+        # ── AUTO SEPARATION STATE (singleton para banner de falha + idempotência) ──
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS auto_separation_state (
+                id                    INTEGER PRIMARY KEY,
+                last_run_at           DATETIME,
+                last_status           VARCHAR(30) NOT NULL DEFAULT 'never_ran',
+                consecutive_failures  INTEGER NOT NULL DEFAULT 0,
+                last_error_msg        TEXT,
+                last_summary          TEXT
+            )
+        """))
+        # Garante linha inicial (id=1) — singleton
+        conn.execute(text("""
+            INSERT OR IGNORE INTO auto_separation_state (id, last_status, consecutive_failures)
+            VALUES (1, 'never_ran', 0)
+        """))
+        conn.commit()
+        print("--- DATABASE MIGRATION: auto_separation_state table + initial row verified ---")
 
         # ── RENOMEAR LISTAS SEM SEQUÊNCIA (L{N} - DD/MM/YYYY HH:MM) ─────────────
         import re as _re
