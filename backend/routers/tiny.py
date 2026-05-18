@@ -1945,3 +1945,40 @@ async def delete_all_shortages(db: Session = Depends(get_db)):
     )
     db.commit()
     return {"status": "ok"}
+
+
+# ── AUTO SEPARATION ENDPOINTS ────────────────────────────────────────────────
+
+@router.get("/auto-separation/status")
+async def get_auto_separation_status(db: Session = Depends(get_db)):
+    """Retorna o estado atual do job. Usado pelo banner do frontend."""
+    from models import AutoSeparationState
+    state = db.query(AutoSeparationState).filter(AutoSeparationState.id == 1).first()
+    if not state:
+        return {
+            "last_run_at": None,
+            "last_status": "never_ran",
+            "consecutive_failures": 0,
+            "last_error_msg": None,
+            "last_summary": None,
+            "show_banner": False,
+        }
+    return {
+        "last_run_at": state.last_run_at.isoformat() if state.last_run_at else None,
+        "last_status": state.last_status,
+        "consecutive_failures": state.consecutive_failures,
+        "last_error_msg": state.last_error_msg,
+        "last_summary": state.last_summary,
+        "show_banner": state.last_status == "failed_visible",
+    }
+
+
+@router.post("/auto-separation/run-now")
+async def run_auto_separation_now(db: Session = Depends(get_db)):
+    """Executa o job imediatamente (força — ignora 'já rodou hoje').
+    Útil pra QA e recuperação manual após falha."""
+    from services.auto_separation import executar_job
+    if not TINY_TOKEN:
+        raise HTTPException(status_code=400, detail="TINY_API_TOKEN não configurado")
+    result = await executar_job(TINY_TOKEN, force=True)
+    return result
