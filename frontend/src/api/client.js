@@ -200,6 +200,9 @@ export const api = {
   // Relatório de Faltas (v2)
   reportShortage: (data) => req('POST', '/tiny/report-shortage', data),
   getShortages: () => req('GET', '/tiny/shortages'),
+  // Auto-Separation Job
+  getAutoSeparationStatus: () => req('GET', '/tiny/auto-separation/status'),
+  runAutoSeparationNow: () => req('POST', '/tiny/auto-separation/run-now', {}),
   toggleShortageStatus: (id) => req('PATCH', `/tiny/shortages/${id}/status`),
   deleteShortage: (id) => req('DELETE', `/tiny/shortages/${id}`),
   deleteShortageLegacy: (itemId) => req('DELETE', `/tiny/shortages/legacy/${itemId}`),
