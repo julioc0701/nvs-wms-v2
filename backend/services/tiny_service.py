@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 
 log = logging.getLogger(__name__)
 
-MARCADOR_SEM_ESTOQUE = "SemEstoque"
+MARCADOR_SEM_ESTOQUE = "Sem Estoque"
 
 class TinyService:
     BASE_URL = "https://api.tiny.com.br/api2/"
