@@ -44,19 +44,14 @@ export default function PickingListsHistory() {
     loadLists()
   }, [])
 
-  // Ordena: mono-SKU primeiro (unique_sku_count===1), depois por total_quantity desc
+  // Ordena por # (id) desc — lista mais nova primeiro
   const filtered = lists
     .filter(l =>
       l.name.toLowerCase().includes(search.toLowerCase()) ||
       l.id.toString().includes(search)
     )
     .slice()
-    .sort((a, b) => {
-      const monoA = a.unique_sku_count === 1 ? 0 : 1
-      const monoB = b.unique_sku_count === 1 ? 0 : 1
-      if (monoA !== monoB) return monoA - monoB
-      return (b.total_quantity || 0) - (a.total_quantity || 0)
-    })
+    .sort((a, b) => b.id - a.id)
 
   return (
     <div className="flex-1 flex flex-col bg-white p-6 font-sans">
@@ -139,6 +134,11 @@ export default function PickingListsHistory() {
                          {new Date(list.created_at).toLocaleDateString()}
                          <span className="opacity-40">•</span>
                          <span className="tabular-nums">{new Date(list.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-700 font-bold uppercase tracking-wider">
+                         <Package size={12} className="text-slate-500" />
+                         <span className="tabular-nums">{list.separation_count || 0} separações</span>
                       </div>
 
                       <span className={cn(

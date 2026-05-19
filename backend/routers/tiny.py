@@ -1168,6 +1168,14 @@ async def list_picking_lists(db: Session = Depends(get_db)):
         items = plist.items
         unique_sku_count = len({it.sku for it in items})
         total_quantity = sum(it.quantity for it in items)
+        separation_ids = set()
+        for it in items:
+            if it.source_separation_ids:
+                for sid in it.source_separation_ids.split(","):
+                    sid = sid.strip()
+                    if sid:
+                        separation_ids.add(sid)
+        separation_count = len(separation_ids)
         result.append({
             "id": plist.id,
             "name": plist.name,
@@ -1177,6 +1185,7 @@ async def list_picking_lists(db: Session = Depends(get_db)):
             "created_at": plist.created_at.isoformat() if plist.created_at else None,
             "unique_sku_count": unique_sku_count,
             "total_quantity": total_quantity,
+            "separation_count": separation_count,
         })
     return result
 
