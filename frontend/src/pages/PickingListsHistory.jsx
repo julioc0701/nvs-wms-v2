@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import { useFeedback } from '../components/ui/FeedbackProvider'
-import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2 } from 'lucide-react'
+import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2, Filter } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
 import MarketplaceLogo from '../components/MarketplaceLogo'
@@ -12,6 +12,8 @@ export default function PickingListsHistory() {
   const [lists, setLists] = useState([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [marketplaceFilter, setMarketplaceFilter] = useState('all')
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null) // list object
 
   async function handleDelete(list) {
@@ -44,11 +46,18 @@ export default function PickingListsHistory() {
     loadLists()
   }, [])
 
+  const matchMarketplace = (list) => {
+    if (marketplaceFilter === 'all') return true
+    if (marketplaceFilter === 'organico') return !list.marketplace
+    return list.marketplace === marketplaceFilter
+  }
+
   // Ordena por # (id) desc — lista mais nova primeiro
   const filtered = lists
     .filter(l =>
-      l.name.toLowerCase().includes(search.toLowerCase()) ||
-      l.id.toString().includes(search)
+      (l.name.toLowerCase().includes(search.toLowerCase()) ||
+       l.id.toString().includes(search)) &&
+      matchMarketplace(l)
     )
     .slice()
     .sort((a, b) => b.id - a.id)
@@ -69,16 +78,64 @@ export default function PickingListsHistory() {
 
         <div className="flex items-center gap-2">
            <div className="relative">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 placeholder="Pesquisar lista..."
-                className="w-full sm:w-64 h-10 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-blue-400 focus:bg-white transition-all"
+                className="w-full sm:w-64 h-10 pl-4 pr-10 bg-white border border-slate-400 rounded-xl text-xs font-bold outline-none focus:border-blue-500 focus:bg-white transition-all placeholder:font-bold placeholder:text-slate-500"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
-              <Search className="absolute right-3 top-2.5 text-slate-300" size={14} />
+              <Search className="absolute right-3 top-2.5 text-slate-500" size={14} />
            </div>
-           <button onClick={loadLists} className="h-10 w-10 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 transition-colors">
+
+           <div className="relative">
+             <button
+               onClick={() => setShowFilterMenu(!showFilterMenu)}
+               className={cn(
+                 "h-10 px-4 border text-xs font-bold flex items-center gap-2 rounded-xl transition-all",
+                 showFilterMenu || marketplaceFilter !== 'all'
+                   ? "bg-slate-800 border-slate-800 text-white"
+                   : "bg-white border-slate-400 text-slate-700 hover:bg-slate-50"
+               )}
+             >
+               <Filter size={14} /> filtros {marketplaceFilter !== 'all' && '(ativo)'}
+             </button>
+
+             {showFilterMenu && (
+               <div className="absolute top-12 right-0 w-[min(95vw,420px)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] p-6 animate-in fade-in zoom-in duration-200">
+                 <div className="flex flex-wrap gap-4 sm:gap-8 border-b border-slate-100 mb-6 pb-2">
+                   <button className="text-xs font-bold text-slate-800 border-b-2 border-slate-800 pb-2">e-commerce</button>
+                 </div>
+
+                 <div className="mb-2">
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3">Selecione o marketplace</p>
+                   <div className="flex flex-wrap gap-2">
+                     {[
+                       { id: 'all', label: 'todos' },
+                       { id: 'shopee', label: 'Shopee' },
+                       { id: 'ml', label: 'Mercado Livre' },
+                       { id: 'organico', label: 'Orgânico' },
+                     ].map(mk => (
+                       <button
+                         key={mk.id}
+                         onClick={() => { setMarketplaceFilter(mk.id); setShowFilterMenu(false) }}
+                         className={cn(
+                           "px-4 py-2 rounded-full text-xs font-medium border transition-all",
+                           marketplaceFilter === mk.id
+                             ? "bg-slate-800 border-slate-800 text-white"
+                             : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                         )}
+                       >
+                         {mk.label}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+               </div>
+             )}
+           </div>
+
+           <button onClick={loadLists} className="h-10 w-10 flex items-center justify-center bg-white border border-slate-400 rounded-xl text-slate-600 hover:text-blue-600 hover:border-blue-400 transition-colors">
               <Clock size={16} />
            </button>
         </div>
@@ -97,35 +154,43 @@ export default function PickingListsHistory() {
         ) : (
           <div className="space-y-2">
             {filtered.map((list, idx) => {
-              const isZebra = idx % 2 === 0  // alterna: 0=zebra azul, 1=branco, 2=zebra azul...
+              const isZebra = idx % 2 === 0
+              const mk = list.marketplace
+              const rowStyle =
+                mk === 'ml' ? "bg-yellow-100 border-l-yellow-500 hover:bg-yellow-200 hover:border-l-yellow-600"
+                : mk === 'shopee' ? "bg-red-200 border-l-red-500 hover:bg-red-300 hover:border-l-red-700"
+                : isZebra ? "bg-blue-100 border-l-blue-500 hover:bg-blue-200 hover:border-l-blue-700"
+                : "bg-slate-200 border-l-slate-400 hover:bg-slate-300 hover:border-l-blue-400"
               return (
               <div key={list.id} className="w-full flex items-center gap-2">
               <button
                 onClick={() => navigate(`/separacao/listas/${list.id}`)}
                 className={cn(
                   "flex-1 flex items-center gap-4 p-5 rounded-2xl border-l-4 border border-slate-100 hover:shadow-lg hover:shadow-slate-100 transition-all group relative overflow-hidden text-left",
-                  isZebra
-                    ? "bg-blue-50/40 border-l-blue-300 hover:bg-blue-50/70 hover:border-l-blue-500"
-                    : "bg-white border-l-slate-200 hover:bg-slate-50 hover:border-l-blue-400"
+                  rowStyle
                 )}
               >
                 <div className={cn(
-                  "w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors p-1.5",
-                  list.marketplace
-                    ? "bg-white border border-slate-200 shadow-sm"
-                    : "bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
+                  "w-20 h-20 rounded-xl flex items-center justify-center shrink-0 transition-colors",
+                  list.marketplace ? "p-0" : "p-1 bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white"
                 )}>
                    {list.marketplace
-                     ? <MarketplaceLogo marketplace={list.marketplace} size={26} />
-                     : <ListIcon size={20} />}
+                     ? <MarketplaceLogo marketplace={list.marketplace} size={list.marketplace === 'ml' ? 76 : 48} />
+                     : <ListIcon size={24} />}
                 </div>
 
                 <div className="flex-1 min-w-0">
                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <h3 className="text-base font-black text-slate-900 truncate group-hover:text-blue-700 transition-colors">
+                      <h3 className={cn(
+                        "text-base font-black truncate group-hover:text-blue-700 transition-colors",
+                        isZebra ? "text-blue-700" : "text-slate-900"
+                      )}>
                          {list.name}
                       </h3>
-                      <span className="text-xs font-black text-slate-500 shrink-0 tabular-nums">#{list.id}</span>
+                      <span className={cn(
+                        "text-xs font-black shrink-0 tabular-nums",
+                        isZebra ? "text-blue-600" : "text-slate-500"
+                      )}>#{list.id}</span>
                    </div>
 
                    <div className="flex items-center gap-3 flex-wrap">

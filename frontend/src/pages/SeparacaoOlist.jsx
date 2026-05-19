@@ -348,6 +348,47 @@ export default function SeparacaoOlist() {
       .catch(() => {})
   }, [])
 
+  // Busca global — varre todas as abas e troca pra primeira que tem match
+  const handleSearchSubmit = () => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return
+    const matchSearch = (s) =>
+      (s.id || '').toString().includes(q) ||
+      (s.destinatario || '').toLowerCase().includes(q) ||
+      (s.numero || '').toLowerCase().includes(q) ||
+      (s.numeroPedidoEcommerce || '').toLowerCase().includes(q)
+    const tabHasMatch = (tab) => {
+      if (tab === 'em_separacao' || tab === 'separadas' || tab === 'sem_estoque' || tab === 'enviada_erp') {
+        const targetStatuses = tab === 'em_separacao' ? ['em_separacao']
+          : tab === 'separadas' ? ['concluida']
+          : tab === 'sem_estoque' ? ['sem_estoque']
+          : ['enviada_erp', 'erro_envio_erp']
+        return trackedSeparacoes.some(s =>
+          targetStatuses.includes(s.local_status) &&
+          matchSearch(s) &&
+          matchMarketplace(s, marketplaceFilter)
+        )
+      }
+      return separacoes.some(s => {
+        const localStatus = localStatuses[(s.id || '').toString()]?.status
+        const sit = (s.situacao || '').toString()
+        const okTab = tab === 'aguardando'
+          ? (localStatus === 'aguardando' || (!localStatus && sit === '1'))
+          : tab === 'embaladas' ? sit === '3' : false
+        return okTab && matchSearch(s) && matchMarketplace(s, marketplaceFilter)
+      })
+    }
+    if (tabHasMatch(activeTab)) return
+    const priority = ['aguardando', 'em_separacao', 'separadas', 'sem_estoque', 'enviada_erp', 'embaladas']
+    for (const t of priority) {
+      if (t === activeTab) continue
+      if (tabHasMatch(t)) {
+        setActiveTab(t)
+        return
+      }
+    }
+  }
+
   const matchMarketplace = (s, filter) => {
     if (filter === 'all') return true
     const idEnvio = (s.idFormaEnvio || '').toString()
@@ -483,14 +524,22 @@ export default function SeparacaoOlist() {
           
           {/* SEARCH BAR */}
           <div className="relative w-full md:w-96">
-            <input 
+            <input
               type="text"
               placeholder="Pesquise por destinatário ou número"
               className="w-full h-10 pl-4 pr-10 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 placeholder-slate-400"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSearchSubmit() }}
             />
-            <Search className="absolute right-3 top-2.5 text-slate-400" size={18} />
+            <button
+              type="button"
+              onClick={handleSearchSubmit}
+              className="absolute right-2 top-1 h-8 w-8 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-md transition-colors"
+              title="Pesquisar (troca de aba se necessário)"
+            >
+              <Search size={18} />
+            </button>
           </div>
 
           {/* DATE FILTER BUTTON & DROPDOWN */}
