@@ -15,7 +15,7 @@ log = get_logger("api")
 from database import init_db, get_db
 from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs, stats, tiny, ai, zebra_ws
 from models import Operator
-from services.sync_engine import recover_stale_runs, start_local_scheduler, stop_local_scheduler
+from services.sync_engine import recover_stale_runs, start_local_scheduler, start_marker_sync, stop_local_scheduler
 
 app = FastAPI(title="NVS API", version="1.0.0")
 
@@ -69,6 +69,10 @@ async def on_startup():
         print(f"[SYNC] {recovered_runs} execucoes running antigas foram encerradas no startup.")
     if os.getenv("ENABLE_LOCAL_SYNC_SCHEDULER", "false").strip().lower() in {"1", "true", "yes"}:
         start_local_scheduler(os.getenv("TINY_API_TOKEN", ""))
+    # Marker sync (marcador SemEstoque) — independente do scheduler de sync.
+    # Default true; pode desligar com ENABLE_MARKER_SYNC=false.
+    if os.getenv("ENABLE_MARKER_SYNC", "true").strip().lower() in {"1", "true", "yes"}:
+        start_marker_sync(os.getenv("TINY_API_TOKEN", ""))
 
 
 @app.on_event("shutdown")

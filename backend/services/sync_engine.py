@@ -694,7 +694,7 @@ async def scheduler_loop(token: str) -> None:
 
 
 def start_local_scheduler(token: str) -> asyncio.Task | None:
-    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, MARKER_SYNC_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, SCHEDULER_STOP
     if not token:
         log.warning("Scheduler local não iniciado: TINY_API_TOKEN ausente")
         return None
@@ -704,10 +704,23 @@ def start_local_scheduler(token: str) -> asyncio.Task | None:
     SCHEDULER_TASK = asyncio.create_task(scheduler_loop(token))
     ERP_SYNC_TASK = asyncio.create_task(erp_sync_loop(token))
     AUTO_SEP_TASK = asyncio.create_task(auto_separation_loop(token))
+    log.info("Scheduler local de sync + ERP auto-send + auto-separação iniciado")
+    return SCHEDULER_TASK
+
+
+def start_marker_sync(token: str) -> asyncio.Task | None:
+    """Worker do marcador SemEstoque — independente do scheduler de sync.
+    Controlado por ENABLE_MARKER_SYNC (default=true)."""
+    global MARKER_SYNC_TASK
+    if not token:
+        log.warning("Marker sync não iniciado: TINY_API_TOKEN ausente")
+        return None
+    if MARKER_SYNC_TASK and not MARKER_SYNC_TASK.done():
+        return MARKER_SYNC_TASK
     from services.marker_sync import marker_sync_loop
     MARKER_SYNC_TASK = asyncio.create_task(marker_sync_loop(token))
-    log.info("Scheduler local de sync + ERP auto-send + auto-separação + marker-sync iniciado")
-    return SCHEDULER_TASK
+    log.info("Marker sync worker iniciado")
+    return MARKER_SYNC_TASK
 
 
 async def stop_local_scheduler() -> None:
