@@ -348,6 +348,17 @@ export default function SeparacaoOlist() {
       .catch(() => {})
   }, [])
 
+  // Polling 5s na tab sem_estoque enquanto houver marker_status='processando'
+  useEffect(() => {
+    if (activeTab !== 'sem_estoque') return
+    const hasProcessing = Object.values(localStatuses).some(
+      s => s?.marker_status === 'processando'
+    )
+    if (!hasProcessing) return
+    const id = setInterval(() => fetchLocalStatuses(), 5000)
+    return () => clearInterval(id)
+  }, [activeTab, localStatuses])
+
   // Busca global — varre todas as abas e troca pra primeira que tem match
   const handleSearchSubmit = () => {
     const q = searchQuery.toLowerCase().trim()
@@ -981,7 +992,41 @@ export default function SeparacaoOlist() {
                     <td className="p-4 text-slate-500">{item.dataEmissao || item.dataCriacao}</td>
                     <td className="p-4 text-slate-500">{item.prazo_maximo || '---'}</td>
                     <td className="p-4">
-                       <div className="flex flex-wrap gap-1">
+                       <div className="flex flex-wrap gap-1 items-center">
+                          {activeTab === 'sem_estoque' && (() => {
+                            const ls = localStatuses[String(item.id)] || {}
+                            const m = ls.marker_status
+                            if (m === 'processando') return (
+                              <span className="bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-full text-[9px] font-black flex items-center gap-1">
+                                <RefreshCcw size={11} className="animate-spin" /> Marcador processando
+                              </span>
+                            )
+                            if (m === 'ok') return (
+                              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full text-[9px] font-black flex items-center gap-1">
+                                <CheckCheck size={11} /> Marcador OK
+                              </span>
+                            )
+                            if (m === 'erro') return (
+                              <>
+                                <span title={ls.marker_error || 'erro'} className="bg-red-50 text-red-600 border border-red-200 px-2.5 py-1 rounded-full text-[9px] font-black flex items-center gap-1">
+                                  <XCircle size={11} /> Marcador Erro
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    api.retryMarker(String(item.id))
+                                      .then(() => fetchLocalStatuses())
+                                      .catch((err) => notify('Erro ao reenfileirar: ' + err.message, 'error'))
+                                  }}
+                                  title="Tentar de novo"
+                                  className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 p-1 rounded-full transition-colors"
+                                >
+                                  <RotateCcw size={11} />
+                                </button>
+                              </>
+                            )
+                            return null
+                          })()}
                           {activeTab === 'enviada_erp' && (
                             item.local_status === 'enviada_erp'
                               ? <span className="bg-violet-50 text-violet-700 border border-violet-200 px-2.5 py-1 rounded-full text-[9px] font-black flex items-center gap-1">

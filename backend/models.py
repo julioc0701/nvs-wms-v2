@@ -321,6 +321,10 @@ class TinySeparationStatus(Base):
     status: Mapped[str] = mapped_column(String(30), default="em_separacao")  # em_separacao | concluida
     list_id: Mapped[int | None] = mapped_column(ForeignKey("tiny_picking_lists.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Sincronização do marcador "SemEstoque" no Tiny (pedido.marcadores.incluir/remover)
+    marker_status: Mapped[str | None] = mapped_column(String(20), nullable=True)  # processando | ok | erro | None
+    marker_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marker_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class TinySeparationHeader(Base):
@@ -340,6 +344,7 @@ class TinySeparationHeader(Base):
     id_forma_envio: Mapped[str | None] = mapped_column(String(50))
     forma_envio_descricao: Mapped[str | None] = mapped_column(String(100))
     numero_pedido: Mapped[str | None] = mapped_column(String(50))       # injetado pelo espelho local
+    id_pedido: Mapped[str | None] = mapped_column(String(50), index=True)  # idOrigemVinc = TinyOrderSync.id (usado em marcadores)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

@@ -203,6 +203,8 @@ export const api = {
   // Auto-Separation Job
   getAutoSeparationStatus: () => req('GET', '/tiny/auto-separation/status'),
   runAutoSeparationNow: () => req('POST', '/tiny/auto-separation/run-now', {}),
+  // Marker sync (SemEstoque no Tiny)
+  retryMarker: (sepId) => req('POST', `/tiny/separation-statuses/${sepId}/retry-marker`, {}),
   toggleShortageStatus: (id) => req('PATCH', `/tiny/shortages/${id}/status`),
   deleteShortage: (id) => req('DELETE', `/tiny/shortages/${id}`),
   deleteShortageLegacy: (itemId) => req('DELETE', `/tiny/shortages/legacy/${itemId}`),

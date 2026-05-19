@@ -300,6 +300,7 @@ async def list_separacoes(
                 id_forma_envio=str(s.get("idFormaEnvio") or ""),
                 forma_envio_descricao=forma_envio_desc,
                 numero_pedido=s.get("numero_pedido"),
+                id_pedido=str(s.get("idOrigemVinc") or "") or None,
                 updated_at=datetime.utcnow(),
             )
             existing_h = db.query(TinySeparationHeader).filter(
@@ -375,6 +376,7 @@ async def _backfill_sep_headers_bg(sep_ids: List[str], token: Optional[str]):
                     prazo_maximo=prazo,
                     id_forma_envio=str(sep.get("idFormaEnvio") or ""),
                     forma_envio_descricao=forma_envio_desc,
+                    id_pedido=str(sep.get("idOrigemVinc") or "") or None,
                     updated_at=datetime.utcnow(),
                 )
                 existing_h = db.query(TinySeparationHeader).filter(
@@ -794,16 +796,45 @@ async def create_picking_list(req: PickingListRequest, db: Session = Depends(get
 @router.get("/separation-statuses")
 async def get_separation_statuses(db: Session = Depends(get_db)):
     """Retorna o mapa de status local dos documentos de separação.
-    O Tiny é somente-leitura — este endpoint é a fonte de verdade local."""
+    O Tiny é somente-leitura — este endpoint é a fonte de verdade local.
+    Inclui marker_* pra exibição do estado de sincronização do marcador SemEstoque."""
     statuses = (
         db.query(TinySeparationStatus, TinyPickingList.name)
         .outerjoin(TinyPickingList, TinyPickingList.id == TinySeparationStatus.list_id)
         .all()
     )
     return {
-        s.separation_id: {"status": s.status, "list_id": s.list_id, "list_name": name}
+        s.separation_id: {
+            "status": s.status,
+            "list_id": s.list_id,
+            "list_name": name,
+            "marker_status": s.marker_status,
+            "marker_error": s.marker_error,
+            "marker_sent_at": s.marker_sent_at.isoformat() if s.marker_sent_at else None,
+        }
         for s, name in statuses
     }
+
+
+@router.post("/separation-statuses/{sep_id}/retry-marker")
+async def retry_marker(sep_id: str, db: Session = Depends(get_db)):
+    """Reenfileira a chamada do marcador conforme o status atual do doc:
+    - status=='sem_estoque' → enqueue_add
+    - status!='sem_estoque' → enqueue_remove
+    Marca marker_status='processando' imediatamente — UI reflete sem esperar."""
+    record = db.query(TinySeparationStatus).filter(
+        TinySeparationStatus.separation_id == sep_id
+    ).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Doc não encontrado")
+    from services import marker_sync
+    if record.status == "sem_estoque":
+        marker_sync.enqueue_add(sep_id)
+        op = "add"
+    else:
+        marker_sync.enqueue_remove(sep_id)
+        op = "remove"
+    return {"status": "queued", "op": op, "sep_id": sep_id}
 
 
 class WarmCacheRequest(BaseModel):
@@ -1103,6 +1134,22 @@ async def _revert_separation_status_to_olist(sep_id: str) -> None:
         db.close()
 
 
+def _enqueue_marker_for_transition(old_status: Optional[str], new_status: str, sep_id: str) -> None:
+    """Decide se enfileira add ou remove do marcador 'SemEstoque' no Tiny baseado na transição.
+    - old != 'sem_estoque' E new == 'sem_estoque'  → enqueue_add
+    - old == 'sem_estoque' E new != 'sem_estoque'  → enqueue_remove
+    - Outros casos → no-op
+    Falhas (ex: queue cheia) são logadas mas não propagam — não afetam transição de status."""
+    try:
+        from services import marker_sync
+        if new_status == "sem_estoque" and old_status != "sem_estoque":
+            marker_sync.enqueue_add(sep_id)
+        elif old_status == "sem_estoque" and new_status != "sem_estoque":
+            marker_sync.enqueue_remove(sep_id)
+    except Exception as exc:
+        log.warning(f"[MARKER_SYNC] Falha ao enfileirar transição {old_status}→{new_status} sep_id={sep_id}: {exc}")
+
+
 def _check_and_advance_doc_statuses(list_id: int, db) -> list:
     """Reavalia o status local de cada doc da lista com base nos itens.
 
@@ -1168,6 +1215,7 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
                 record.status = target
                 log.info(f"DOC_STATUS_REVERT sep_id={sep_id} list_id={list_id} {old} → {target}")
                 _schedule_revert(sep_id)
+                _enqueue_marker_for_transition(old, target, sep_id)
                 continue
             if record.status != target:
                 old = record.status
@@ -1175,6 +1223,7 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
                 log.info(f"DOC_STATUS sep_id={sep_id} list_id={list_id} {old} → {target}")
                 if target == "concluida":
                     newly_concluded.append(sep_id)
+                _enqueue_marker_for_transition(old, target, sep_id)
         else:
             db.add(TinySeparationStatus(
                 separation_id=sep_id,
@@ -1184,6 +1233,8 @@ def _check_and_advance_doc_statuses(list_id: int, db) -> list:
             log.warning(f"DOC_STATUS_SEM_REGISTRO sep_id={sep_id} list_id={list_id} → {target}")
             if target == "concluida":
                 newly_concluded.append(sep_id)
+            # Criação com target=sem_estoque também enfileira add marker
+            _enqueue_marker_for_transition(None, target, sep_id)
 
     # ── Cenário B: sep_ids com em_separacao neste list_id mas sem nenhum item em doc_items ──
     # (cache estava vazio quando a lista foi criada — vacuously done)

@@ -381,6 +381,15 @@ def init_db():
         conn.commit()
         print("--- DATABASE MIGRATION: tiny_separation_statuses table verified/created ---")
 
+        # MIGRATION: colunas de sincronização do marcador "SemEstoque" no Tiny
+        status_cols = [c["name"] for c in insp.get_columns("tiny_separation_statuses")]
+        if "marker_status" not in status_cols:
+            conn.execute(text("ALTER TABLE tiny_separation_statuses ADD COLUMN marker_status VARCHAR(20)"))
+            conn.execute(text("ALTER TABLE tiny_separation_statuses ADD COLUMN marker_error TEXT"))
+            conn.execute(text("ALTER TABLE tiny_separation_statuses ADD COLUMN marker_sent_at DATETIME"))
+            conn.commit()
+            print("--- DATABASE MIGRATION: marker_status/error/sent_at added to tiny_separation_statuses ---")
+
         # ── HEADERS DE EXIBIÇÃO DE SEPARAÇÕES (cache para abas em_separacao/separadas) ──
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS tiny_separation_headers (
@@ -400,6 +409,24 @@ def init_db():
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sep_headers_sep_id ON tiny_separation_headers (separation_id)"))
         conn.commit()
         print("--- DATABASE MIGRATION: tiny_separation_headers table verified/created ---")
+
+        # MIGRATION: id_pedido em tiny_separation_headers (idOrigemVinc = TinyOrderSync.id, usado nos marcadores)
+        header_cols = [c["name"] for c in insp.get_columns("tiny_separation_headers")]
+        if "id_pedido" not in header_cols:
+            conn.execute(text("ALTER TABLE tiny_separation_headers ADD COLUMN id_pedido VARCHAR(50)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sep_headers_id_pedido ON tiny_separation_headers (id_pedido)"))
+            # Backfill best-effort: tenta match via numero_pedido ↔ tiny_orders_sync.numero
+            conn.execute(text("""
+                UPDATE tiny_separation_headers
+                SET id_pedido = (
+                    SELECT t.id FROM tiny_orders_sync t
+                    WHERE t.numero = tiny_separation_headers.numero_pedido
+                    LIMIT 1
+                )
+                WHERE id_pedido IS NULL AND numero_pedido IS NOT NULL AND numero_pedido != ''
+            """))
+            conn.commit()
+            print("--- DATABASE MIGRATION: id_pedido added to tiny_separation_headers (backfill via numero) ---")
 
         # ── ERP SEND LOGS ─────────────────────────────────────────────────────────
         conn.execute(text("""

@@ -17,6 +17,7 @@ SYNC_LOCK = asyncio.Lock()
 SCHEDULER_TASK: asyncio.Task | None = None
 ERP_SYNC_TASK: asyncio.Task | None = None
 AUTO_SEP_TASK: asyncio.Task | None = None
+MARKER_SYNC_TASK: asyncio.Task | None = None
 SCHEDULER_STOP = False
 
 
@@ -693,7 +694,7 @@ async def scheduler_loop(token: str) -> None:
 
 
 def start_local_scheduler(token: str) -> asyncio.Task | None:
-    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, MARKER_SYNC_TASK, SCHEDULER_STOP
     if not token:
         log.warning("Scheduler local não iniciado: TINY_API_TOKEN ausente")
         return None
@@ -703,14 +704,19 @@ def start_local_scheduler(token: str) -> asyncio.Task | None:
     SCHEDULER_TASK = asyncio.create_task(scheduler_loop(token))
     ERP_SYNC_TASK = asyncio.create_task(erp_sync_loop(token))
     AUTO_SEP_TASK = asyncio.create_task(auto_separation_loop(token))
-    log.info("Scheduler local de sync + ERP auto-send + auto-separação iniciado")
+    from services.marker_sync import marker_sync_loop
+    MARKER_SYNC_TASK = asyncio.create_task(marker_sync_loop(token))
+    log.info("Scheduler local de sync + ERP auto-send + auto-separação + marker-sync iniciado")
     return SCHEDULER_TASK
 
 
 async def stop_local_scheduler() -> None:
-    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, SCHEDULER_STOP
+    global SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, MARKER_SYNC_TASK, SCHEDULER_STOP
     SCHEDULER_STOP = True
-    for task in (SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK):
+    # Sinaliza marker_sync pra parar também
+    from services.marker_sync import request_stop as _marker_stop
+    _marker_stop()
+    for task in (SCHEDULER_TASK, ERP_SYNC_TASK, AUTO_SEP_TASK, MARKER_SYNC_TASK):
         if task and not task.done():
             task.cancel()
             try:
@@ -720,3 +726,4 @@ async def stop_local_scheduler() -> None:
     SCHEDULER_TASK = None
     ERP_SYNC_TASK = None
     AUTO_SEP_TASK = None
+    MARKER_SYNC_TASK = None

@@ -1,9 +1,12 @@
 import httpx
+import json
 import logging
 import os
 from typing import List, Dict, Any, Optional
 
 log = logging.getLogger(__name__)
+
+MARCADOR_SEM_ESTOQUE = "SemEstoque"
 
 class TinyService:
     BASE_URL = "https://api.tiny.com.br/api2/"
@@ -47,6 +50,30 @@ class TinyService:
             except Exception as e:
                 log.error(f"Erro na chamada Tiny ({endpoint}): {e}")
                 raise
+
+    async def adicionar_marcador(self, id_pedido: str, descricao: str = MARCADOR_SEM_ESTOQUE) -> Dict[str, Any]:
+        """Adiciona marcador a um pedido via pedido.marcadores.incluir.php.
+        Retorna o `retorno` desembalado do Tiny. Raise se erro."""
+        marcadores_json = json.dumps(
+            {"marcadores": [{"marcador": {"id": "", "descricao": descricao}}]},
+            ensure_ascii=False
+        )
+        return await self._post("pedido.marcadores.incluir.php", {
+            "idPedido": str(id_pedido),
+            "marcadores": marcadores_json,
+        })
+
+    async def remover_marcador(self, id_pedido: str, descricao: str = MARCADOR_SEM_ESTOQUE) -> Dict[str, Any]:
+        """Remove marcador de um pedido via pedido.marcadores.remover.php.
+        Tenta primeiro com id vazio (Tiny resolve por descricao). Raise se erro."""
+        marcadores_json = json.dumps(
+            {"marcadores": [{"marcador": {"id": "", "descricao": descricao}}]},
+            ensure_ascii=False
+        )
+        return await self._post("pedido.marcadores.remover.php", {
+            "idPedido": str(id_pedido),
+            "marcadores": marcadores_json,
+        })
 
     async def search_orders(self, pagina: int = 1, status: Optional[str] = None, data_inicial: Optional[str] = None, data_final: Optional[str] = None) -> Dict[str, Any]:
         """Busca pedidos de venda percorrendo as páginas se necessário."""
