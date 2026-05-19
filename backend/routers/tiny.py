@@ -444,6 +444,21 @@ async def get_tracked_separacoes(
             for l in db.query(TinyPickingList).filter(TinyPickingList.id.in_(list_ids)).all()
         }
 
+    # Mapa sep_id → set(skus) via tiny_picking_list_items.source_separation_ids
+    skus_by_sep: dict = {sid: set() for sid in sep_ids}
+    if list_ids:
+        sep_id_set = set(sep_ids)
+        pli_items = db.query(TinyPickingListItem).filter(
+            TinyPickingListItem.list_id.in_(list_ids)
+        ).all()
+        for it in pli_items:
+            if not it.source_separation_ids or not it.sku:
+                continue
+            for sid in it.source_separation_ids.split(","):
+                sid = sid.strip()
+                if sid in sep_id_set:
+                    skus_by_sep[sid].add(it.sku)
+
     # Último log de envio ERP por doc (para badges de sucesso/erro na aba Enviadas ERP)
     erp_log_ids = [
         s.separation_id for s in statuses
@@ -524,6 +539,7 @@ async def get_tracked_separacoes(
                 "error_message": rev_log.error_message,
                 "sent_at": rev_log.sent_at.isoformat(),
             } if rev_log else None,
+            "skus": sorted(skus_by_sep.get(s.separation_id, set())),
         })
 
     return {"separacoes": result, "backfill_triggered": backfill_triggered}
@@ -832,40 +848,131 @@ class RevertStatusRequest(BaseModel):
 @router.post("/separation-statuses/revert")
 async def revert_separation_statuses(req: RevertStatusRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Devolve documentos para 'Aguardando Separação' localmente.
-    - Se tem registro local (criado por nós): apaga o registro (volta a depender do Tiny).
-    - Se não tem registro (Tiny diz situacao=4): cria um override 'aguardando' para sobrescrever o Tiny.
-    - Se o doc estava enviada_erp/erro_envio_erp: também chama Tiny situacao=1 (revert real)."""
-    reverted = 0
-    sep_ids_to_revert_tiny: List[str] = []
+    - em_separacao: apaga o registro (volta a depender do Tiny=situacao=1).
+    - sem_estoque: subtrai a quantidade do doc do relatório de faltas (Shortage)
+      e apaga o registro. A lista de picking original NÃO é tocada (histórico).
+    - enviada_erp/erro_envio_erp: também chama Tiny situacao=1 (revert real).
+    - Sem registro local (Tiny diz situacao=4): cria override 'aguardando'."""
+    from models import Shortage as ShortageModel
+
+    # 1. Identifica docs em sem_estoque e busca cache (refresca da Olist se faltar)
+    sem_estoque_meta: List[tuple] = []  # [(sep_id, list_id), ...]
     for sep_id in req.separation_ids:
         existing = db.query(TinySeparationStatus).filter(
             TinySeparationStatus.separation_id == str(sep_id)
         ).first()
+        if existing and existing.status == "sem_estoque" and existing.list_id:
+            sem_estoque_meta.append((str(sep_id), existing.list_id))
+
+    sep_qty_map: dict = {}  # {sep_id: {sku: qty}}
+    if sem_estoque_meta:
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(hours=CACHE_TTL_HOURS)
+        sem_sep_ids = [sid for sid, _ in sem_estoque_meta]
+
+        cached = db.query(TinySeparationItemCache).filter(
+            TinySeparationItemCache.separation_id.in_(sem_sep_ids),
+            TinySeparationItemCache.cached_at >= cutoff
+        ).all()
+        have_cache = {c.separation_id for c in cached}
+        missing = [sid for sid in sem_sep_ids if sid not in have_cache]
+
+        if missing:
+            try:
+                service = get_service(None)
+                await _fetch_and_cache(missing, service, db)
+                cached = db.query(TinySeparationItemCache).filter(
+                    TinySeparationItemCache.separation_id.in_(sem_sep_ids)
+                ).all()
+            except Exception as e:
+                log.error(f"REVERT_STATUS: falha buscar cache na Olist: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Não foi possível buscar dados das separações na Olist. Tente novamente."
+                )
+
+        for c in cached:
+            sep_qty_map.setdefault(c.separation_id, {})[c.sku] = float(c.quantity or 0)
+
+        still_missing = [sid for sid in sem_sep_ids if sid not in sep_qty_map]
+        if still_missing:
+            log.error(f"REVERT_STATUS: sem dados pra seps={still_missing}")
+            raise HTTPException(
+                status_code=503,
+                detail="Algumas separações não retornaram dados da Olist. Tente novamente."
+            )
+
+    # 2. Processa cada sep
+    reverted = 0
+    sep_ids_to_revert_tiny: List[str] = []
+    shortages_updated = 0
+    shortages_deleted = 0
+
+    sem_estoque_by_id = dict(sem_estoque_meta)
+
+    for sep_id in req.separation_ids:
+        sep_id_str = str(sep_id)
+        existing = db.query(TinySeparationStatus).filter(
+            TinySeparationStatus.separation_id == sep_id_str
+        ).first()
+
         if existing:
             if existing.status in ("enviada_erp", "erro_envio_erp"):
-                sep_ids_to_revert_tiny.append(str(sep_id))
-            if existing.status == "em_separacao":
-                # Criado por nós — apaga para cair no fallback do Tiny (situacao=1)
+                sep_ids_to_revert_tiny.append(sep_id_str)
+
+            if existing.status == "sem_estoque" and sep_id_str in sem_estoque_by_id:
+                list_id = sem_estoque_by_id[sep_id_str]
+                qty_by_sku = sep_qty_map.get(sep_id_str, {})
+
+                # Subtrai a quantidade deste doc do relatório de faltas (Shortage)
+                # A lista de picking original NÃO é tocada — fica como histórico
+                for sku, sep_qty in qty_by_sku.items():
+                    if sep_qty <= 0:
+                        continue
+                    shortage_rows = db.query(ShortageModel).filter(
+                        ShortageModel.sku == sku,
+                        ShortageModel.list_id == str(list_id)
+                    ).all()
+                    for sh in shortage_rows:
+                        new_sh_qty = (sh.quantity or 0.0) - sep_qty
+                        if new_sh_qty <= 0.0001:
+                            db.delete(sh)
+                            shortages_deleted += 1
+                        else:
+                            sh.quantity = new_sh_qty
+                            shortages_updated += 1
+
+                # Apaga registro do sep — vai pra aguardando, livre, sem lista
+                db.delete(existing)
+            elif existing.status == "em_separacao":
                 db.delete(existing)
             else:
                 existing.status = "aguardando"
         else:
-            # Tiny diz situacao=4 mas não temos controle — override local
             db.add(TinySeparationStatus(
-                separation_id=str(sep_id),
+                separation_id=sep_id_str,
                 status="aguardando",
                 list_id=None,
                 created_at=datetime.utcnow()
             ))
         reverted += 1
+
     db.commit()
 
-    # Revert manual no Tiny — sem debounce (ação explícita do operador)
     for sep_id in sep_ids_to_revert_tiny:
         background_tasks.add_task(_revert_separation_status_to_olist, sep_id)
 
-    log.info(f"REVERT_STATUS {reverted} docs devolvidos para aguardando: {req.separation_ids} (tiny_revert={len(sep_ids_to_revert_tiny)})")
-    return {"status": "success", "reverted": reverted, "tiny_revert_scheduled": len(sep_ids_to_revert_tiny)}
+    log.info(
+        f"REVERT_STATUS {reverted} docs: tiny_revert={len(sep_ids_to_revert_tiny)} "
+        f"sem_estoque={len(sem_estoque_meta)} "
+        f"shortages_upd={shortages_updated} shortages_del={shortages_deleted}"
+    )
+    return {
+        "status": "success",
+        "reverted": reverted,
+        "tiny_revert_scheduled": len(sep_ids_to_revert_tiny),
+        "sem_estoque_cleaned": len(sem_estoque_meta),
+    }
 
 
 class DeleteStatusRequest(BaseModel):

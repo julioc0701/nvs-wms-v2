@@ -17,6 +17,7 @@ export default function SeparacaoOlist() {
   const [loading, setLoading] = useState(false)
   const [separacoes, setSeparacoes] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [skuFilter, setSkuFilter] = useState('')
   const [activeTab, setActiveTab] = useState('aguardando') // Default tab
   
   // Calcula os últimos 7 dias (Hoje + 6 anteriores)
@@ -48,7 +49,9 @@ export default function SeparacaoOlist() {
   const [selectedEmSepIds, setSelectedEmSepIds] = useState([])    // em_separacao tab
   const [selectedSeparadasIds, setSelectedSeparadasIds] = useState([]) // separadas tab
   const [selectedEnviadasIds, setSelectedEnviadasIds] = useState([])   // enviada_erp tab
+  const [selectedSemEstoqueIds, setSelectedSemEstoqueIds] = useState([])  // sem_estoque tab
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmRevertSemEstoque, setConfirmRevertSemEstoque] = useState(false)
   const [detailSep, setDetailSep] = useState(null)   // objeto completo da separação
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailImages, setDetailImages] = useState({}) // sku → url
@@ -136,6 +139,22 @@ export default function SeparacaoOlist() {
       await Promise.all([fetchLocalStatuses(), fetchTrackedSeparacoes()])
     } catch (err) {
       notify('Erro ao reverter status.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRevertSemEstoque = async () => {
+    if (!selectedSemEstoqueIds.length) return
+    setLoading(true)
+    setConfirmRevertSemEstoque(false)
+    try {
+      await api.revertSeparationStatuses(selectedSemEstoqueIds.map(String))
+      notify(`${selectedSemEstoqueIds.length} documento(s) movido(s) para Aguardando Separação. Quantidades subtraídas do relatório de faltas.`, 'success')
+      setSelectedSemEstoqueIds([])
+      await Promise.all([fetchLocalStatuses(), fetchTrackedSeparacoes()])
+    } catch (err) {
+      notify(err.message || 'Erro ao reverter docs de sem estoque.', 'error')
     } finally {
       setLoading(false)
     }
@@ -361,11 +380,16 @@ export default function SeparacaoOlist() {
         : activeTab === 'separadas' ? ['concluida']
         : activeTab === 'sem_estoque' ? ['sem_estoque']
         : ['enviada_erp', 'erro_envio_erp']
-      return trackedSeparacoes.filter(s =>
-        targetStatuses.includes(s.local_status) &&
-        matchSearch(s, q) &&
-        matchMarketplace(s, marketplaceFilter)
-      )
+      const skuQ = skuFilter.trim().toUpperCase()
+      return trackedSeparacoes.filter(s => {
+        if (!targetStatuses.includes(s.local_status)) return false
+        if (!matchSearch(s, q)) return false
+        if (!matchMarketplace(s, marketplaceFilter)) return false
+        if (activeTab === 'sem_estoque' && skuQ) {
+          if (!(s.skus || []).some(sk => (sk || '').toUpperCase() === skuQ)) return false
+        }
+        return true
+      })
     }
 
     // aguardando e embaladas: da API do Tiny (com filtro de data)
@@ -377,7 +401,7 @@ export default function SeparacaoOlist() {
       else if (activeTab === 'embaladas') matchTab = sit === '3'
       return matchSearch(s, q) && matchTab && matchMarketplace(s, marketplaceFilter)
     })
-  }, [separacoes, trackedSeparacoes, searchQuery, activeTab, marketplaceFilter, localStatuses])
+  }, [separacoes, trackedSeparacoes, searchQuery, activeTab, marketplaceFilter, localStatuses, skuFilter])
 
   const stats = useMemo(() => {
     const counts = { aguardando: 0, em_separacao: 0, separadas: 0, sem_estoque: 0, embaladas: 0, enviada_erp: 0 }
@@ -726,6 +750,29 @@ export default function SeparacaoOlist() {
         </button>
       </div>
 
+      {/* SKU FILTER — somente aba "sem estoque" */}
+      {activeTab === 'sem_estoque' && (
+        <div className="px-6 py-3 bg-white border-b border-slate-100 flex items-center gap-3">
+          <div className="relative w-full sm:w-80">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+            <input
+              type="text"
+              placeholder="Pesquisar por SKU"
+              className="w-full h-10 pl-9 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:border-red-400 focus:bg-white transition-all"
+              value={skuFilter}
+              onChange={e => setSkuFilter(e.target.value)}
+            />
+            {skuFilter && (
+              <button
+                onClick={() => setSkuFilter('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 text-xs px-1"
+                title="Limpar"
+              >×</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* THE DATA TABLE (The big work) */}
       <div className="flex-1 bg-white overflow-hidden flex flex-col mt-0">
         <div className="overflow-x-auto">
@@ -760,6 +807,14 @@ export default function SeparacaoOlist() {
                        checked={filteredItems.length > 0 && selectedEnviadasIds.length === filteredItems.length}
                        onChange={() => setSelectedEnviadasIds(
                          selectedEnviadasIds.length === filteredItems.length ? [] : filteredItems.map(s => s.id)
+                       )}
+                     />
+                   )}
+                   {activeTab === 'sem_estoque' && (
+                     <input type="checkbox" className="rounded w-4 h-4 text-red-600 focus:ring-red-500 cursor-pointer"
+                       checked={filteredItems.length > 0 && selectedSemEstoqueIds.length === filteredItems.length}
+                       onChange={() => setSelectedSemEstoqueIds(
+                         selectedSemEstoqueIds.length === filteredItems.length ? [] : filteredItems.map(s => s.id)
                        )}
                      />
                    )}
@@ -807,7 +862,8 @@ export default function SeparacaoOlist() {
                       activeTab === 'aguardando' && selectedIds.includes(item.id) && "bg-blue-50/50",
                       activeTab === 'em_separacao' && selectedEmSepIds.includes(item.id) && "bg-orange-50/50",
                       activeTab === 'separadas' && selectedSeparadasIds.includes(item.id) && "bg-emerald-50/50",
-                      activeTab === 'enviada_erp' && selectedEnviadasIds.includes(item.id) && "bg-violet-50/50"
+                      activeTab === 'enviada_erp' && selectedEnviadasIds.includes(item.id) && "bg-violet-50/50",
+                      activeTab === 'sem_estoque' && selectedSemEstoqueIds.includes(item.id) && "bg-red-50/50"
                     )}
                   >
                     <td className="p-4">
@@ -840,6 +896,15 @@ export default function SeparacaoOlist() {
                         <input type="checkbox" className="rounded w-4 h-4 text-violet-600 focus:ring-violet-400 cursor-pointer"
                           checked={selectedEnviadasIds.includes(item.id)}
                           onChange={() => setSelectedEnviadasIds(prev =>
+                            prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id]
+                          )}
+                          onClick={e => e.stopPropagation()}
+                        />
+                      )}
+                      {activeTab === 'sem_estoque' && (
+                        <input type="checkbox" className="rounded w-4 h-4 text-red-600 focus:ring-red-500 cursor-pointer"
+                          checked={selectedSemEstoqueIds.includes(item.id)}
+                          onChange={() => setSelectedSemEstoqueIds(prev =>
                             prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id]
                           )}
                           onClick={e => e.stopPropagation()}
@@ -1057,6 +1122,58 @@ export default function SeparacaoOlist() {
           >
             cancelar
           </button>
+        </div>
+      )}
+
+      {/* FLOATING ACTION BAR — SEM ESTOQUE: voltar para aguardando */}
+      {selectedSemEstoqueIds.length > 0 && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-white/10 text-white px-8 py-4 rounded-full shadow-2xl flex items-center gap-10 animate-in slide-in-from-bottom-10 duration-500 z-[1000]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center font-black text-sm shadow-lg shadow-red-500/20">
+              {selectedSemEstoqueIds.length}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xs font-black uppercase tracking-widest text-red-400 leading-none">sem estoque</span>
+              <span className="text-[9px] text-white/40 font-bold uppercase tracking-widest mt-1">selecionados para corrigir</span>
+            </div>
+          </div>
+
+          <div className="h-8 w-[1px] bg-white/10" />
+
+          <button
+            onClick={() => setConfirmRevertSemEstoque(true)}
+            disabled={loading}
+            className="bg-red-600 hover:bg-red-500 disabled:opacity-50 active:scale-95 text-white h-12 px-8 rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-3 transition-all shadow-xl shadow-red-600/30"
+          >
+            {loading ? <RefreshCcw size={18} className="animate-spin" /> : <Undo2 size={18} />}
+            mover para aguardando
+          </button>
+
+          <button
+            onClick={() => setSelectedSemEstoqueIds([])}
+            className="text-white/40 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors"
+          >
+            cancelar
+          </button>
+        </div>
+      )}
+
+      {/* CONFIRMAÇÃO — REVERTER SEM ESTOQUE */}
+      {confirmRevertSemEstoque && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <Undo2 size={32} />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">Mover para aguardando?</h3>
+            <p className="text-slate-400 text-xs font-semibold mb-8 px-2">
+              {selectedSemEstoqueIds.length} documento(s) voltarão para <strong>aguardando separação</strong>, soltos (sem vínculo com lista). A quantidade de cada um será subtraída do relatório de faltas do orgânico.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmRevertSemEstoque(false)} className="flex-1 h-14 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancelar</button>
+              <button onClick={handleRevertSemEstoque} className="flex-1 h-14 rounded-2xl font-black text-[10px] uppercase tracking-widest bg-red-600 text-white shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all">Sim, mover</button>
+            </div>
+          </div>
         </div>
       )}
 
