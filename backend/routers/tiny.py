@@ -936,6 +936,7 @@ async def revert_separation_statuses(req: RevertStatusRequest, background_tasks:
     # 2. Processa cada sep
     reverted = 0
     sep_ids_to_revert_tiny: List[str] = []
+    sep_ids_to_remove_marker: List[str] = []  # docs que saíram de sem_estoque
     shortages_updated = 0
     shortages_deleted = 0
 
@@ -950,6 +951,10 @@ async def revert_separation_statuses(req: RevertStatusRequest, background_tasks:
         if existing:
             if existing.status in ("enviada_erp", "erro_envio_erp"):
                 sep_ids_to_revert_tiny.append(sep_id_str)
+
+            # Se estava em sem_estoque (com ou sem list_id), precisa remover marcador do Tiny
+            if existing.status == "sem_estoque":
+                sep_ids_to_remove_marker.append(sep_id_str)
 
             if existing.status == "sem_estoque" and sep_id_str in sem_estoque_by_id:
                 list_id = sem_estoque_by_id[sep_id_str]
@@ -993,9 +998,20 @@ async def revert_separation_statuses(req: RevertStatusRequest, background_tasks:
     for sep_id in sep_ids_to_revert_tiny:
         background_tasks.add_task(_revert_separation_status_to_olist, sep_id)
 
+    # Enfileira remoção do marcador SemEstoque pros docs que saíram de sem_estoque.
+    # Mesmo após delete do TinySeparationStatus, marker_sync funciona porque resolve
+    # id_pedido via TinySeparationHeader (que permanece).
+    if sep_ids_to_remove_marker:
+        try:
+            from services import marker_sync
+            for sid in sep_ids_to_remove_marker:
+                marker_sync.enqueue_remove(sid)
+        except Exception as exc:
+            log.warning(f"REVERT_STATUS: falha enfileirar remove marker: {exc}")
+
     log.info(
         f"REVERT_STATUS {reverted} docs: tiny_revert={len(sep_ids_to_revert_tiny)} "
-        f"sem_estoque={len(sem_estoque_meta)} "
+        f"sem_estoque={len(sem_estoque_meta)} marker_remove={len(sep_ids_to_remove_marker)} "
         f"shortages_upd={shortages_updated} shortages_del={shortages_deleted}"
     )
     return {
@@ -1003,6 +1019,7 @@ async def revert_separation_statuses(req: RevertStatusRequest, background_tasks:
         "reverted": reverted,
         "tiny_revert_scheduled": len(sep_ids_to_revert_tiny),
         "sem_estoque_cleaned": len(sem_estoque_meta),
+        "marker_remove_scheduled": len(sep_ids_to_remove_marker),
     }
 
 

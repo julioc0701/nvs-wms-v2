@@ -101,23 +101,29 @@ def _resolve_id_pedido(separation_id: str, db: DBSession) -> Optional[str]:
 
 
 async def _process_one(op: str, separation_id: str, token: str) -> None:
-    """Processa uma operação. Atualiza TinySeparationStatus.marker_* com o resultado."""
+    """Processa uma operação. Atualiza TinySeparationStatus.marker_* com o resultado.
+
+    Para OP_REMOVE: tolera ausência de TinySeparationStatus (doc pode ter sido
+    revertido pra 'aguardando', deletando o registro). Resolve id_pedido via header
+    e chama Tiny mesmo sem record — o ponto é remover o marcador no Tiny."""
     db = SessionLocal()
     try:
         record = db.query(TinySeparationStatus).filter(
             TinySeparationStatus.separation_id == separation_id
         ).first()
-        if not record:
-            log.warning(f"[MARKER_SYNC] sep_id={separation_id} não encontrado em TinySeparationStatus")
+
+        if not record and op == OP_ADD:
+            log.warning(f"[MARKER_SYNC] ADD sep_id={separation_id} sem TinySeparationStatus — skip")
             return
 
         id_pedido = _resolve_id_pedido(separation_id, db)
         if not id_pedido:
             msg = "id_pedido não resolvido (header sem idOrigemVinc)"
             log.warning(f"[MARKER_SYNC] {op} sep_id={separation_id}: {msg}")
-            record.marker_status = "erro"
-            record.marker_error = msg
-            db.commit()
+            if record:
+                record.marker_status = "erro"
+                record.marker_error = msg
+                db.commit()
             return
 
         service = TinyService(token=token)
@@ -129,16 +135,18 @@ async def _process_one(op: str, separation_id: str, token: str) -> None:
             else:
                 raise ValueError(f"Operação desconhecida: {op}")
 
-            record.marker_status = "ok"
-            record.marker_error = None
-            record.marker_sent_at = datetime.utcnow()
-            db.commit()
+            if record:
+                record.marker_status = "ok"
+                record.marker_error = None
+                record.marker_sent_at = datetime.utcnow()
+                db.commit()
             log.info(f"[MARKER_SYNC] OK {op} sep_id={separation_id} id_pedido={id_pedido}")
         except Exception as call_exc:
             err = str(call_exc)[:500]
-            record.marker_status = "erro"
-            record.marker_error = err
-            db.commit()
+            if record:
+                record.marker_status = "erro"
+                record.marker_error = err
+                db.commit()
             log.warning(f"[MARKER_SYNC] ERRO {op} sep_id={separation_id} id_pedido={id_pedido}: {err}")
 
     except Exception as outer:
