@@ -564,13 +564,17 @@ def find_by_barcode(
         if not matches:
              return {"action": "not_found", "barcode": barcode}
 
-        # Deduplicate by SKU: keep the first occurrence (preferred by ordering above)
-        seen_skus = set()
+        # Deduplicate por (sku, ml_code, session_id) — mantém itens distintos
+        # mesmo quando têm o mesmo SKU em sessões/ml_codes diferentes.
+        seen_keys = set()
         unique_matches = []
         for m in matches:
             sku_key = (m[0].sku or "").upper()
-            if sku_key not in seen_skus:
-                seen_skus.add(sku_key)
+            ml_key = (m[0].ml_code or "").upper()
+            sess_key = m[1].id
+            key = (sku_key, ml_key, sess_key)
+            if key not in seen_keys:
+                seen_keys.add(key)
                 unique_matches.append(m)
         matches = unique_matches
 
@@ -584,6 +588,7 @@ def find_by_barcode(
                     {
                         "item_id": m[0].id,
                         "sku": m[0].sku,
+                        "ml_code": m[0].ml_code,
                         "description": m[0].description,
                         "session_id": m[1].id,
                         "session_code": m[1].session_code,
@@ -612,9 +617,10 @@ def find_by_barcode(
         .all()
     )
 
-    # Se >1 SKU vinculado ao mesmo barcode tem item em listas abertas → mostra todos pra escolher
-    distinct_skus_in_rows = {(r[0].sku or "").upper() for r in rows}
-    if len(distinct_skus_in_rows) > 1:
+    # Mostra escolha quando há múltiplos itens em listas abertas — pode ser
+    # SKUs diferentes vinculados ao mesmo EAN, OU mesmo SKU em sessões/ml_codes
+    # diferentes (ex: PDF ML com mesmo SKU em anúncios distintos).
+    if len(rows) > 1:
         return {
             "action": "multiple_matches",
             "barcode": barcode,
@@ -622,6 +628,7 @@ def find_by_barcode(
                 {
                     "item_id": r[0].id,
                     "sku": r[0].sku,
+                    "ml_code": r[0].ml_code,
                     "description": r[0].description,
                     "session_id": r[1].id,
                     "session_code": r[1].session_code,

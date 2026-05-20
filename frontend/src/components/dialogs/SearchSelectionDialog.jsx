@@ -22,7 +22,7 @@ export default function SearchSelectionDialog({ candidates, onSelect, onCancel }
           <div className="space-y-3">
             {candidates.map((item) => (
               <button
-                key={`${item.session_id}-${item.sku}`}
+                key={`${item.session_id}-${item.sku}-${item.ml_code || ''}`}
                 onClick={() => onSelect(item)}
                 className="w-full bg-white border-2 border-gray-100 rounded-2xl p-4 text-left hover:border-blue-500 hover:bg-blue-50 transition-all group flex items-start gap-4"
               >
@@ -49,6 +49,14 @@ export default function SearchSelectionDialog({ candidates, onSelect, onCancel }
                         {item.session_code}
                       </code>
                     </div>
+                    {item.ml_code && (
+                      <div className="flex items-center gap-1.5 text-gray-500">
+                        <span className="font-bold text-gray-400">CÓDIGO ML:</span>
+                        <code className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-mono font-bold border border-blue-100">
+                          {item.ml_code}
+                        </code>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-gray-500">
                       <span className="font-bold text-gray-400">OPERADOR:</span>
                       <span className="font-bold text-gray-700 uppercase">{item.operator_name}</span>
