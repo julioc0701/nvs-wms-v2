@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../api/client'
 import { useFeedback } from '../components/ui/FeedbackProvider'
-import { ClipboardList, Calendar, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2, Filter } from 'lucide-react'
+import { ClipboardList, Calendar, ChevronDown, ChevronRight, Package, Clock, Search, List as ListIcon, Trash2, Filter } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { cn } from '../lib/utils'
 import MarketplaceLogo from '../components/MarketplaceLogo'
@@ -15,6 +15,11 @@ export default function PickingListsHistory() {
   const [marketplaceFilter, setMarketplaceFilter] = useState('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null) // list object
+  // Filtro por data — created_at da lista. 'all' (default) | '30d' | '7d' | 'day' | 'month' | 'custom'
+  const [datePeriod, setDatePeriod] = useState('all')
+  const [pendingDatePeriod, setPendingDatePeriod] = useState('all')  // staging antes de aplicar
+  const [customRange, setCustomRange] = useState({ from: '', to: '' })
+  const [showDateMenu, setShowDateMenu] = useState(false)
 
   async function handleDelete(list) {
     setLoading(true)
@@ -52,12 +57,52 @@ export default function PickingListsHistory() {
     return list.marketplace === marketplaceFilter
   }
 
+  // Filtro por data — usa list.created_at vs período selecionado
+  const matchDate = (list) => {
+    if (datePeriod === 'all') return true
+    if (!list.created_at) return false
+    const created = new Date(list.created_at)
+    const now = new Date()
+    if (datePeriod === 'day') {
+      // Mesma data calendário (local)
+      return created.toDateString() === now.toDateString()
+    }
+    if (datePeriod === '7d') {
+      const limit = new Date(now); limit.setDate(now.getDate() - 7)
+      return created >= limit
+    }
+    if (datePeriod === '30d') {
+      const limit = new Date(now); limit.setDate(now.getDate() - 30)
+      return created >= limit
+    }
+    if (datePeriod === 'month') {
+      return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear()
+    }
+    if (datePeriod === 'custom') {
+      if (!customRange.from && !customRange.to) return true
+      if (customRange.from && created < new Date(customRange.from + 'T00:00:00')) return false
+      if (customRange.to && created > new Date(customRange.to + 'T23:59:59')) return false
+      return true
+    }
+    return true
+  }
+
+  const datePeriodLabel = {
+    all: 'sem filtro',
+    '30d': 'últimos 30 dias',
+    '7d': 'últimos 7 dias',
+    day: 'do dia',
+    month: 'do mês',
+    custom: 'do intervalo',
+  }[datePeriod] || 'sem filtro'
+
   // Ordena por # (id) desc — lista mais nova primeiro
   const filtered = lists
     .filter(l =>
       (l.name.toLowerCase().includes(search.toLowerCase()) ||
        l.id.toString().includes(search)) &&
-      matchMarketplace(l)
+      matchMarketplace(l) &&
+      matchDate(l)
     )
     .slice()
     .sort((a, b) => b.id - a.id)
@@ -76,7 +121,7 @@ export default function PickingListsHistory() {
           <p className="text-xs text-slate-400 font-medium mt-1 uppercase tracking-widest">Histórico de picking consolidado</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
            <div className="relative">
               <input
                 type="text"
@@ -86,6 +131,91 @@ export default function PickingListsHistory() {
                 onChange={e => setSearch(e.target.value)}
               />
               <Search className="absolute right-3 top-2.5 text-slate-500" size={14} />
+           </div>
+
+           {/* Botão de data — filtra por created_at da lista */}
+           <div className="relative">
+             <button
+               onClick={() => { setPendingDatePeriod(datePeriod); setShowDateMenu(!showDateMenu) }}
+               className={cn(
+                 "h-10 px-4 border text-xs font-bold flex items-center gap-2 rounded-xl transition-all",
+                 showDateMenu
+                   ? "bg-blue-600 border-blue-600 text-white shadow-lg"
+                   : datePeriod !== 'all'
+                     ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                     : "bg-white border-slate-400 text-slate-700 hover:bg-slate-50"
+               )}
+             >
+               <Calendar size={14} /> data do pedido: {datePeriodLabel}
+               <ChevronDown size={12} className={cn("transition-transform", showDateMenu && "rotate-180")} />
+             </button>
+
+             {showDateMenu && (
+               <div className="absolute top-12 right-0 w-[min(95vw,420px)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] p-6 animate-in fade-in zoom-in duration-200">
+                 <div className="border-b border-slate-100 mb-6 pb-2">
+                   <span className="text-xs font-bold text-slate-800 border-b-2 border-slate-800 pb-2">data do pedido</span>
+                 </div>
+
+                 <div className="mb-6">
+                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3">Período</p>
+                   <div className="flex flex-wrap gap-2">
+                     {[
+                       { id: 'all', label: 'sem filtro' },
+                       { id: '30d', label: 'últimos 30 dias' },
+                       { id: '7d', label: 'últimos 7 dias' },
+                       { id: 'day', label: 'do dia' },
+                       { id: 'month', label: 'do mês' },
+                       { id: 'custom', label: 'do intervalo' },
+                     ].map(p => (
+                       <button
+                         key={p.id}
+                         onClick={() => setPendingDatePeriod(p.id)}
+                         className={cn(
+                           "px-4 py-2 rounded-full text-xs font-medium border transition-all",
+                           pendingDatePeriod === p.id
+                             ? "bg-blue-100 border-blue-200 text-blue-700"
+                             : "bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100"
+                         )}
+                       >
+                         {p.label}
+                       </button>
+                     ))}
+                   </div>
+                 </div>
+
+                 {pendingDatePeriod === 'custom' && (
+                   <div className="mb-6 grid grid-cols-2 gap-3">
+                     <div>
+                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">De</p>
+                       <input type="date" value={customRange.from}
+                         onChange={e => setCustomRange(r => ({ ...r, from: e.target.value }))}
+                         className="w-full h-9 px-3 border border-slate-200 rounded-lg text-xs"/>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Até</p>
+                       <input type="date" value={customRange.to}
+                         onChange={e => setCustomRange(r => ({ ...r, to: e.target.value }))}
+                         className="w-full h-9 px-3 border border-slate-200 rounded-lg text-xs"/>
+                     </div>
+                   </div>
+                 )}
+
+                 <div className="flex items-center gap-4">
+                   <button
+                     onClick={() => { setDatePeriod(pendingDatePeriod); setShowDateMenu(false) }}
+                     className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-full font-bold text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all"
+                   >
+                     aplicar
+                   </button>
+                   <button
+                     onClick={() => setShowDateMenu(false)}
+                     className="text-slate-500 hover:text-slate-800 text-sm font-medium"
+                   >
+                     cancelar
+                   </button>
+                 </div>
+               </div>
+             )}
            </div>
 
            <div className="relative">
