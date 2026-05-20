@@ -421,11 +421,11 @@ export default function BatchDetail() {
 // ── Extra List Modal ──────────────────────────────────────────────────────────
 function ExtraListModal({ batch, onClose, onCreated }) {
   const { notify } = useFeedback()
-  const [items, setItems] = useState([{ sku: '', qty_required: '', description: '', resolved: null, checking: false }])
+  const [items, setItems] = useState([{ sku: '', ml_code: '', qty_required: '', description: '', resolved: null, checking: false }])
   const [submitting, setSubmitting] = useState(false)
   const [skuModalOpen, setSkuModalOpen] = useState(null)
 
-  const addRow = () => setItems(prev => [...prev, { sku: '', qty_required: '', description: '', resolved: null, checking: false }])
+  const addRow = () => setItems(prev => [...prev, { sku: '', ml_code: '', qty_required: '', description: '', resolved: null, checking: false }])
   const removeRow = (idx) => setItems(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== idx))
   const updateRow = (idx, patch) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
 
@@ -469,16 +469,22 @@ function ExtraListModal({ batch, onClose, onCreated }) {
 
   async function submit() {
     const cleaned = items
-      .map(it => ({ sku: it.sku.trim(), qty_required: Number(it.qty_required), description: it.description?.trim() || '' }))
+      .map(it => ({
+        sku: it.sku.trim(),
+        ml_code: (it.ml_code || '').trim().toUpperCase() || null,
+        qty_required: Number(it.qty_required),
+        description: it.description?.trim() || '',
+      }))
       .filter(it => it.sku && it.qty_required > 0)
 
     if (cleaned.length === 0) {
       notify('Adicione ao menos um item válido', 'error')
       return
     }
-    const skus = cleaned.map(i => i.sku)
-    if (new Set(skus).size !== skus.length) {
-      notify('SKU duplicado na lista', 'error')
+    // Duplicação considera (sku, ml_code) — mesmo SKU com ml_codes diferentes é OK
+    const keys = cleaned.map(i => `${i.sku}::${i.ml_code || ''}`)
+    if (new Set(keys).size !== keys.length) {
+      notify('Item duplicado (mesmo SKU + Código ML) na lista', 'error')
       return
     }
     const allResolved = items.every(it => !it.sku.trim() || it.resolved === true)
@@ -513,15 +519,16 @@ function ExtraListModal({ batch, onClose, onCreated }) {
 
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="grid grid-cols-12 gap-2 px-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            <div className="col-span-4">SKU</div>
-            <div className="col-span-5">Descrição</div>
+            <div className="col-span-3">SKU</div>
+            <div className="col-span-3">Código ML <span className="text-slate-300 normal-case font-medium">(opcional)</span></div>
+            <div className="col-span-3">Descrição</div>
             <div className="col-span-2">Qtd</div>
             <div className="col-span-1"></div>
           </div>
 
           {items.map((it, idx) => (
             <div key={idx} className="grid grid-cols-12 gap-2 mb-2 items-center">
-              <div className="col-span-4 relative">
+              <div className="col-span-3 relative">
                 <input
                   type="text"
                   value={it.sku}
@@ -537,7 +544,16 @@ function ExtraListModal({ batch, onClose, onCreated }) {
                 />
                 {it.checking && <Search size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 animate-pulse" />}
               </div>
-              <div className="col-span-5">
+              <div className="col-span-3">
+                <input
+                  type="text"
+                  value={it.ml_code}
+                  onChange={e => updateRow(idx, { ml_code: e.target.value.toUpperCase() })}
+                  placeholder="Ex: LLAP88233"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono"
+                />
+              </div>
+              <div className="col-span-3">
                 <input
                   type="text"
                   value={it.description}

@@ -23,9 +23,13 @@ def _extract_ml_table(pdf) -> list[dict]:
     Handles the ML Inbound PDF table format:
       Column 0 (PRODUTO):  'Código ML: X Código universal: Y SKU:\\nSKU_VALUE\\nDescription'
       Column 1 (UNIDADES): '100' or '1,000'
+
+    Dedupe key: (sku, ml_code). Mesmo SKU com Códigos ML diferentes são
+    anúncios distintos (cada um tem sua etiqueta) — NÃO somar.
+    Só soma quando (sku, ml_code) idênticos aparecem em múltiplas páginas.
     """
     items = []
-    seen_skus: set[str] = set()
+    seen: set[tuple[str, str]] = set()  # (sku, ml_code)
 
     for page in pdf.pages:
         for table in page.extract_tables() or []:
@@ -51,15 +55,15 @@ def _extract_ml_table(pdf) -> list[dict]:
                 ml_code = _extract_ml_code(produto)
                 description = _extract_description(produto, sku)
 
-                # Deduplicate: same SKU can appear on multiple pages
-                if sku in seen_skus:
-                    # Sum quantities for duplicate SKUs
+                key = (sku, ml_code or "")
+                if key in seen:
+                    # Mesmo (sku, ml_code) aparecendo em múltiplas páginas → soma
                     for item in items:
-                        if item["sku"] == sku:
+                        if item["sku"] == sku and (item.get("ml_code") or "") == (ml_code or ""):
                             item["qty_required"] += qty
                             break
                 else:
-                    seen_skus.add(sku)
+                    seen.add(key)
                     items.append({
                         "sku": sku,
                         "ml_code": ml_code,

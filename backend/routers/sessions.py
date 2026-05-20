@@ -369,6 +369,7 @@ class ManualItemBody(BaseModel):
     sku: str
     qty_required: int
     description: str | None = None
+    ml_code: str | None = None  # opcional — relevante quando mesmo SKU tem múltiplos anúncios
 
 
 class ManualSessionBody(BaseModel):
@@ -441,9 +442,11 @@ def create_manual_session(body: ManualSessionBody, db: DBSession = Depends(get_d
 
     for it in body.items:
         sku = it.sku.strip().upper()
+        ml_code_norm = (it.ml_code or "").strip().upper() or None
         pi = PickingItem(
             session_id=sess.id,
             sku=sku,
+            ml_code=ml_code_norm,
             description=descriptions.get(sku) or it.description or "",
             qty_required=it.qty_required,
         )
