@@ -209,6 +209,11 @@ export const api = {
   deleteShortage: (id) => req('DELETE', `/tiny/shortages/${id}`),
   deleteShortageLegacy: (itemId) => req('DELETE', `/tiny/shortages/legacy/${itemId}`),
   deleteAllShortages: () => req('DELETE', '/tiny/shortages'),
+
+  // Mercado Livre Full Planning
+  getMlFullPlans: () => req('GET', '/ml-full-plans'),
+  createMlFullPlan: (data) => req('POST', '/ml-full-plans', data),
+  deleteMlFullPlan: (id) => req('DELETE', `/ml-full-plans/${id}`),
   
   // App Health & Gemma AI Control Panel
   getHealth: () => req('GET', '/health'),

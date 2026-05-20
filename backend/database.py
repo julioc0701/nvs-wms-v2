@@ -139,7 +139,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -463,6 +463,29 @@ def init_db():
         """))
         conn.commit()
         print("--- DATABASE MIGRATION: auto_separation_state table + initial row verified ---")
+
+        # ── ML FULL PLANNING LOG ─────────────────────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ml_full_plans (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ml_plan_id        VARCHAR(100),
+                title             VARCHAR(200) NOT NULL,
+                status            VARCHAR(30) NOT NULL DEFAULT 'created',
+                execution_mode    VARCHAR(30) NOT NULL DEFAULT 'manual',
+                filter_label      VARCHAR(100),
+                products_count    INTEGER NOT NULL DEFAULT 0,
+                total_units       INTEGER NOT NULL DEFAULT 0,
+                created_by        VARCHAR(100),
+                notes             TEXT,
+                raw_payload_json  TEXT,
+                created_at        DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_plans_created_at ON ml_full_plans (created_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_plans_status ON ml_full_plans (status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_plans_plan_id ON ml_full_plans (ml_plan_id)"))
+        conn.commit()
+        print("--- DATABASE MIGRATION: ml_full_plans table verified/created ---")
 
         # ── RENOMEAR LISTAS SEM SEQUÊNCIA (L{N} - DD/MM/YYYY HH:MM) ─────────────
         import re as _re

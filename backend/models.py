@@ -394,3 +394,21 @@ class AutoSeparationState(Base):
     last_error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ex: "ml=30 shopee=12" ou "ml=ok shopee=fail (timeout)"
+
+
+class MercadoLivreFullPlan(Base):
+    """Registro local dos planejamentos Full criados no Mercado Livre."""
+    __tablename__ = "ml_full_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ml_plan_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="created", index=True)
+    execution_mode: Mapped[str] = mapped_column(String(30), default="manual")  # manual | assisted | automatic
+    filter_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    products_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_units: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

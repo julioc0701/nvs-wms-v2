@@ -1,0 +1,17 @@
+{
+  "name": "nvs-ml-full-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agente local para Planejamento Full Mercado Livre acionado pela NVS.",
+  "type": "module",
+  "scripts": {
+    "ml:login": "node src/login.js",
+    "ml:check-session": "node src/check-session.js",
+    "ml:run-once": "node src/run-once.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "playwright": "^1.49.1"
+  },
+  "devDependencies": {}
+}

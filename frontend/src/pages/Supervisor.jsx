@@ -6,7 +6,8 @@ import {
   Trash2, Package, CheckCircle, Clock, Trophy, Target, 
   UploadCloud, Database, AlertCircle, Printer, ArrowLeft,
   Settings, Folder, Copy, LayoutDashboard, ListTodo, Wrench, ArrowRight, Activity, Search, FileText, Key, Users, LogOut,
-  BarChart3, Gauge, TrendingUp, Plus, Minus, ChevronRight, Layers, LayoutGrid
+  BarChart3, Gauge, TrendingUp, Plus, Minus, ChevronRight, Layers, LayoutGrid,
+  CalendarCheck, Save, RefreshCw
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useFeedback } from '../components/ui/FeedbackProvider'
@@ -718,6 +719,245 @@ function GroupCard({ title, subtitle, items, isOpen, onToggle, onDelete, icon, c
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
+function MlFullPlanningSection() {
+  const { notify } = useFeedback()
+  const [plans, setPlans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    ml_plan_id: '',
+    filter_label: 'Nível de estoque: Crítico',
+    products_count: '',
+    total_units: '',
+    notes: '',
+  })
+
+  const operator = JSON.parse(localStorage.getItem('operator') || 'null')
+
+  function loadPlans() {
+    setLoading(true)
+    api.getMlFullPlans()
+      .then((data) => setPlans(Array.isArray(data) ? data : []))
+      .catch((err) => notify(`Erro ao buscar planejamentos: ${err.message || err}`, 'error'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadPlans()
+  }, [])
+
+  async function handleSavePlan(e) {
+    e.preventDefault()
+    const productsCount = Number(form.products_count || 0)
+    const totalUnits = Number(form.total_units || 0)
+    if (!productsCount || !totalUnits) {
+      notify('Informe produtos e unidades para registrar o plano.', 'warning')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.createMlFullPlan({
+        ml_plan_id: form.ml_plan_id || null,
+        title: 'Planejamento Full ML',
+        execution_mode: 'manual',
+        filter_label: form.filter_label || null,
+        products_count: productsCount,
+        total_units: totalUnits,
+        created_by: operator?.name || 'Master',
+        notes: form.notes || null,
+      })
+      setForm({
+        ml_plan_id: '',
+        filter_label: 'Nível de estoque: Crítico',
+        products_count: '',
+        total_units: '',
+        notes: '',
+      })
+      notify('Planejamento registrado com sucesso.', 'success')
+      loadPlans()
+    } catch (err) {
+      notify(`Erro ao registrar planejamento: ${err.message || err}`, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDeletePlan(plan) {
+    if (!window.confirm(`Apagar o registro do planejamento #${plan.id}?`)) return
+    try {
+      await api.deleteMlFullPlan(plan.id)
+      loadPlans()
+    } catch (err) {
+      notify(`Erro ao apagar registro: ${err.message || err}`, 'error')
+    }
+  }
+
+  const totals = plans.reduce((acc, plan) => {
+    acc.units += plan.total_units || 0
+    acc.products += plan.products_count || 0
+    return acc
+  }, { units: 0, products: 0 })
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <p className="section-kicker mb-1 flex items-center gap-2">
+              <CalendarCheck size={14} /> Planejamento Full ML
+            </p>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Planos criados com sucesso</h2>
+          </div>
+          <button
+            type="button"
+            onClick={loadPlans}
+            className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-2"
+          >
+            <RefreshCw size={15} /> Atualizar
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-slate-100">
+          <MetricTile label="Planos registrados" value={plans.length.toLocaleString('pt-BR')} icon={CalendarCheck} />
+          <MetricTile label="Produtos planejados" value={totals.products.toLocaleString('pt-BR')} icon={Package} />
+          <MetricTile label="Unidades enviadas" value={totals.units.toLocaleString('pt-BR')} icon={CheckCircle} />
+        </div>
+
+        {loading ? (
+          <div className="p-5 space-y-3">
+            {[1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}
+          </div>
+        ) : plans.length === 0 ? (
+          <div className="p-10 text-center">
+            <div className="w-12 h-12 mx-auto rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
+              <CalendarCheck size={22} />
+            </div>
+            <p className="font-bold text-slate-700">Nenhum planejamento registrado ainda</p>
+            <p className="text-sm text-slate-500 mt-1">O piloto começa registrando manualmente os planos finalizados no Mercado Livre.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Data</th>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Filtro</th>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Produtos</th>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Unidades</th>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Origem</th>
+                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {plans.map((plan) => (
+                  <tr key={plan.id} className="hover:bg-slate-50/70">
+                    <td className="px-4 py-3">
+                      <p className="font-bold text-slate-800">{new Date(plan.created_at).toLocaleDateString('pt-BR')}</p>
+                      <p className="text-xs text-slate-400">{new Date(plan.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-700">{plan.filter_label || 'Sem filtro informado'}</p>
+                      {plan.ml_plan_id ? <p className="text-xs font-mono text-slate-400">ML: {plan.ml_plan_id}</p> : null}
+                      {plan.notes ? <p className="text-xs text-slate-500 mt-1 max-w-md truncate">{plan.notes}</p> : null}
+                    </td>
+                    <td className="px-4 py-3 text-right font-black text-slate-800 tabular-nums">{plan.products_count}</td>
+                    <td className="px-4 py-3 text-right font-black text-slate-900 tabular-nums">{plan.total_units.toLocaleString('pt-BR')}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-black uppercase text-emerald-700">
+                        {plan.execution_mode === 'automatic' ? 'Automático' : plan.execution_mode === 'assisted' ? 'Assistido' : 'Manual'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePlan(plan)}
+                        title="Apagar registro"
+                        className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 h-fit">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
+            <Save size={19} />
+          </div>
+          <div>
+            <h3 className="text-base font-black text-slate-900">Registrar plano</h3>
+            <p className="text-xs text-slate-500 font-semibold">Piloto manual antes do robô diário.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSavePlan} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">ID do plano no ML</label>
+            <input
+              value={form.ml_plan_id}
+              onChange={e => setForm(f => ({ ...f, ml_plan_id: e.target.value }))}
+              placeholder="Opcional"
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Filtro usado</label>
+            <input
+              value={form.filter_label}
+              onChange={e => setForm(f => ({ ...f, filter_label: e.target.value }))}
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Produtos</label>
+              <input
+                type="number"
+                min="0"
+                value={form.products_count}
+                onChange={e => setForm(f => ({ ...f, products_count: e.target.value }))}
+                className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Unidades</label>
+              <input
+                type="number"
+                min="0"
+                value={form.total_units}
+                onChange={e => setForm(f => ({ ...f, total_units: e.target.value }))}
+                className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Observação</label>
+            <textarea
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              rows={3}
+              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600 resize-none"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full min-h-11 rounded-xl bg-teal-700 text-white text-sm font-black hover:bg-teal-800 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <Save size={16} /> {saving ? 'Registrando...' : 'Registrar sucesso'}
+          </button>
+        </form>
+      </section>
+    </div>
+  )
+}
+
 export default function Supervisor() {
   const compact = useCompactViewport(800)
   const { notify, askPrompt } = useFeedback()
@@ -960,7 +1200,12 @@ export default function Supervisor() {
                    return (
                      <button
                        key={mp.id}
-                       onClick={() => { if (!isActive) navigate(`/supervisor/${mp.id}/${tab}`) }}
+                       onClick={() => {
+                         if (!isActive) {
+                           const nextTab = tab === 'planning' && mp.id !== 'ml' ? 'overview' : tab
+                           navigate(`/supervisor/${mp.id}/${nextTab}`)
+                         }
+                       }}
                        className={cn(
                          "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
                          isActive
@@ -1001,6 +1246,10 @@ export default function Supervisor() {
 
               {tab === 'shortage' && (
                 <ShortageSection />
+              )}
+
+              {tab === 'planning' && marketplaceView === 'ml' && (
+                <MlFullPlanningSection />
               )}
 
               {tab === 'lists' && (() => {

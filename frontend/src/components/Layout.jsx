@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import novaesLogo from '../assets/logo-novaes-v3.png'
 import {
   Home, PackageSearch, Users, AlertCircle, LogOut, Database,
-  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList,
+  LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList, CalendarCheck,
   Pin, PinOff, Menu
 } from 'lucide-react'
 import { cn } from '../lib/utils'
@@ -79,6 +79,9 @@ export default function Layout() {
   const subNavItems = isMarketplaceActive ? [
     { label: 'Visão Geral',  path: `/supervisor/${activeMarketplace}/overview`, icon: LayoutDashboard },
     { label: 'Listas e Lotes', path: `/supervisor/${activeMarketplace}/lists`,    icon: ListTodo },
+    ...(activeMarketplace === 'ml'
+      ? [{ label: 'Planejamento Full', path: '/supervisor/ml/planning', icon: CalendarCheck }]
+      : []),
     { label: 'Processamento',  path: `/supervisor/${activeMarketplace}/tools`,    icon: Wrench },
     { label: 'Sistema',        path: `/supervisor/${activeMarketplace}/settings`, icon: SettingsIcon },
   ] : isSeparacaoActive ? [
