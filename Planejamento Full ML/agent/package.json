@@ -7,7 +7,9 @@
   "scripts": {
     "ml:login": "node src/login.js",
     "ml:check-session": "node src/check-session.js",
-    "ml:run-once": "node src/run-once.js"
+    "ml:run-once": "node src/run-once.js",
+    "ml:agent-once": "node src/agent-once.js",
+    "ml:agent": "node src/agent.js"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

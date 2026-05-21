@@ -47,9 +47,13 @@ Escopo inicial:
 
 - Primeira pagina apenas.
 - Filtros:
-  - `WITH_CRITICAL_STOCK`
-  - `WITH_LOW_STOCK`
   - `WITHOUT_STOCK`
+  - `WITH_MEDIUM_STOCK`
+  - `WITH_CRITICAL_STOCK`
+  - `WITH_ENOUGH_STOCK`
+  - `WITH_LOW_STOCK`
+- Ordenacao:
+  - `gmv_l30d_full_desc`
 - Valor fixo de teste: `200`.
 - Modal de produto estrela: sempre `Continuar com meu plano atual`.
 
@@ -95,7 +99,7 @@ Status da regra de calculo em 2026-05-20:
 
 - Regra implementada no agente com `ML_UNITS_STRATEGY=formula`.
 - Formula: `ceil(vendas_30_dias * 1.20) - aptas_e_a_caminho`.
-- Quando o resultado e zero ou negativo, o agente aplica `1` unidade.
+- Quando o resultado e zero ou negativo, o agente aplica `0`.
 - Teste geral rodado sem salvar no Mercado Livre.
 - Agente preencheu 18 campos usando a formula.
 - Exemplo validado no primeiro item `YVJQ10171`: vendas 94, aptas/a caminho 37, alvo 113, valor aplicado 76.
@@ -103,7 +107,7 @@ Status da regra de calculo em 2026-05-20:
 - Botao `Continuar` ficou visivel.
 - O agente nao clicou em `Continuar` neste teste da regra.
 
-Status salvo com minimo 1 em 2026-05-20:
+Status salvo historico com minimo 1 em 2026-05-20:
 
 - Execucao autorizada com `ML_UNITS_STRATEGY=formula ML_SAVE_PLAN=true npm run ml:run-once`.
 - Agente preencheu 18 campos.
@@ -112,6 +116,12 @@ Status salvo com minimo 1 em 2026-05-20:
 - Envio `68112586`: 185 unidades, 3 produtos grandes e extragrandes.
 - Envio `68112587`: 458 unidades, 9 produtos pequenos e medios.
 - Registro salvo na NVS local com status `created`.
+
+Decisao atual em 2026-05-21:
+
+- O processo decidiu nao preencher minimo artificial para contas negativas.
+- Setup padrao atualizado para `minimo = 0`.
+- Valores negativos passam a ser enviados como `0`.
 
 ## Fase 3 - Integracao com NVS local
 
@@ -132,6 +142,41 @@ Resultado esperado:
 - Botao na NVS dispara tarefa.
 - Agente local executa.
 - NVS registra sucesso/erro.
+
+Status em 2026-05-20:
+
+- Concluido no ambiente local.
+- NVS ganhou fila de tarefas de automacao para Planejamento Full.
+- Tela `Supervisao Full > Planejamento Full` ganhou painel `Agente Full ML`.
+- Painel permite escolher:
+  - simulacao sem salvar;
+  - execucao salvando no Mercado Livre;
+  - estrategia fixa ou formula;
+  - percentual extra;
+  - minimo de unidades.
+- Agente ganhou comando `npm run ml:agent-once`.
+- Fluxo validado:
+  1. NVS cria tarefa `pending`.
+  2. Agente busca a proxima tarefa.
+  3. Agente executa o Mercado Livre em Chromium separado.
+  4. Agente devolve resultado para a NVS.
+  5. NVS atualiza tarefa e historico.
+- Teste local realizado com tarefa de simulacao usando formula.
+- Resultado do teste: 12 produtos, 643 unidades, status `simulated`.
+- Como era simulacao, o agente nao clicou em `Continuar` nem criou novo plano no Mercado Livre.
+
+Status end-to-end em 2026-05-21:
+
+- Concluido no ambiente local com agente continuo.
+- Agente rodando com `NVS_API_URL=http://localhost:8003 npm run ml:agent`.
+- Botao `Executar e salvar` da NVS criou tarefa automaticamente.
+- Agente capturou a tarefa sem comando manual no terminal.
+- Plano pai ML criado: `68116007`.
+- Envios capturados:
+  - `68116009`: 186 unidades, 3 produtos, grupo grandes e extragrandes.
+  - `68116010`: 459 unidades, 9 produtos, grupo pequenos e medios.
+- NVS registrou uma linha por envio, nao apenas o plano pai somado.
+- Trace e screenshot salvos em `agent/traces/` e `agent/screenshots/`.
 
 ## Fase 4 - Execucao transparente
 
@@ -168,6 +213,13 @@ Resultado esperado:
 - Tarefa manual executa.
 - Falhas aparecem de forma clara.
 
+Status em 2026-05-21:
+
+- Comando `npm run ml:agent` criado e validado.
+- Polling configurado para consultar a NVS a cada 5 segundos.
+- Painel mostra agente `online` por heartbeat.
+- Primeira onda definida como execucao manual apenas, sem agendamento.
+
 ## Comandos esperados do agente
 
 Nomes sugeridos para o MVP:
@@ -176,6 +228,7 @@ Nomes sugeridos para o MVP:
 npm run ml:login
 npm run ml:check-session
 npm run ml:run-once
+npm run ml:agent-once
 npm run ml:agent
 ```
 
@@ -188,6 +241,7 @@ Planejamento Full ML/
     storage/ml-session.json
     logs/
     screenshots/
+    traces/
 ```
 
 Esses arquivos locais nao devem ser versionados:
@@ -196,6 +250,7 @@ Esses arquivos locais nao devem ser versionados:
 - `storage/ml-session.json`
 - `logs/`
 - `screenshots/`
+- `traces/`
 
 ## Criterios de sucesso do piloto Mac
 

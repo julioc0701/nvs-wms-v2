@@ -487,6 +487,49 @@ def init_db():
         conn.commit()
         print("--- DATABASE MIGRATION: ml_full_plans table verified/created ---")
 
+        # ── ML FULL PLANNING TASKS / AGENT STATE ────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ml_full_planning_tasks (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                status           VARCHAR(30) NOT NULL DEFAULT 'pending',
+                requested_by     VARCHAR(100),
+                agent_id         VARCHAR(100),
+                run_mode         VARCHAR(30) NOT NULL DEFAULT 'simulate',
+                units_strategy   VARCHAR(30) NOT NULL DEFAULT 'formula',
+                fixed_units      INTEGER,
+                percentage       INTEGER NOT NULL DEFAULT 20,
+                min_units        INTEGER NOT NULL DEFAULT 1,
+                filter_label     VARCHAR(150),
+                filters_json     TEXT,
+                result_json      TEXT,
+                error_message    TEXT,
+                created_plan_id  VARCHAR(100),
+                products_count   INTEGER NOT NULL DEFAULT 0,
+                total_units      INTEGER NOT NULL DEFAULT 0,
+                created_at       DATETIME NOT NULL,
+                started_at       DATETIME,
+                finished_at      DATETIME
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_tasks_status ON ml_full_planning_tasks (status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_tasks_created_at ON ml_full_planning_tasks (created_at)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ml_full_tasks_agent ON ml_full_planning_tasks (agent_id)"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ml_full_agent_state (
+                id             INTEGER PRIMARY KEY,
+                agent_id       VARCHAR(100) NOT NULL DEFAULT 'mac-local-julio',
+                status         VARCHAR(30) NOT NULL DEFAULT 'offline',
+                last_seen_at   DATETIME,
+                last_message   TEXT
+            )
+        """))
+        conn.execute(text("""
+            INSERT OR IGNORE INTO ml_full_agent_state (id, agent_id, status)
+            VALUES (1, 'mac-local-julio', 'offline')
+        """))
+        conn.commit()
+        print("--- DATABASE MIGRATION: ml_full_planning_tasks + ml_full_agent_state verified ---")
+
         # ── RENOMEAR LISTAS SEM SEQUÊNCIA (L{N} - DD/MM/YYYY HH:MM) ─────────────
         import re as _re
         rows = conn.execute(text("SELECT id, name, created_at FROM tiny_picking_lists ORDER BY created_at ASC")).fetchall()

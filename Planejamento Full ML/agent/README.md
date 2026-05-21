@@ -65,7 +65,7 @@ Formula aplicada:
 ceil(vendas_30_dias * 1.20) - aptas_e_a_caminho
 ```
 
-Quando o resultado for zero ou negativo, o agente aplica `1` unidade.
+Quando o resultado for zero ou negativo, o agente aplica `0`.
 
 Para salvar de verdade no Mercado Livre, e necessario habilitar explicitamente:
 

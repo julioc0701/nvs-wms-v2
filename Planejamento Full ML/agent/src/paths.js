@@ -7,4 +7,5 @@ export const agentRoot = resolve(__dirname, '..');
 export const storageDir = resolve(agentRoot, 'storage');
 export const logsDir = resolve(agentRoot, 'logs');
 export const screenshotsDir = resolve(agentRoot, 'screenshots');
+export const tracesDir = resolve(agentRoot, 'traces');
 export const sessionPath = resolve(storageDir, 'ml-session.json');

@@ -4,11 +4,22 @@ Este diretorio centraliza o desenho do novo modulo de Planejamento Full do Merca
 
 Objetivo do modulo:
 
-- Programar execucoes de planejamento Full pela NVS.
-- Permitir disparo manual pelo painel.
+- Permitir disparo manual pelo painel da NVS.
 - Acionar um agente local conectado a NVS.
 - Executar o fluxo no Mercado Livre com navegador automatizado.
-- Registrar no painel o resultado gerado: plano ML, envios, unidades, produtos, status e logs.
+- Registrar no painel o resultado gerado por envio: envio ML, plano pai, unidades, produtos, status e logs.
+
+## Decisao da primeira onda
+
+A primeira entrega nao tera agendamento. O escopo funcional e:
+
+1. usuario acessa a NVS;
+2. usuario clica em `Executar e salvar`;
+3. agente local ja online recebe a tarefa;
+4. agente cria o planejamento no Mercado Livre;
+5. NVS registra uma linha por envio criado.
+
+Agendamento diario e instalador definitivo ficam para fases posteriores.
 
 ## Decisao de arquitetura
 
@@ -21,7 +32,6 @@ Como a API publica do Mercado Livre nao oferece hoje uma operacao oficial para c
 ```text
 NVS no Railway
   - cadastra regras
-  - agenda execucoes
   - dispara execucao manual
   - mostra agente online/offline
   - registra historico e resultado
@@ -51,6 +61,34 @@ Continuar com meu plano atual
 ```
 
 Nao deve clicar em `Conferir produto estrela`.
+
+## Regra de calculo validada
+
+Estrategia atual:
+
+```text
+ceil(vendas_full_ultimos_30_dias * 1.20) - aptas_e_a_caminho
+```
+
+Quando o resultado for zero ou negativo, aplicar `0`. O processo decidiu nao forcar minimo artificial para itens negativos.
+
+URL filtrada usada pelo agente:
+
+```text
+https://www.mercadolivre.com.br/anuncios/lista/shipment_planning/plans?page=1&filters=WITHOUT_STOCK%7CWITH_MEDIUM_STOCK%7CWITH_CRITICAL_STOCK%7CWITH_ENOUGH_STOCK%7CWITH_LOW_STOCK&sorts=gmv_l30d_full_desc
+```
+
+Filtros atuais:
+
+- sem estoque;
+- estoque medio;
+- estoque critico;
+- estoque suficiente;
+- estoque baixo.
+
+Ordenacao atual:
+
+- `gmv_l30d_full_desc`, maior GMV Full dos ultimos 30 dias primeiro.
 
 ## Teste real validado
 
@@ -90,8 +128,75 @@ Artefatos locais:
 
 - Log em `agent/logs/`.
 - Screenshot em `agent/screenshots/`.
+- Trace Playwright em `agent/traces/`.
 
 Esses artefatos sao locais e nao devem ser versionados.
+
+## Estado atual validado
+
+Data: 2026-05-21
+
+Fluxo end-to-end validado:
+
+- NVS local com botao `Executar e salvar`.
+- Agente continuo rodando com `npm run ml:agent`.
+- Agente detecta a tarefa automaticamente por polling.
+- Agente preenche a primeira pagina filtrada.
+- Agente percorre as paginas disponiveis do Planejamento Full antes de concluir.
+- Agente salva o planejamento no Mercado Livre.
+- Agente espera a pagina de envios carregar.
+- Agente captura plano pai e envios filhos.
+- NVS grava uma linha por envio.
+
+## Paginacao do planejamento
+
+Com os filtros novos, o Mercado Livre pode exibir varias paginas de produtos.
+
+O agente deve:
+
+1. preencher a pagina atual;
+2. registrar no log quantos campos foram preenchidos naquela pagina;
+3. clicar em `Proximo` quando houver proxima pagina habilitada;
+4. repetir ate nao existir proxima pagina;
+5. somente depois disso simular ou clicar em `Continuar`.
+
+O resultado da execucao grava:
+
+- `pagesProcessed`;
+- `pageResults`;
+- `filledFields` total;
+- `appliedRows` com pagina e indice do item.
+
+Antes de usar em modo real com multiplas paginas, validar primeiro com `Simular`.
+
+Ultimo teste confirmado:
+
+- Plano pai ML: `68116007`
+- Envio `68116009`: 186 unidades, 3 produtos, grupo grandes e extragrandes.
+- Envio `68116010`: 459 unidades, 9 produtos, grupo pequenos e medios.
+- Total do planejamento: 645 unidades, 12 produtos.
+
+## Tela operacional na NVS
+
+A tela `Supervisao Full > Planejamento Full` ficou definida para a primeira onda com foco operacional:
+
+- historico principal em nivel de envio;
+- uma linha por envio, alternando fundos azuis suaves para facilitar leitura;
+- cards superiores com contorno mais forte para resumo de envios, produtos e unidades;
+- filtro de periodo com data inicial e data final ao lado do botao `Atualizar`;
+- painel `Agente Full ML` compacto na lateral;
+- tarefas recentes recolhidas por padrao, com botao `+` para expandir logs quando necessario.
+
+As tarefas/logs existem para auditoria e suporte, mas nao devem competir visualmente com a lista de envios.
+
+Comandos principais:
+
+```bash
+npm run ml:login
+npm run ml:check-session
+npm run ml:agent
+npm run ml:agent-once
+```
 
 ## Documentos
 

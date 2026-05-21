@@ -7,7 +7,7 @@ import {
   UploadCloud, Database, AlertCircle, Printer, ArrowLeft,
   Settings, Folder, Copy, LayoutDashboard, ListTodo, Wrench, ArrowRight, Activity, Search, FileText, Key, Users, LogOut,
   BarChart3, Gauge, TrendingUp, Plus, Minus, ChevronRight, Layers, LayoutGrid,
-  CalendarCheck, Save, RefreshCw
+  CalendarCheck, RefreshCw
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { useFeedback } from '../components/ui/FeedbackProvider'
@@ -722,14 +722,20 @@ function GroupCard({ title, subtitle, items, isOpen, onToggle, onDelete, icon, c
 function MlFullPlanningSection() {
   const { notify } = useFeedback()
   const [plans, setPlans] = useState([])
+  const [tasks, setTasks] = useState([])
+  const [automationStatus, setAutomationStatus] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    ml_plan_id: '',
-    filter_label: 'Nível de estoque: Crítico',
-    products_count: '',
-    total_units: '',
-    notes: '',
+  const [loadingAutomation, setLoadingAutomation] = useState(true)
+  const [dispatching, setDispatching] = useState(null)
+  const [showDateFilter, setShowDateFilter] = useState(false)
+  const [showTaskLogs, setShowTaskLogs] = useState(false)
+  const [dateFilter, setDateFilter] = useState({ from: '', to: '' })
+  const [automationForm, setAutomationForm] = useState({
+    percentage: 20,
+    min_units: 0,
+    units_strategy: 'formula',
+    fixed_units: 200,
+    filter_label: 'Sem estoque + Médio + Crítico + Suficiente + Baixo',
   })
 
   const operator = JSON.parse(localStorage.getItem('operator') || 'null')
@@ -742,43 +748,45 @@ function MlFullPlanningSection() {
       .finally(() => setLoading(false))
   }
 
+  function loadAutomation() {
+    setLoadingAutomation(true)
+    Promise.all([
+      api.getMlFullAutomationStatus(),
+      api.getMlFullAutomationTasks(),
+    ])
+      .then(([status, taskList]) => {
+        setAutomationStatus(status)
+        setTasks(Array.isArray(taskList) ? taskList : [])
+      })
+      .catch((err) => notify(`Erro ao buscar automação Full ML: ${err.message || err}`, 'error'))
+      .finally(() => setLoadingAutomation(false))
+  }
+
   useEffect(() => {
     loadPlans()
+    loadAutomation()
   }, [])
 
-  async function handleSavePlan(e) {
-    e.preventDefault()
-    const productsCount = Number(form.products_count || 0)
-    const totalUnits = Number(form.total_units || 0)
-    if (!productsCount || !totalUnits) {
-      notify('Informe produtos e unidades para registrar o plano.', 'warning')
-      return
-    }
-    setSaving(true)
+  async function handleDispatchAutomation(runMode) {
+    setDispatching(runMode)
     try {
-      await api.createMlFullPlan({
-        ml_plan_id: form.ml_plan_id || null,
-        title: 'Planejamento Full ML',
-        execution_mode: 'manual',
-        filter_label: form.filter_label || null,
-        products_count: productsCount,
-        total_units: totalUnits,
-        created_by: operator?.name || 'Master',
-        notes: form.notes || null,
+      await api.createMlFullAutomationTask({
+        run_mode: runMode,
+        units_strategy: automationForm.units_strategy,
+        fixed_units: automationForm.units_strategy === 'fixed' ? Number(automationForm.fixed_units || 0) : null,
+        percentage: Number(automationForm.percentage || 20),
+        min_units: Number(automationForm.min_units || 0),
+        filter_label: automationForm.filter_label,
+        requested_by: operator?.name || 'Master',
+        agent_id: 'mac-local-julio',
+        filters: ['WITHOUT_STOCK', 'WITH_MEDIUM_STOCK', 'WITH_CRITICAL_STOCK', 'WITH_ENOUGH_STOCK', 'WITH_LOW_STOCK'],
       })
-      setForm({
-        ml_plan_id: '',
-        filter_label: 'Nível de estoque: Crítico',
-        products_count: '',
-        total_units: '',
-        notes: '',
-      })
-      notify('Planejamento registrado com sucesso.', 'success')
-      loadPlans()
+      notify(runMode === 'save' ? 'Execução criada. O agente local vai salvar no ML.' : 'Simulação criada para o agente local.', 'success')
+      loadAutomation()
     } catch (err) {
-      notify(`Erro ao registrar planejamento: ${err.message || err}`, 'error')
+      notify(`Erro ao criar execução: ${err.message || err}`, 'error')
     } finally {
-      setSaving(false)
+      setDispatching(null)
     }
   }
 
@@ -792,167 +800,390 @@ function MlFullPlanningSection() {
     }
   }
 
-  const totals = plans.reduce((acc, plan) => {
+  const filteredPlans = plans.filter((plan) => {
+    if (!dateFilter.from && !dateFilter.to) return true
+    const created = new Date(plan.created_at)
+    if (dateFilter.from) {
+      const from = new Date(`${dateFilter.from}T00:00:00`)
+      if (created < from) return false
+    }
+    if (dateFilter.to) {
+      const to = new Date(`${dateFilter.to}T23:59:59`)
+      if (created > to) return false
+    }
+    return true
+  })
+
+  const totals = filteredPlans.reduce((acc, plan) => {
     acc.units += plan.total_units || 0
     acc.products += plan.products_count || 0
     return acc
   }, { units: 0, products: 0 })
 
+  function getInboundIds(plan) {
+    const rawIds = plan.raw_payload?.saveResult?.inbounds
+      ?.map(inbound => String(inbound?.id || '').trim())
+      ?.filter(Boolean) || []
+    if (rawIds.length) return [...new Set(rawIds)]
+
+    const notesMatch = String(plan.notes || '').match(/Envios ML:\s*([0-9,\s#]+)/i)
+    if (!notesMatch) return []
+    return [...new Set(notesMatch[1].split(',').map(value => value.replace('#', '').trim()).filter(Boolean))]
+  }
+
+  function getParentPlanId(plan) {
+    const fromPayload = plan.raw_payload?.parent_ml_plan_id || plan.raw_payload?.saveResult?.mlPlanId || null
+    if (fromPayload) return fromPayload
+    return String(plan.notes || '').match(/Plano pai ML:\s*(\d+)/i)?.[1] || null
+  }
+
+  function getInboundGroup(plan) {
+    const group = plan.raw_payload?.inbound?.group
+    if (group) return group
+    return String(plan.notes || '').match(/Grupo:\s*([^.]*)/i)?.[1] || null
+  }
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-4">
-      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px] gap-4">
+      <section className="panel-elevated overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
           <div>
             <p className="section-kicker mb-1 flex items-center gap-2">
               <CalendarCheck size={14} /> Planejamento Full ML
             </p>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">Planos criados com sucesso</h2>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">Envios Full criados</h2>
           </div>
-          <button
-            type="button"
-            onClick={loadPlans}
-            className="h-10 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-2"
-          >
-            <RefreshCw size={15} /> Atualizar
-          </button>
+          <div className="flex flex-col items-stretch sm:items-end gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDateFilter(v => !v)}
+                className={cn(
+                  "h-9 px-3 rounded-lg border text-xs font-bold flex items-center gap-2",
+                  showDateFilter || dateFilter.from || dateFilter.to
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                )}
+              >
+                <CalendarCheck size={15} /> Filtrar data
+              </button>
+              <button
+                type="button"
+                onClick={loadPlans}
+                className="h-9 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center gap-2"
+              >
+                <RefreshCw size={15} /> Atualizar
+              </button>
+            </div>
+            {showDateFilter ? (
+              <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  De
+                  <input
+                    type="date"
+                    value={dateFilter.from}
+                    onChange={e => setDateFilter(f => ({ ...f, from: e.target.value }))}
+                    className="mt-1 block h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                  />
+                </label>
+                <label className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Até
+                  <input
+                    type="date"
+                    value={dateFilter.to}
+                    onChange={e => setDateFilter(f => ({ ...f, to: e.target.value }))}
+                    className="mt-1 block h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setDateFilter({ from: '', to: '' })}
+                  className="h-8 px-2 rounded-lg text-xs font-bold text-slate-500 hover:bg-white"
+                >
+                  Limpar
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-slate-100">
-          <MetricTile label="Planos registrados" value={plans.length.toLocaleString('pt-BR')} icon={CalendarCheck} />
-          <MetricTile label="Produtos planejados" value={totals.products.toLocaleString('pt-BR')} icon={Package} />
-          <MetricTile label="Unidades enviadas" value={totals.units.toLocaleString('pt-BR')} icon={CheckCircle} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-3 bg-slate-50/80 border-b border-slate-200">
+          {[
+            { label: 'Envios registrados', value: filteredPlans.length.toLocaleString('pt-BR'), icon: CalendarCheck },
+            { label: 'Produtos planejados', value: totals.products.toLocaleString('pt-BR'), icon: Package },
+            { label: 'Unidades enviadas', value: totals.units.toLocaleString('pt-BR'), icon: CheckCircle },
+          ].map(({ label, value, icon: Icon }) => (
+            <div key={label} className="rounded-xl border border-slate-300 bg-white p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.06),0_8px_18px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-600">{label}</span>
+                <Icon size={15} className="text-slate-400" />
+              </div>
+              <p className="text-3xl font-black text-slate-950 tabular-nums leading-none">{value}</p>
+            </div>
+          ))}
         </div>
 
         {loading ? (
           <div className="p-5 space-y-3">
             {[1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-100 rounded-xl animate-pulse" />)}
           </div>
-        ) : plans.length === 0 ? (
+        ) : filteredPlans.length === 0 ? (
           <div className="p-10 text-center">
             <div className="w-12 h-12 mx-auto rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
               <CalendarCheck size={22} />
             </div>
-            <p className="font-bold text-slate-700">Nenhum planejamento registrado ainda</p>
-            <p className="text-sm text-slate-500 mt-1">O piloto começa registrando manualmente os planos finalizados no Mercado Livre.</p>
+            <p className="font-bold text-slate-700">Nenhum envio encontrado</p>
+            <p className="text-sm text-slate-500 mt-1">Ajuste o filtro de data ou execute um novo planejamento Full.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Data</th>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Filtro</th>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Produtos</th>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Unidades</th>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest">Origem</th>
-                  <th className="px-4 py-3 text-xs font-black text-slate-500 uppercase tracking-widest text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {plans.map((plan) => (
-                  <tr key={plan.id} className="hover:bg-slate-50/70">
-                    <td className="px-4 py-3">
-                      <p className="font-bold text-slate-800">{new Date(plan.created_at).toLocaleDateString('pt-BR')}</p>
-                      <p className="text-xs text-slate-400">{new Date(plan.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-700">{plan.filter_label || 'Sem filtro informado'}</p>
-                      {plan.ml_plan_id ? <p className="text-xs font-mono text-slate-400">ML: {plan.ml_plan_id}</p> : null}
-                      {plan.notes ? <p className="text-xs text-slate-500 mt-1 max-w-md truncate">{plan.notes}</p> : null}
-                    </td>
-                    <td className="px-4 py-3 text-right font-black text-slate-800 tabular-nums">{plan.products_count}</td>
-                    <td className="px-4 py-3 text-right font-black text-slate-900 tabular-nums">{plan.total_units.toLocaleString('pt-BR')}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-black uppercase text-emerald-700">
-                        {plan.execution_mode === 'automatic' ? 'Automático' : plan.execution_mode === 'assisted' ? 'Assistido' : 'Manual'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePlan(plan)}
-                        title="Apagar registro"
-                        className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="bg-slate-50/70 p-3">
+            <div className="hidden lg:grid grid-cols-[92px_minmax(210px,1.35fr)_minmax(170px,1fr)_80px_96px_96px_42px] gap-3 px-3 py-2 text-[10px] font-black text-slate-500 uppercase tracking-[0.18em]">
+              <span>Data</span>
+              <span>Envio</span>
+              <span>Grupo</span>
+              <span className="text-right">Produtos</span>
+              <span className="text-right">Unidades</span>
+              <span>Origem</span>
+              <span />
+            </div>
+            <div className="space-y-2">
+            {filteredPlans.map((plan, index) => {
+              const parentPlanId = getParentPlanId(plan)
+              const group = getInboundGroup(plan)
+              return (
+                <div
+                  key={plan.id}
+                  className={cn(
+                    "grid grid-cols-1 lg:grid-cols-[92px_minmax(210px,1.35fr)_minmax(170px,1fr)_80px_96px_96px_42px] gap-3 px-3 py-3 items-center rounded-xl border shadow-sm transition-colors",
+                    index % 2 === 0
+                      ? "bg-[#dce6f3] border-slate-300 hover:bg-[#d4e0ef]"
+                      : "bg-[#d9ebff] border-blue-200 hover:bg-[#d0e4fb]"
+                  )}
+                >
+                  <div>
+                    <p className="font-black text-slate-900 tabular-nums">{new Date(plan.created_at).toLocaleDateString('pt-BR')}</p>
+                    <p className="text-xs text-slate-400">{new Date(plan.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-slate-900 truncate">Envio #{plan.ml_plan_id || '-'}</p>
+                    <p className="text-xs font-mono text-slate-500 mt-0.5">Plano pai: {parentPlanId || '-'}</p>
+                    <p className="text-xs text-slate-500 mt-1 truncate">{plan.filter_label || 'Sem filtro informado'}</p>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700 truncate">{group || 'Grupo não identificado'}</p>
+                    <p className="text-xs text-slate-400 truncate">{plan.notes || 'Gerado pelo agente Full ML.'}</p>
+                  </div>
+
+                  <div className="flex lg:block items-center justify-between">
+                    <span className="lg:hidden text-xs font-bold uppercase tracking-widest text-slate-400">Produtos</span>
+                    <p className="text-right text-base font-black text-slate-900 tabular-nums">{plan.products_count}</p>
+                  </div>
+
+                  <div className="flex lg:block items-center justify-between">
+                    <span className="lg:hidden text-xs font-bold uppercase tracking-widest text-slate-400">Unidades</span>
+                    <p className="text-right text-base font-black text-slate-900 tabular-nums">{plan.total_units.toLocaleString('pt-BR')}</p>
+                  </div>
+
+                  <div>
+                    <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-black uppercase text-emerald-700">
+                      {plan.execution_mode === 'automatic' ? 'Auto' : plan.execution_mode === 'assisted' ? 'Assist.' : 'Manual'}
+                    </span>
+                  </div>
+
+                  <div className="flex lg:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePlan(plan)}
+                      title="Apagar registro"
+                      className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+            </div>
           </div>
         )}
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 h-fit">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-700 flex items-center justify-center">
-            <Save size={19} />
+      <section className="panel-elevated p-2.5 h-fit space-y-2.5">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+              <Activity size={14} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900">Agente Full ML</h3>
+              <p className="text-[11px] text-slate-500 font-semibold">Disparo manual</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900">Registrar plano</h3>
-            <p className="text-xs text-slate-500 font-semibold">Piloto manual antes do robô diário.</p>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-[0.18em]">Status</p>
+              <p className="text-sm font-black text-slate-900">
+                {loadingAutomation ? 'Carregando...' : automationStatus?.agent?.status === 'online' ? 'Online' : 'Offline'}
+              </p>
+              {automationStatus?.agent?.last_seen_at ? (
+                <p className="text-[11px] text-slate-500">
+                  Visto {new Date(automationStatus.agent.last_seen_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              ) : null}
+            </div>
+            <span className={cn(
+              "w-3 h-3 rounded-full",
+              automationStatus?.agent?.status === 'online' ? 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.14)]' : 'bg-slate-300'
+            )} />
           </div>
         </div>
 
-        <form onSubmit={handleSavePlan} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">ID do plano no ML</label>
-            <input
-              value={form.ml_plan_id}
-              onChange={e => setForm(f => ({ ...f, ml_plan_id: e.target.value }))}
-              placeholder="Opcional"
-              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
-            />
+        <div className="border-t border-slate-100 pt-2.5">
+          <div className="flex items-center gap-2 mb-2">
+            <Settings size={14} className="text-slate-400" />
+            <h4 className="text-xs font-black text-slate-900 uppercase tracking-wide">Regra</h4>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Filtro usado</label>
-            <input
-              value={form.filter_label}
-              onChange={e => setForm(f => ({ ...f, filter_label: e.target.value }))}
-              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="space-y-1.5">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Produtos</label>
-              <input
-                type="number"
-                min="0"
-                value={form.products_count}
-                onChange={e => setForm(f => ({ ...f, products_count: e.target.value }))}
-                className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
-              />
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-1.5">Estratégia</label>
+              <select
+                value={automationForm.units_strategy}
+                onChange={e => setAutomationForm(f => ({ ...f, units_strategy: e.target.value }))}
+                className="w-full h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-semibold outline-none focus:border-blue-500"
+              >
+                <option value="formula">Fórmula: vendas + percentual</option>
+                <option value="fixed">Valor fixo</option>
+              </select>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Unidades</label>
-              <input
-                type="number"
-                min="0"
-                value={form.total_units}
-                onChange={e => setForm(f => ({ ...f, total_units: e.target.value }))}
-                className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600"
-              />
+
+            {automationForm.units_strategy === 'formula' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-1.5">% extra</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={automationForm.percentage}
+                    onChange={e => setAutomationForm(f => ({ ...f, percentage: e.target.value }))}
+                    className="w-full h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-semibold outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-1.5">Mínimo</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={automationForm.min_units}
+                    onChange={e => setAutomationForm(f => ({ ...f, min_units: e.target.value }))}
+                    className="w-full h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-semibold outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] mb-1.5">Unidades por item</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={automationForm.fixed_units}
+                  onChange={e => setAutomationForm(f => ({ ...f, fixed_units: e.target.value }))}
+                  className="w-full h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs font-semibold outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
+
+            <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Filtro</p>
+              <p className="text-xs font-bold text-slate-800">Sem estoque + Médio + Crítico + Suficiente + Baixo</p>
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Observação</label>
-            <textarea
-              value={form.notes}
-              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={3}
-              className="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-teal-600 resize-none"
-            />
+
+          <div className="grid grid-cols-1 gap-1.5 mt-2">
+            <button
+              type="button"
+              disabled={!!dispatching}
+              onClick={() => handleDispatchAutomation('simulate')}
+              className="w-full min-h-9 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-black hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Search size={14} /> {dispatching === 'simulate' ? 'Criando...' : 'Simular'}
+            </button>
+            <button
+              type="button"
+              disabled={!!dispatching}
+              onClick={() => handleDispatchAutomation('save')}
+              className="w-full min-h-9 rounded-lg bg-slate-900 text-white text-xs font-black hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <CheckCircle size={14} /> {dispatching === 'save' ? 'Criando...' : 'Executar e salvar'}
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full min-h-11 rounded-xl bg-teal-700 text-white text-sm font-black hover:bg-teal-800 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            <Save size={16} /> {saving ? 'Registrando...' : 'Registrar sucesso'}
-          </button>
-        </form>
+        </div>
+
+        <div className="border-t border-slate-100 pt-2.5">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-black text-slate-900 flex items-center gap-2 uppercase tracking-wide">
+              <Clock size={14} className="text-slate-400" /> Tarefas
+            </h4>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowTaskLogs(v => !v)}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                title={showTaskLogs ? 'Recolher tarefas' : 'Expandir tarefas'}
+              >
+                {showTaskLogs ? <Minus size={14} /> : <Plus size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { loadAutomation(); loadPlans() }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+                title="Atualizar automação"
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
+          </div>
+          {tasks.length === 0 ? (
+            <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5">Nenhuma tarefa enviada.</p>
+          ) : !showTaskLogs ? (
+            <button
+              type="button"
+              onClick={() => setShowTaskLogs(true)}
+              className="w-full text-left rounded-lg border border-slate-200 bg-slate-50 p-2.5 hover:bg-slate-100"
+            >
+              <p className="text-xs font-black text-slate-900">{tasks.length} tarefa(s) registradas</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Última: #{tasks[0]?.id} {tasks[0]?.status}
+              </p>
+            </button>
+          ) : (
+            <div className="space-y-2">
+              {tasks.slice(0, 4).map(task => (
+                <div key={task.id} className="rounded-lg border border-slate-200 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-black text-slate-900">#{task.id} {task.run_mode === 'save' ? 'Salvar' : 'Simular'}</p>
+                    <span className={cn(
+                      "px-2 py-1 rounded-md text-[10px] font-black uppercase",
+                      task.status === 'created' || task.status === 'simulated' ? 'bg-emerald-50 text-emerald-700' :
+                      task.status === 'failed' ? 'bg-red-50 text-red-700' :
+                      task.status === 'running' ? 'bg-blue-50 text-blue-700' :
+                      'bg-slate-100 text-slate-600'
+                    )}>
+                      {task.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {task.units_strategy === 'formula' ? `Fórmula +${task.percentage}% min ${task.min_units}` : `${task.fixed_units} un. fixas`}
+                  </p>
+                  {task.created_plan_id ? <p className="text-[11px] font-mono text-slate-400 mt-1">Plano: {task.created_plan_id}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </div>
   )

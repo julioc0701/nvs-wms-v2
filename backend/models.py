@@ -412,3 +412,40 @@ class MercadoLivreFullPlan(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class MercadoLivreFullPlanningTask(Base):
+    """Fila simples de execucoes solicitadas pela NVS para o agente local Full ML."""
+    __tablename__ = "ml_full_planning_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", index=True)
+    # pending | running | created | simulated | failed | needs_login
+    requested_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    run_mode: Mapped[str] = mapped_column(String(30), default="simulate")
+    units_strategy: Mapped[str] = mapped_column(String(30), default="formula")
+    fixed_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    percentage: Mapped[int] = mapped_column(Integer, default=20)
+    min_units: Mapped[int] = mapped_column(Integer, default=1)
+    filter_label: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    filters_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_plan_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    products_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_units: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MercadoLivreFullAgentState(Base):
+    """Ultimo estado conhecido do agente local Full ML."""
+    __tablename__ = "ml_full_agent_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    agent_id: Mapped[str] = mapped_column(String(100), default="mac-local-julio")
+    status: Mapped[str] = mapped_column(String(30), default="offline")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_message: Mapped[str | None] = mapped_column(Text, nullable=True)

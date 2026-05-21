@@ -214,6 +214,9 @@ export const api = {
   getMlFullPlans: () => req('GET', '/ml-full-plans'),
   createMlFullPlan: (data) => req('POST', '/ml-full-plans', data),
   deleteMlFullPlan: (id) => req('DELETE', `/ml-full-plans/${id}`),
+  getMlFullAutomationStatus: () => req('GET', '/ml-full-plans/automation/status'),
+  getMlFullAutomationTasks: () => req('GET', '/ml-full-plans/automation/tasks'),
+  createMlFullAutomationTask: (data) => req('POST', '/ml-full-plans/automation/tasks', data),
   
   // App Health & Gemma AI Control Panel
   getHealth: () => req('GET', '/health'),

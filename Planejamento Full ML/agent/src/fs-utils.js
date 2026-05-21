@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { logsDir, screenshotsDir, storageDir } from './paths.js';
+import { logsDir, screenshotsDir, storageDir, tracesDir } from './paths.js';
 
 export async function ensureAgentDirs() {
   await Promise.all([
     mkdir(storageDir, { recursive: true }),
     mkdir(logsDir, { recursive: true }),
     mkdir(screenshotsDir, { recursive: true }),
+    mkdir(tracesDir, { recursive: true }),
   ]);
 }
 
