@@ -1,0 +1,272 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --muted-surface: #eef2f6;
+  --text: #111827;
+  --secondary: #4b5563;
+  --muted: #6b7280;
+  --border: #d9e0e8;
+  --border-strong: #c6d2df;
+  --primary: #0f766e;
+  --primary-hover: #115e59;
+  --danger: #dc2626;
+  --navy: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 14px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.hero,
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px;
+}
+
+.kicker,
+.label,
+.panel-title small {
+  margin: 0;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 4px 0 6px;
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.muted {
+  margin: 0;
+  color: var(--secondary);
+}
+
+.status-card {
+  display: flex;
+  min-width: 180px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted-surface);
+  padding: 14px 16px;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.dot.online {
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.14);
+}
+
+.dot.offline {
+  background: #94a3b8;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 16px;
+}
+
+.panel {
+  padding: 16px;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  font-weight: 800;
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+input {
+  min-height: 42px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  padding: 0 12px;
+  letter-spacing: 0;
+  outline: none;
+}
+
+input:focus {
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.checks,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.checks {
+  margin-top: 14px;
+}
+
+.check {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted-surface);
+  padding: 0 12px;
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.check input {
+  min-height: auto;
+  width: auto;
+}
+
+button {
+  min-height: 42px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+button:hover {
+  border-color: #94a3b8;
+}
+
+button.primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+button.primary:hover {
+  background: var(--primary-hover);
+}
+
+button.secondary {
+  background: #f8fafc;
+}
+
+button.danger {
+  border-color: rgba(220, 38, 38, 0.35);
+  color: var(--danger);
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: #475569;
+}
+
+button.small {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.horizontal {
+  align-items: center;
+}
+
+.log-panel {
+  flex: 1;
+  min-height: 240px;
+}
+
+pre {
+  overflow: auto;
+  min-height: 190px;
+  max-height: 300px;
+  margin: 0;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #dbeafe;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 14px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding: 14px;
+  }
+
+  .hero,
+  .grid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .status-card {
+    width: 100%;
+  }
+
+  button {
+    width: 100%;
+  }
+}

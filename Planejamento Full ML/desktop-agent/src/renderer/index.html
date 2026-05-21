@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NVS Full Agent</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="kicker">NVS Full Agent</p>
+          <h1>Agente local do Planejamento Full ML</h1>
+          <p class="muted">Conecta esta máquina à NVS e executa o Mercado Livre em segundo plano.</p>
+        </div>
+        <div class="status-card" aria-live="polite">
+          <span id="status-dot" class="dot offline"></span>
+          <div>
+            <p class="label">Status</p>
+            <strong id="agent-status">Parado</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <form id="settings-form" class="panel">
+          <div class="panel-title">
+            <span>Configuração</span>
+            <button type="submit">Salvar</button>
+          </div>
+
+          <label>
+            URL da NVS
+            <input id="nvs-api-url" placeholder="https://nvs...railway.app" />
+          </label>
+
+          <label>
+            ID do agente
+            <input id="agent-id" placeholder="maquina-full-01" />
+          </label>
+
+          <div class="checks">
+            <label class="check">
+              <input id="headless" type="checkbox" />
+              Rodar invisível
+            </label>
+            <label class="check">
+              <input id="trace" type="checkbox" />
+              Salvar trace
+            </label>
+          </div>
+        </form>
+
+        <section class="panel">
+          <div class="panel-title">
+            <span>Mercado Livre</span>
+            <small id="session-status">Sessão não verificada</small>
+          </div>
+          <div class="actions">
+            <button id="login" class="secondary" type="button">Conectar Mercado Livre</button>
+            <button id="finish-login" class="secondary" type="button">Salvar sessão</button>
+            <button id="check-session" class="secondary" type="button">Validar sessão</button>
+            <button id="open-folder" class="ghost" type="button">Abrir pasta do agente</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <span>Execução</span>
+          <small>Primeira onda: acionamento manual pela NVS</small>
+        </div>
+        <div class="actions horizontal">
+          <button id="start" class="primary" type="button">Iniciar agente</button>
+          <button id="stop" class="danger" type="button">Parar agente</button>
+          <button id="nvs-status" class="secondary" type="button">Atualizar status NVS</button>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="panel-title">
+          <span>Log local</span>
+          <button id="clear-log" class="ghost small" type="button">Limpar</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,58 @@
+{
+  "name": "nvs-full-agent-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicativo desktop do agente local NVS Full ML.",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "prepare:agent": "npm --prefix ../agent install",
+    "prepack": "npm run prepare:agent",
+    "pack": "electron-builder --dir",
+    "predist": "npm run prepare:agent",
+    "dist": "electron-builder",
+    "predist:win": "npm run prepare:agent",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "br.com.nvs.full-agent",
+    "productName": "NVS Full Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../agent",
+        "to": "agent",
+        "filter": [
+          "package.json",
+          "package-lock.json",
+          "src/**",
+          ".env.example",
+          "node_modules/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

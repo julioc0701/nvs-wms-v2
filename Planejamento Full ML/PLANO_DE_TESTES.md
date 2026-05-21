@@ -27,7 +27,7 @@ Usado para validar o modelo real de painel.
 
 Usado depois do piloto Mac.
 
-- Agente instalado como servico ou tarefa de inicializacao.
+- Agente instalado por aplicativo desktop/instalador.
 - Sessao ML local.
 - Conexao com NVS Railway.
 
@@ -242,6 +242,31 @@ Esperado:
 - Nenhum clique em `Continuar` deve ocorrer na simulacao.
 - Trace deve mostrar navegacao entre paginas.
 
+### T12 - App desktop do agente
+
+Objetivo: validar a embalagem operacional do agente antes do instalador Windows.
+
+Passos:
+
+1. Abrir `desktop-agent`.
+2. Configurar URL da NVS.
+3. Configurar ID do agente.
+4. Clicar em `Conectar Mercado Livre`.
+5. Fazer login no Chromium separado.
+6. Clicar em `Salvar sessao`.
+7. Clicar em `Validar sessao`.
+8. Clicar em `Iniciar agente`.
+9. Disparar `Executar e salvar` na NVS.
+
+Esperado:
+
+- App salva configuracao local.
+- Sessao ML e criada fora do Chrome pessoal.
+- Agente aparece online na NVS.
+- Tarefa manual criada na NVS e consumida pelo agente.
+- Logs aparecem no app desktop.
+- Resultado final aparece no historico da NVS.
+
 ## Evidencias por execucao
 
 Cada execucao deve gerar:
@@ -291,7 +316,7 @@ Esperado:
 
 ## Proximos marcos
 
-1. Refinar tela operacional do Planejamento Full.
+1. Testar o `desktop-agent` em modo desenvolvimento.
 2. Preparar empacotamento do agente para Windows/Mac.
 3. Conectar o agente local ao Railway com token seguro.
 4. Criar fluxo de renovacao de login quando a sessao ML expirar.

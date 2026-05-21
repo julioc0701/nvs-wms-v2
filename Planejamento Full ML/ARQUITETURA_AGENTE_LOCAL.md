@@ -258,9 +258,36 @@ Validado:
 
 Depois do piloto no Mac, o mesmo agente pode virar um instalador Windows:
 
-- Node.js + Playwright no MVP.
-- Windows Service ou Agendador de Tarefas para iniciar com o Windows.
-- Pasta local de configuracao com token e sessao.
-- Logs locais e envio de status para NVS.
+- `agent/` continua sendo o motor tecnico.
+- `desktop-agent/` vira a embalagem instalada na maquina do usuario.
+- O instalador deve levar junto o runtime necessario, dependencias do agente e Chromium do Playwright.
+- Windows Service ou Agendador de Tarefas pode ser adicionado depois para iniciar com o Windows.
+- Configuracao, token e sessao devem ficar em pasta local do usuario.
+- Logs locais continuam disponiveis para suporte e o status segue para a NVS.
 
 O conceito e o mesmo de um agente de impressao: instalado uma vez, roda em segundo plano e recebe comandos do sistema central.
+
+## Embalagem desktop
+
+Foi iniciado um aplicativo Electron em `desktop-agent/` para transformar o agente em um produto instalavel.
+
+Responsabilidades do desktop:
+
+- configurar URL da NVS e ID do agente;
+- abrir login do Mercado Livre em Chromium separado;
+- salvar a sessao local apos o login;
+- validar sessao;
+- iniciar/parar o processo continuo `agent.js`;
+- mostrar logs locais para suporte.
+
+Responsabilidades que continuam no motor `agent/`:
+
+- ler tarefas da NVS;
+- acessar a pagina de Planejamento Full;
+- calcular unidades pela regra vigente;
+- navegar por todas as paginas;
+- salvar ou simular;
+- capturar plano pai e envios filhos;
+- devolver resultado para a NVS.
+
+Para PRD em Windows, a pasta fonte nao e o formato ideal para usuario final. O formato correto e gerar um instalador `.exe` que carregue o agente e suas dependencias. Compartilhar a pasta fonte serve apenas para teste tecnico em maquina com ambiente de desenvolvimento.

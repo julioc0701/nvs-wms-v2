@@ -46,6 +46,29 @@ Agente Full ML local
   - devolve resultado para a NVS
 ```
 
+## Agente desktop para Windows/Mac
+
+Foi criada a primeira embalagem desktop do agente em `desktop-agent/`.
+
+A separacao ficou assim:
+
+- `agent/`: motor tecnico que executa Playwright, acessa o Mercado Livre, calcula unidades, pagina e salva o plano;
+- `desktop-agent/`: aplicativo Electron com tela simples para configurar, autenticar Mercado Livre, iniciar/parar o agente e ver logs.
+
+Essa embalagem e o caminho para o usuario final que nao tem Node, Python ou ferramentas de desenvolvimento. No teste tecnico ainda e possivel rodar a pasta fonte, mas para PRD o formato correto sera entregar um instalador gerado em `desktop-agent/dist/`.
+
+Fluxo esperado no desktop:
+
+1. instalar/abrir `NVS Full Agent`;
+2. informar a URL da NVS;
+3. informar o ID do agente;
+4. clicar em `Conectar Mercado Livre`;
+5. fazer login no Chromium separado;
+6. clicar em `Salvar sessao`;
+7. validar a sessao;
+8. iniciar o agente;
+9. usar o botao da NVS para executar o planejamento.
+
 ## Regra ja validada no teste real
 
 Quando o Mercado Livre exibir o modal:
@@ -203,3 +226,4 @@ npm run ml:agent-once
 - [ARQUITETURA_AGENTE_LOCAL.md](ARQUITETURA_AGENTE_LOCAL.md)
 - [RUNBOOK_MAC_PILOTO.md](RUNBOOK_MAC_PILOTO.md)
 - [PLANO_DE_TESTES.md](PLANO_DE_TESTES.md)
+- [desktop-agent/README.md](desktop-agent/README.md)
