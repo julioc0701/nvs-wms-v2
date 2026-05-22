@@ -66,7 +66,7 @@ export function ProgressHero({ sessions, shortageStats, compact = false }) {
   return (
     <div className={cn("panel-elevated", compact ? "p-3 md:p-4" : "p-4 md:p-5")}>
       <div className={cn(
-        "chart-card bg-[radial-gradient(circle_at_top_right,#e2e8f0_0%,#f8fafc_45%,#ffffff_100%)] rounded-2xl",
+        "chart-card bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] rounded-2xl",
         compact ? "p-3 md:p-4 mb-3" : "p-4 md:p-5 mb-4"
       )}>
         <div className={cn("flex flex-col md:flex-row md:items-start md:justify-between gap-3", compact ? "mb-3" : "mb-4")}>
@@ -81,7 +81,7 @@ export function ProgressHero({ sessions, shortageStats, compact = false }) {
               </span>
             </div>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white/80 backdrop-blur px-4 py-3">
+          <div className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] backdrop-blur px-4 py-3">
             <p className="text-[11px] uppercase tracking-[0.18em] font-bold text-slate-500">Taxa de Conclusão</p>
             <p className="text-2xl font-black text-slate-900 tabular-nums">{doneRate}%</p>
           </div>
@@ -97,26 +97,26 @@ export function ProgressHero({ sessions, shortageStats, compact = false }) {
       </div>
 
       <div className={cn("grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3", compact ? "mb-3" : "mb-4")}>
-        <div className="rounded-xl border border-slate-200 bg-slate-900 text-white p-3.5 relative overflow-hidden">
+        <div className="rounded-xl border border-slate-400 bg-slate-900 text-white p-3.5 relative overflow-hidden">
           <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full bg-white/10" />
           <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-300 mb-2">Volume Processado</p>
           <p className="text-2xl font-black tabular-nums">{totalPicked.toLocaleString('pt-BR')}</p>
           <p className="text-[11px] text-slate-300 mt-1.5">itens separados</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+        <div className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] p-3.5">
           <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500 mb-2">Pendentes</p>
           <p className="text-2xl font-black text-slate-900 tabular-nums">{remaining.toLocaleString('pt-BR')}</p>
           <p className="text-[11px] text-slate-500 mt-1.5">itens restantes</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+        <div className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] p-3.5">
           <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500 mb-2">Listas Concluídas</p>
           <p className="text-2xl font-black text-slate-900 tabular-nums">{done}/{sessions.length}</p>
           <p className="text-[11px] text-slate-500 mt-1.5">{doneShare}% do total</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+        <div className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] p-3.5">
           <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500 mb-2">Média por Lista</p>
           <p className="text-2xl font-black text-slate-900 tabular-nums">{avgPerList.toLocaleString('pt-BR')}</p>
           <p className="text-[11px] text-slate-500 mt-1.5">itens por sessão</p>
@@ -124,7 +124,7 @@ export function ProgressHero({ sessions, shortageStats, compact = false }) {
       </div>
 
       <div className={cn("grid grid-cols-1 md:grid-cols-2", compact ? "gap-3" : "gap-4")}>
-        <div className="chart-card">
+        <div className="chart-card bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)]">
           <p className="section-kicker mb-3">Distribuição de Status</p>
           {[
             { label: 'Em andamento', value: active, share: activeShare, tone: 'bg-blue-600' },
@@ -146,27 +146,27 @@ export function ProgressHero({ sessions, shortageStats, compact = false }) {
         <button
           type="button"
           onClick={() => navigate('/shortage-report')}
-          className="text-left w-full rounded-xl border border-red-200 bg-red-50/40 p-4 shadow-sm hover:bg-red-50 hover:border-red-300 hover:shadow-md transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300"
+          className="text-left w-full rounded-xl border border-red-400 bg-red-50/40 p-4 shadow-sm hover:bg-red-50 hover:border-red-500 hover:shadow-md transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300"
         >
           <p className="section-kicker text-red-600 mb-3 flex items-center justify-between">
             <span>Relatório de Faltas</span>
             <ArrowRight size={14} className="text-red-400" />
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            <div className="rounded-lg border border-red-200 bg-white px-3 py-2">
+            <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Itens Faltantes</p>
               <p className="text-2xl font-black text-red-700 tabular-nums">{shortageStats.totalUnits}</p>
             </div>
-            <div className="rounded-lg border border-red-200 bg-white px-3 py-2">
+            <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">SKUs com Falta</p>
               <p className="text-2xl font-black text-red-700 tabular-nums">{shortageStats.skuCount}</p>
             </div>
-            <div className="rounded-lg border border-red-200 bg-white px-3 py-2">
+            <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
               <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Impacto no Volume</p>
               <p className="text-2xl font-black text-red-700 tabular-nums">{shortageImpactPct}%</p>
             </div>
           </div>
-          <div className="text-xs font-semibold text-red-700 bg-red-100/70 border border-red-200 rounded-lg px-3 py-2">
+          <div className="text-xs font-semibold text-red-700 bg-red-100/70 border border-red-400 rounded-lg px-3 py-2">
             Prioridade: revisar faltas antes do fechamento final do lote.
           </div>
         </button>
@@ -196,7 +196,7 @@ export function OperatorRanking({ batches = [], marketplace = null, compact = fa
   const topN = compact ? 4 : 5
 
   return (
-    <div className={cn("panel-elevated", compact ? "p-3" : "p-3.5 md:p-4")}>
+    <div className={cn("panel-elevated bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)]", compact ? "p-3" : "p-3.5 md:p-4")}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
           <BarChart3 size={20} className="text-slate-700" /> Performance de Operadores
@@ -206,7 +206,7 @@ export function OperatorRanking({ batches = [], marketplace = null, compact = fa
         </span>
       </div>
 
-      <div className={cn("action-rail flex flex-wrap gap-2", compact ? "mb-2" : "mb-3")}>
+      <div className={cn("action-rail bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] flex flex-wrap gap-2", compact ? "mb-2" : "mb-3")}>
         <button
           onClick={() => setSelectedBatch(null)}
           className={cn(
@@ -249,7 +249,7 @@ export function OperatorRanking({ batches = [], marketplace = null, compact = fa
           Nenhum volume separado ainda.
         </div>
       ) : (
-        <div className={cn("chart-card", compact ? "p-2" : "p-2.5")}>
+        <div className={cn("chart-card bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)]", compact ? "p-2" : "p-2.5")}>
           <p className="section-kicker mb-2">Ranking de Produção</p>
           <div className="space-y-2">
             {sorted.slice(0, topN).map((op, idx) => {
@@ -913,7 +913,7 @@ function MlFullPlanningSection() {
             { label: 'Produtos planejados', value: totals.products.toLocaleString('pt-BR'), icon: Package },
             { label: 'Unidades enviadas', value: totals.units.toLocaleString('pt-BR'), icon: CheckCircle },
           ].map(({ label, value, icon: Icon }) => (
-            <div key={label} className="rounded-xl border border-slate-300 bg-white p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.06),0_8px_18px_rgba(15,23,42,0.04)]">
+            <div key={label} className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] p-3.5 shadow-[0_1px_0_rgba(15,23,42,0.06),0_8px_18px_rgba(15,23,42,0.04)]">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] uppercase tracking-[0.2em] font-black text-slate-600">{label}</span>
                 <Icon size={15} className="text-slate-400" />

@@ -92,7 +92,7 @@ textarea {
 }
 
 .panel-elevated {
-  @apply bg-white border border-slate-200/80 rounded-2xl shadow-[0_14px_30px_rgba(15,23,42,0.08)];
+  @apply bg-white border border-slate-400 rounded-2xl shadow-[0_14px_30px_rgba(15,23,42,0.08)];
 }
 
 .badge-soft {
@@ -108,7 +108,7 @@ textarea {
 }
 
 .metric-tile {
-  @apply bg-white border border-slate-200 rounded-xl p-4 shadow-sm;
+  @apply bg-white border border-slate-400 rounded-xl p-4 shadow-sm;
 }
 
 .metric-label {
@@ -120,11 +120,11 @@ textarea {
 }
 
 .chart-card {
-  @apply bg-white border border-slate-200 rounded-xl p-4 shadow-sm;
+  @apply bg-white border border-slate-400 rounded-xl p-4 shadow-sm;
 }
 
 .action-rail {
-  @apply bg-white/80 backdrop-blur border border-slate-200 rounded-2xl p-3 shadow-sm;
+  @apply bg-white/80 backdrop-blur border border-slate-400 rounded-2xl p-3 shadow-sm;
 }
 
 .compact-density .panel-elevated {
