@@ -4,7 +4,7 @@ import novaesLogo from '../assets/logo-novaes-v3.png'
 import {
   Home, PackageSearch, Users, AlertCircle, LogOut, Database,
   LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList, CalendarCheck,
-  Pin, PinOff, Menu
+  Pin, PinOff
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -115,50 +115,51 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row font-sans text-slate-900">
       
-      {/* TRIGGER ZONE — borda esquerda (desktop, só quando sidebar fechada) */}
-      {!sidebarVisible && (
-        <div
-          onMouseEnter={openSidebar}
-          onClick={openSidebar}
-          className="hidden lg:flex fixed left-0 top-0 bottom-0 w-2 hover:w-3 z-30 bg-cyan-500/10 hover:bg-cyan-500/30 transition-all cursor-pointer items-center justify-center group"
-          title="Abrir menu"
-        >
-          <Menu size={14} className="text-cyan-300/0 group-hover:text-cyan-200 transition-colors" />
-        </div>
-      )}
-
-      {/* SIDEBAR DESKTOP */}
+      {/* SIDEBAR DESKTOP — rail colapsada (w-16) + hover expande pra w-72 (overlay) */}
       <aside
-        onMouseEnter={cancelClose}
+        onMouseEnter={openSidebar}
         onMouseLeave={scheduleClose}
         className={cn(
-          "hidden lg:flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-20 transition-all duration-300 text-slate-200 overflow-hidden",
-          sidebarVisible ? "w-72" : "w-0 border-r-0"
+          "hidden lg:flex fixed left-0 top-0 bottom-0 flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-blue-950 border-r border-slate-800 shadow-[0_16px_34px_rgba(2,6,23,0.35)] z-30 transition-[width] duration-300 text-slate-200 overflow-hidden",
+          sidebarVisible ? "w-72" : "w-16"
         )}
       >
-        <div className="relative flex flex-col items-center px-6 py-8 border-b border-slate-800 gap-4 min-w-[18rem]">
-          <button
-            onClick={togglePin}
-            title={sidebarPinned ? "Desafixar menu" : "Fixar menu"}
-            className={cn(
-              "absolute top-3 right-3 p-1.5 rounded-lg transition-colors",
-              sidebarPinned
-                ? "bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30"
-                : "text-slate-500 hover:text-cyan-300 hover:bg-slate-800"
-            )}
-          >
-            {sidebarPinned ? <Pin size={14} /> : <PinOff size={14} />}
-          </button>
-          <div className="w-24 h-24 flex items-center justify-center group overflow-visible">
+        <div className={cn(
+          "relative flex flex-col items-center border-b border-slate-800 gap-4",
+          sidebarVisible ? "px-6 py-8 min-w-[18rem]" : "px-2 py-4"
+        )}>
+          {sidebarVisible && (
+            <button
+              onClick={togglePin}
+              title={sidebarPinned ? "Desafixar menu" : "Fixar menu"}
+              className={cn(
+                "absolute top-3 right-3 p-1.5 rounded-lg transition-colors",
+                sidebarPinned
+                  ? "bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30"
+                  : "text-slate-500 hover:text-cyan-300 hover:bg-slate-800"
+              )}
+            >
+              {sidebarPinned ? <Pin size={14} /> : <PinOff size={14} />}
+            </button>
+          )}
+          <div className={cn(
+            "flex items-center justify-center group overflow-visible",
+            sidebarVisible ? "w-24 h-24" : "w-10 h-10"
+          )}>
              <img src={novaesLogo} alt="NVS Logo" className="w-full h-full object-contain drop-shadow-[0_15px_30px_rgba(59,130,246,0.2)] transition-transform duration-700 group-hover:scale-110" />
           </div>
-          <div className="text-center">
-            <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">NVS<span className="text-cyan-300 font-extrabold">·</span>WMS</h1>
-            <p className="text-[10px] font-semibold text-cyan-100 uppercase tracking-[0.22em] mt-2 px-3 py-1.5 bg-cyan-500/10 rounded-full inline-block border border-cyan-300/25">Novaes Moto Peças</p>
-          </div>
+          {sidebarVisible && (
+            <div className="text-center">
+              <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">NVS<span className="text-cyan-300 font-extrabold">·</span>WMS</h1>
+              <p className="text-[10px] font-semibold text-cyan-100 uppercase tracking-[0.22em] mt-2 px-3 py-1.5 bg-cyan-500/10 rounded-full inline-block border border-cyan-300/25">Novaes Moto Peças</p>
+            </div>
+          )}
         </div>
         
-        <div className="flex-1 overflow-y-auto py-6 px-3 flex flex-col gap-1.5 min-w-[18rem]">
+        <div className={cn(
+          "flex-1 overflow-y-auto py-6 flex flex-col gap-1.5",
+          sidebarVisible ? "px-3 min-w-[18rem]" : "px-2"
+        )}>
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
@@ -171,19 +172,21 @@ export default function Layout() {
               <div key={item.path} className="flex flex-col gap-1.5">
                 <button
                   onClick={() => handleNav(item)}
+                  title={!sidebarVisible ? item.label : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200",
+                    "flex items-center rounded-xl text-sm font-semibold transition-all duration-200",
+                    sidebarVisible ? "gap-3 px-3.5 py-3" : "justify-center px-2 py-3",
                     (isActive || isParentActive)
                       ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-md shadow-cyan-900/30"
                       : "text-slate-300 hover:bg-slate-800 hover:text-white"
                   )}
                 >
                   <Icon size={20} strokeWidth={(isActive || isParentActive) ? 2.5 : 2} />
-                  {item.label}
-                  {item.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
+                  {sidebarVisible && item.label}
+                  {sidebarVisible && item.newTab && <span className="ml-auto text-[9px] opacity-40">↗</span>}
                 </button>
 
-                {showInlineSubMenu && (
+                {sidebarVisible && showInlineSubMenu && (
                   <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-top-1 duration-300">
                     {subNavItems.map((sub) => {
                       const SubIcon = sub.icon
@@ -213,21 +216,33 @@ export default function Layout() {
 
         </div>
 
-        <div className="p-4 border-t border-slate-800 min-w-[18rem]">
-          <div className="flex items-center gap-3 px-3 py-3 rounded-xl bg-slate-800/80 border border-slate-700 mb-2">
-            <div className="w-8 h-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-sm uppercase">
+        <div className={cn(
+          "border-t border-slate-800",
+          sidebarVisible ? "p-4 min-w-[18rem]" : "p-2"
+        )}>
+          <div className={cn(
+            "flex items-center rounded-xl bg-slate-800/80 border border-slate-700 mb-2",
+            sidebarVisible ? "gap-3 px-3 py-3" : "justify-center py-2"
+          )} title={!sidebarVisible ? (operator?.name || 'Operador') : undefined}>
+            <div className="w-8 h-8 rounded-full bg-cyan-500 text-slate-950 flex items-center justify-center font-bold text-sm uppercase shrink-0">
               {operator?.name?.charAt(0) || 'O'}
             </div>
-            <div className="flex-1 overflow-hidden text-left">
-               <p className="text-sm font-semibold truncate text-slate-100">{operator?.name || 'Operador'}</p>
-            </div>
+            {sidebarVisible && (
+              <div className="flex-1 overflow-hidden text-left">
+                 <p className="text-sm font-semibold truncate text-slate-100">{operator?.name || 'Operador'}</p>
+              </div>
+            )}
           </div>
-          <button 
+          <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-300 hover:text-red-200 hover:bg-red-500/15 rounded-lg transition-colors"
+            title={!sidebarVisible ? "Sair" : undefined}
+            className={cn(
+              "w-full flex items-center text-sm font-medium text-slate-300 hover:text-red-200 hover:bg-red-500/15 rounded-lg transition-colors",
+              sidebarVisible ? "gap-3 px-3 py-2.5" : "justify-center py-2"
+            )}
           >
             <LogOut size={18} />
-            Sair
+            {sidebarVisible && "Sair"}
           </button>
         </div>
       </aside>
@@ -273,7 +288,7 @@ export default function Layout() {
 
       {/* RENDER PAGES HERE */}
       <main className={cn(
-        "flex-1 flex flex-col overflow-auto relative",
+        "flex-1 flex flex-col overflow-auto relative lg:ml-16",
         // Padding bottom no mobile SE não for tela de picking
         (!isPickingPage) && "pb-16 lg:pb-0"
       )}>
