@@ -100,8 +100,17 @@ export default function FinanceiroConfirmar() {
       <h1 className="text-xl font-bold mb-4">Confirmar boleto</h1>
 
       {duplicata && (
-        <div className="bg-amber-100 border border-amber-300 rounded p-3 mb-4 text-sm">
-          ⚠ Este boleto já foi registrado em {new Date(duplicata.capturado_em).toLocaleString('pt-BR')}.
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 mb-4">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center text-red-600 shrink-0 text-xl">
+              ⚠
+            </div>
+            <h2 className="text-lg font-bold text-red-700">Este boleto já consta registrado</h2>
+          </div>
+          <p className="text-sm text-red-700/80 ml-13">
+            Capturado em {new Date(duplicata.capturado_em).toLocaleString('pt-BR')}.
+            Não é possível salvar a mesma cobrança duas vezes.
+          </p>
         </div>
       )}
       {dados.dv_ok === false && (

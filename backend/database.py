@@ -620,5 +620,7 @@ def init_db():
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_status ON boletos(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_vencimento ON boletos(vencimento)"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_codigo ON boletos(codigo_barras)"))
+        # UNIQUE no codigo_barras garante que o mesmo boleto não seja registrado 2x
+        # mesmo em condição de corrida (dois requests simultâneos).
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_boletos_codigo_unique ON boletos(codigo_barras)"))
         conn.commit()

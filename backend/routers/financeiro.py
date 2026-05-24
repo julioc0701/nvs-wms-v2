@@ -3,6 +3,7 @@ from datetime import date as DateType, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
 from models import Boleto, BoletoBeneficiario
@@ -125,15 +126,13 @@ def criar_boleto(body: CriarBoletoRequest, db: DBSession = Depends(get_db)):
 
     existente = db.query(Boleto).filter(Boleto.codigo_barras == parsed.codigo_barras).first()
     if existente:
+        from models import Operator
+        cap = db.query(Operator).filter_by(id=existente.capturado_por).first()
+        quem = cap.name if cap else "operador desconhecido"
+        quando = existente.capturado_em.strftime("%d/%m/%Y %H:%M")
         raise HTTPException(
             status_code=409,
-            detail={
-                "boleto_existente": {
-                    "id": existente.id,
-                    "capturado_em": existente.capturado_em.isoformat(),
-                    "capturado_por_id": existente.capturado_por,
-                }
-            },
+            detail=f"Este boleto já consta registrado (capturado por {quem} em {quando}).",
         )
 
     benef_id = body.beneficiario_id
@@ -172,7 +171,16 @@ def criar_boleto(body: CriarBoletoRequest, db: DBSession = Depends(get_db)):
         capturado_em=datetime.utcnow(),
     )
     db.add(boleto)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        # Race condition: dois requests simultâneos tentaram salvar o mesmo boleto.
+        # O UNIQUE no codigo_barras impede a duplicação no banco.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Este boleto já consta registrado.",
+        )
 
     if body.foto_base64:
         nome_arquivo = salvar_foto_base64(boleto.id, body.foto_base64)
