@@ -43,3 +43,9 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Virtual env
+.venv/
+
+# Runtime PID/log dir do start.sh
+.run/

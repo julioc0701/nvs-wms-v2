@@ -6,16 +6,28 @@ Boletos de arrecadação (primeiro dígito = 8) NÃO são suportados — lançam
 from datetime import date, timedelta
 
 
-# Base FEBRABAN: fator 1000 corresponde a 03/07/2000.
+# Base FEBRABAN antiga: fator 1000 = 03/07/2000.
+# Em 2025-02-21 o fator atingiu 9999 e foi feito o wrap.
+# Base nova: fator 1000 = 22/02/2025.
 _BASE_FATOR = 1000
-_BASE_DATA = date(2000, 7, 3)
+_BASE_DATA_ANTIGA = date(2000, 7, 3)
+_BASE_DATA_NOVA = date(2025, 2, 22)
 
 
 def fator_para_data(fator: int) -> date:
-    """Converte fator de vencimento (4 dígitos do código de barras) para data."""
+    """Converte fator de vencimento (4 dígitos do código de barras) para data.
+
+    Lida com o wraparound de 2025-02-21: se a data calculada com a base antiga
+    cair mais de 1 ano antes de hoje, assume base nova (pós-wrap).
+    """
     if fator < 0:
         raise ValueError(f"Fator inválido: {fator}")
-    return _BASE_DATA + timedelta(days=fator - _BASE_FATOR)
+    data_antiga = _BASE_DATA_ANTIGA + timedelta(days=fator - _BASE_FATOR)
+    hoje = date.today()
+    if data_antiga < hoje - timedelta(days=365):
+        # Provavelmente boleto pós-wrap usando a base nova.
+        return _BASE_DATA_NOVA + timedelta(days=fator - _BASE_FATOR)
+    return data_antiga
 
 
 def dv_mod10(campo: str) -> int:
@@ -155,10 +167,7 @@ def parse_boleto(entrada: str) -> BoletoParsed:
 
     codigo_sem_dv = codigo[0:4] + codigo[5:44]
     dv_geral_calculado = dv_mod11_codigo_barras(codigo_sem_dv)
-    if dv_geral_informado != dv_geral_calculado:
-        raise BoletoInvalidoError(
-            f"DV geral inválido: esperado {dv_geral_calculado}, encontrado {dv_geral_informado}"
-        )
+    dv_ok = dv_geral_informado == dv_geral_calculado
 
     valor = Decimal(valor_cent) / Decimal(100)
     vencimento = fator_para_data(fator)
@@ -171,5 +180,5 @@ def parse_boleto(entrada: str) -> BoletoParsed:
         valor=valor,
         vencimento=vencimento,
         campo_livre=campo_livre,
-        dv_ok=True,
+        dv_ok=dv_ok,
     )

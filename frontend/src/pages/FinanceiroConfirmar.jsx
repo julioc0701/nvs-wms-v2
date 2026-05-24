@@ -104,6 +104,11 @@ export default function FinanceiroConfirmar() {
           ⚠ Este boleto já foi registrado em {new Date(duplicata.capturado_em).toLocaleString('pt-BR')}.
         </div>
       )}
+      {dados.dv_ok === false && (
+        <div className="bg-orange-100 border border-orange-300 rounded p-3 mb-4 text-sm">
+          ⚠ DV do código não bate — pode ser typo ou erro de leitura. Confira valor e vencimento antes de salvar.
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-4 mb-4 space-y-3">
         <Linha label="Banco" valor={`${dados.banco} — ${nomeBanco(dados.banco)}`} />

@@ -79,24 +79,27 @@ def test_dv_mod11_rejeita_tamanho_errado():
 # ── Fator vencimento → data ───────────────────────────────────────────────────
 
 
-def test_fator_para_data_base_oficial():
-    """Base FEBRABAN moderna: fator 1000 = 03/07/2000."""
+def test_fator_para_data_usa_base_nova_pos_wrap():
+    """
+    Após o wrap de 2025-02-21, FEBRABAN definiu fator 1000 = 22/02/2025.
+    Como hoje (>2026) é muito posterior à base antiga, o parser opta pela nova.
+    """
     from datetime import date
     from services.boleto_parser import fator_para_data
-    assert fator_para_data(1000) == date(2000, 7, 3)
+    assert fator_para_data(1000) == date(2025, 2, 22)
 
 
 def test_fator_para_data_dia_seguinte():
     from datetime import date
     from services.boleto_parser import fator_para_data
-    assert fator_para_data(1001) == date(2000, 7, 4)
+    assert fator_para_data(1001) == date(2025, 2, 23)
 
 
-def test_fator_para_data_3380_resulta_em_2009():
+def test_fator_para_data_3380_no_futuro():
     """Caso usado no teste de construção de boleto fictício."""
     from datetime import date, timedelta
     from services.boleto_parser import fator_para_data
-    esperado = date(2000, 7, 3) + timedelta(days=2380)
+    esperado = date(2025, 2, 22) + timedelta(days=2380)
     assert fator_para_data(3380) == esperado
 
 
@@ -117,7 +120,7 @@ def test_parse_boleto_a_partir_do_codigo_de_barras():
     assert r.codigo_barras == codigo
     assert r.banco == "237"
     assert r.valor == Decimal("100.05")
-    assert r.vencimento == date(2000, 7, 3) + timedelta(days=2380)
+    assert r.vencimento == date(2025, 2, 22) + timedelta(days=2380)
     assert r.campo_livre == "0" * 25
     assert r.dv_ok is True
     # Linha digitável tem 47 dígitos
@@ -161,12 +164,13 @@ def test_parse_boleto_arrecadacao_lanca_erro():
         parse_boleto("8" + "0" * 43)
 
 
-def test_parse_boleto_dv_invalido_lanca_erro():
-    """Troca DV geral por valor errado."""
-    from services.boleto_parser import parse_boleto, BoletoInvalidoError
+def test_parse_boleto_dv_invalido_retorna_dv_ok_false():
+    """Boleto com DV geral errado é parseado mesmo assim, com dv_ok=False."""
+    from services.boleto_parser import parse_boleto
     codigo_dv_errado = "237" + "9" + "1" + "3380" + "0000010005" + ("0" * 25)
-    with pytest.raises(BoletoInvalidoError, match="DV"):
-        parse_boleto(codigo_dv_errado)
+    r = parse_boleto(codigo_dv_errado)
+    assert r.dv_ok is False
+    assert r.banco == "237"
 
 
 def test_parse_boleto_tamanho_invalido_lanca_erro():
