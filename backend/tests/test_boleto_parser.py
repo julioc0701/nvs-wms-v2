@@ -74,3 +74,29 @@ def test_dv_mod11_rejeita_tamanho_errado():
     from services.boleto_parser import dv_mod11_codigo_barras
     with pytest.raises(ValueError):
         dv_mod11_codigo_barras("123")
+
+
+# ── Fator vencimento → data ───────────────────────────────────────────────────
+
+
+def test_fator_para_data_base_oficial():
+    """Base FEBRABAN moderna: fator 1000 = 03/07/2000."""
+    from datetime import date
+    from services.boleto_parser import fator_para_data
+    assert fator_para_data(1000) == date(2000, 7, 3)
+
+
+def test_fator_para_data_dia_seguinte():
+    from datetime import date
+    from services.boleto_parser import fator_para_data
+    assert fator_para_data(1001) == date(2000, 7, 4)
+
+
+def test_fator_para_data_3380_resulta_em_2009():
+    """Caso usado no teste de construção de boleto fictício."""
+    from datetime import date
+    from services.boleto_parser import fator_para_data
+    # 3380 - 1000 = 2380 dias após 03/07/2000 = 15/01/2007
+    # Conferindo: 2380 / 365.25 ≈ 6.52 anos.
+    esperado = date(2000, 7, 3) + __import__('datetime').timedelta(days=2380)
+    assert fator_para_data(3380) == esperado

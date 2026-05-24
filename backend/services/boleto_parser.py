@@ -3,6 +3,19 @@
 Cobre apenas boletos bancários (primeiros 3 dígitos = código do banco).
 Boletos de arrecadação (primeiro dígito = 8) NÃO são suportados — lançam BoletoInvalidoError.
 """
+from datetime import date, timedelta
+
+
+# Base FEBRABAN: fator 1000 corresponde a 03/07/2000.
+_BASE_FATOR = 1000
+_BASE_DATA = date(2000, 7, 3)
+
+
+def fator_para_data(fator: int) -> date:
+    """Converte fator de vencimento (4 dígitos do código de barras) para data."""
+    if fator < 0:
+        raise ValueError(f"Fator inválido: {fator}")
+    return _BASE_DATA + timedelta(days=fator - _BASE_FATOR)
 
 
 def dv_mod10(campo: str) -> int:
