@@ -222,6 +222,28 @@ export const api = {
   getHealth: () => req('GET', '/health'),
   chatWithGemma: (messages) => req('POST', '/v2/ai/chat', { messages }),
   
+  // Financeiro — Boletos
+  scanBoleto: (codigoOuLinha) =>
+    req('POST', '/financeiro/boletos/scan', { codigo_ou_linha: codigoOuLinha }),
+  criarBoleto: (data) => req('POST', '/financeiro/boletos', data),
+  listarBoletos: (filtros = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filtros).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') params.append(k, v)
+    })
+    const qs = params.toString()
+    return req('GET', `/financeiro/boletos${qs ? `?${qs}` : ''}`)
+  },
+  detalharBoleto: (id) => req('GET', `/financeiro/boletos/${id}`),
+  editarBoleto: (id, data) => req('PATCH', `/financeiro/boletos/${id}`, data),
+  pagarBoleto: (id, operatorId) =>
+    req('POST', `/financeiro/boletos/${id}/pagar`, { operator_id: operatorId }),
+  reabrirBoleto: (id) => req('POST', `/financeiro/boletos/${id}/reabrir`),
+  excluirBoleto: (id) => req('DELETE', `/financeiro/boletos/${id}`),
+  listarBeneficiarios: (q = '') =>
+    req('GET', `/financeiro/beneficiarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  fotoBoletoUrl: (id) => `${BASE}/financeiro/foto/${id}`,
+
   // Generic Helpers
   get: (path) => req('GET', path),
   post: (path, body) => req('POST', path, body)
