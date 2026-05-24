@@ -94,9 +94,82 @@ def test_fator_para_data_dia_seguinte():
 
 def test_fator_para_data_3380_resulta_em_2009():
     """Caso usado no teste de construção de boleto fictício."""
-    from datetime import date
+    from datetime import date, timedelta
     from services.boleto_parser import fator_para_data
-    # 3380 - 1000 = 2380 dias após 03/07/2000 = 15/01/2007
-    # Conferindo: 2380 / 365.25 ≈ 6.52 anos.
-    esperado = date(2000, 7, 3) + __import__('datetime').timedelta(days=2380)
+    esperado = date(2000, 7, 3) + timedelta(days=2380)
     assert fator_para_data(3380) == esperado
+
+
+# ── parse_boleto (função pública unificada) ──────────────────────────────────
+
+
+def test_parse_boleto_a_partir_do_codigo_de_barras():
+    """Boleto fictício Bradesco com DV mod 11 = 5 (calculado no teste anterior)."""
+    from datetime import date, timedelta
+    from decimal import Decimal
+    from services.boleto_parser import parse_boleto
+
+    # Banco=237, moeda=9, DV=5, fator=3380, valor=0000010005 (R$ 100,05), livre=25 zeros
+    codigo = "237" + "9" + "5" + "3380" + "0000010005" + ("0" * 25)
+    assert len(codigo) == 44
+
+    r = parse_boleto(codigo)
+    assert r.codigo_barras == codigo
+    assert r.banco == "237"
+    assert r.valor == Decimal("100.05")
+    assert r.vencimento == date(2000, 7, 3) + timedelta(days=2380)
+    assert r.campo_livre == "0" * 25
+    assert r.dv_ok is True
+    # Linha digitável tem 47 dígitos
+    assert len(r.linha_digitavel) == 47
+
+
+def test_parse_boleto_a_partir_da_linha_digitavel():
+    """Linha digitável gerada a partir do mesmo código fictício acima.
+
+    Campos:
+      Campo 1 (banco_moeda + livre_1-5 + DV): "23790000 0" → DV mod10 de "237900000" = 9
+      Campo 2 (livre_6-15 + DV):              "0000000000 0"
+      Campo 3 (livre_16-25 + DV):             "0000000000 0"
+      DV geral: 5
+      Fator + valor: "3380 0000010005"
+    """
+    from services.boleto_parser import parse_boleto
+
+    linha = "2379000009" + "00000000000" + "00000000000" + "5" + "33800000010005"
+    assert len(linha) == 47
+    r = parse_boleto(linha)
+    assert r.banco == "237"
+    assert r.dv_ok is True
+
+
+def test_parse_boleto_remove_espacos_e_pontos():
+    from services.boleto_parser import parse_boleto
+
+    # Mesma linha "2379000009 00000000000 00000000000 5 33800000010005" formatada
+    # como aparece num boleto físico (47 dígitos no total).
+    linha_suja = "  23790.00009 00000.000000 00000.000000 5 33800000010005  "
+    r = parse_boleto(linha_suja)
+    assert r.banco == "237"
+    assert r.dv_ok is True
+
+
+def test_parse_boleto_arrecadacao_lanca_erro():
+    """Boletos de arrecadação começam com 8 → fora de escopo no MVP."""
+    from services.boleto_parser import parse_boleto, BoletoInvalidoError
+    with pytest.raises(BoletoInvalidoError, match="arrecada"):
+        parse_boleto("8" + "0" * 43)
+
+
+def test_parse_boleto_dv_invalido_lanca_erro():
+    """Troca DV geral por valor errado."""
+    from services.boleto_parser import parse_boleto, BoletoInvalidoError
+    codigo_dv_errado = "237" + "9" + "1" + "3380" + "0000010005" + ("0" * 25)
+    with pytest.raises(BoletoInvalidoError, match="DV"):
+        parse_boleto(codigo_dv_errado)
+
+
+def test_parse_boleto_tamanho_invalido_lanca_erro():
+    from services.boleto_parser import parse_boleto, BoletoInvalidoError
+    with pytest.raises(BoletoInvalidoError, match="tamanho"):
+        parse_boleto("123")

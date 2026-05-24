@@ -57,3 +57,119 @@ def dv_mod11_codigo_barras(codigo_sem_dv: str) -> int:
     resto = soma % 11
     dv = 11 - resto
     return 1 if dv in (0, 10, 11) else dv
+
+
+# ── parse_boleto (função pública unificada) ──────────────────────────────────
+from dataclasses import dataclass
+from decimal import Decimal
+
+
+class BoletoInvalidoError(ValueError):
+    """Erro ao parsear código de barras / linha digitável de boleto."""
+
+
+@dataclass(frozen=True)
+class BoletoParsed:
+    codigo_barras: str
+    linha_digitavel: str
+    banco: str
+    valor: Decimal
+    vencimento: date
+    campo_livre: str
+    dv_ok: bool
+
+
+def _so_digitos(s: str) -> str:
+    return "".join(ch for ch in s if ch.isdigit())
+
+
+def _linha_digitavel_para_codigo_barras(linha: str) -> str:
+    """Converte uma linha digitável de 47 dígitos no código de barras de 44 dígitos.
+
+    Layout (sem espaços/pontos):
+        AAA B CCCCC D CCCCCCCCCC E CCCCCCCCCC F G HHHH VVVVVVVVVV
+        (3) (1) (5) (1) (10)    (1) (10)    (1)(1)(4) (10)
+    Onde D,E,F = DVs mod10 dos campos 1,2,3 e G = DV geral mod11.
+    """
+    if len(linha) != 47:
+        raise BoletoInvalidoError(f"Linha digitável deve ter 47 dígitos, recebeu {len(linha)}")
+    campo1 = linha[0:9]    # banco(3)+moeda(1)+livre[1-5]
+    # DV campo1 em linha[9]
+    campo2 = linha[10:20]  # livre[6-15]
+    # DV campo2 em linha[20]
+    campo3 = linha[21:31]  # livre[16-25]
+    # DV campo3 em linha[31]
+    dv_geral = linha[32]
+    fator_valor = linha[33:47]
+
+    banco_moeda = campo1[0:4]
+    livre_1_5 = campo1[4:9]
+    livre_6_25 = campo2 + campo3
+    return banco_moeda + dv_geral + fator_valor + livre_1_5 + livre_6_25
+
+
+def _codigo_barras_para_linha_digitavel(codigo: str) -> str:
+    """Converte código de barras de 44 dígitos na linha digitável de 47 dígitos."""
+    banco_moeda = codigo[0:4]
+    dv_geral = codigo[4]
+    fator_valor = codigo[5:19]
+    livre_1_5 = codigo[19:24]
+    livre_6_15 = codigo[24:34]
+    livre_16_25 = codigo[34:44]
+
+    campo1 = banco_moeda + livre_1_5
+    campo2 = livre_6_15
+    campo3 = livre_16_25
+    return (
+        campo1 + str(dv_mod10(campo1))
+        + campo2 + str(dv_mod10(campo2))
+        + campo3 + str(dv_mod10(campo3))
+        + dv_geral
+        + fator_valor
+    )
+
+
+def parse_boleto(entrada: str) -> BoletoParsed:
+    """Parseia código de barras (44 díg) ou linha digitável (47 díg) de boleto bancário.
+
+    Levanta BoletoInvalidoError em caso de tamanho errado, DV inválido ou boleto de arrecadação.
+    """
+    digitos = _so_digitos(entrada)
+    if len(digitos) == 44:
+        codigo = digitos
+    elif len(digitos) == 47:
+        codigo = _linha_digitavel_para_codigo_barras(digitos)
+    else:
+        raise BoletoInvalidoError(
+            f"tamanho inválido: esperado 44 ou 47 dígitos, recebeu {len(digitos)}"
+        )
+
+    if codigo[0] == "8":
+        raise BoletoInvalidoError("Boletos de arrecadação não são suportados no MVP")
+
+    banco = codigo[0:3]
+    dv_geral_informado = int(codigo[4])
+    fator = int(codigo[5:9])
+    valor_cent = int(codigo[9:19])
+    campo_livre = codigo[19:44]
+
+    codigo_sem_dv = codigo[0:4] + codigo[5:44]
+    dv_geral_calculado = dv_mod11_codigo_barras(codigo_sem_dv)
+    if dv_geral_informado != dv_geral_calculado:
+        raise BoletoInvalidoError(
+            f"DV geral inválido: esperado {dv_geral_calculado}, encontrado {dv_geral_informado}"
+        )
+
+    valor = Decimal(valor_cent) / Decimal(100)
+    vencimento = fator_para_data(fator)
+    linha_digitavel = _codigo_barras_para_linha_digitavel(codigo)
+
+    return BoletoParsed(
+        codigo_barras=codigo,
+        linha_digitavel=linha_digitavel,
+        banco=banco,
+        valor=valor,
+        vencimento=vencimento,
+        campo_livre=campo_livre,
+        dv_ok=True,
+    )
