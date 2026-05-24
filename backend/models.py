@@ -449,3 +449,39 @@ class MercadoLivreFullAgentState(Base):
     status: Mapped[str] = mapped_column(String(30), default="offline")
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+# ── FINANCEIRO — BOLETOS A PAGAR ──────────────────────────────────────────────
+
+
+class BoletoBeneficiario(Base):
+    """Cadastro de beneficiários aprendidos a partir do primeiro scan."""
+    __tablename__ = "boleto_beneficiarios"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    razao_social: Mapped[str] = mapped_column(String(200), nullable=False)
+    banco: Mapped[str] = mapped_column(String(3), nullable=False)
+    campo_livre_prefix: Mapped[str] = mapped_column(String(6), nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    criado_por: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
+
+
+class Boleto(Base):
+    """Boleto a pagar registrado via scan mobile."""
+    __tablename__ = "boletos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    codigo_barras: Mapped[str] = mapped_column(String(44), nullable=False)
+    linha_digitavel: Mapped[str] = mapped_column(String(47), nullable=False)
+    banco_emissor: Mapped[str] = mapped_column(String(3), nullable=False)
+    valor: Mapped[float] = mapped_column(Float, nullable=False)
+    vencimento: Mapped[date] = mapped_column(Date, nullable=False)
+    beneficiario_id: Mapped[int | None] = mapped_column(ForeignKey("boleto_beneficiarios.id"))
+    beneficiario_texto: Mapped[str | None] = mapped_column(String(200))
+    observacao: Mapped[str | None] = mapped_column(Text)
+    foto_path: Mapped[str | None] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default="registrado")
+    capturado_por: Mapped[int] = mapped_column(ForeignKey("operators.id"), nullable=False)
+    capturado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    pago_em: Mapped[datetime | None] = mapped_column(DateTime)
+    pago_por: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
