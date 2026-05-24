@@ -38,7 +38,11 @@ warehouse-picker v2/
 │   │   ├── labels.py              ← ZPL manual, mark-printed
 │   │   ├── stats.py               ← Ranking de operadores
 │   │   ├── printers.py            ← CRUD de impressoras cadastradas
-│   │   └── tiny.py                ← INTEGRAÇÃO TINY (Separação, Picking, ERP Send)
+│   │   ├── tiny.py                ← INTEGRAÇÃO TINY (Separação, Picking, ERP Send)
+│   │   └── financeiro.py          ← Boletos a pagar (scan, lista, pagar)
+│   ├── services/
+│   │   ├── boleto_parser.py       ← Parser FEBRABAN (puro, com testes)
+│   │   └── boleto_storage.py      ← Fotos de boletos em /data/boletos
 │   └── warehouse_v3_local.db      ← Banco LOCAL (seed para produção)
 │
 ├── frontend/
@@ -55,7 +59,10 @@ warehouse-picker v2/
 │           ├── Supervisor.jsx           ← Painel supervisor
 │           ├── MasterData.jsx           ← CRUD de produtos e barcodes
 │           ├── ShortageReport.jsx       ← Relatório de faltas
-│           └── OperatorsManagement.jsx  ← Gestão de operadores
+│           ├── OperatorsManagement.jsx  ← Gestão de operadores
+│           ├── FinanceiroScan.jsx       ← Scan mobile boletos (ZXing)
+│           ├── FinanceiroConfirmar.jsx  ← Confirmação pós-scan
+│           └── FinanceiroPainel.jsx     ← Painel desktop Master (boletos)
 │
 ├── print-agent/
 │   ├── agent.py                   ← Código fonte do agente de impressão
@@ -91,6 +98,12 @@ warehouse-picker v2/
 | `tiny_separation_headers` | id, separation_id (unique), numero, destinatario, numero_ec, data_emissao, prazo_maximo, id_forma_envio, forma_envio_descricao, numero_pedido, updated_at | Cache de display dos docs do Tiny |
 | `tiny_separation_item_cache` | id, separation_id, sku, description, quantity, location, cached_at | Cache de itens por separação (TTL 6h) |
 | `tiny_erp_send_logs` | id, separation_id, triggered_by, status, response_json, error_message, sent_at | Auditoria de envios ERP. `triggered_by`: `manual`/`auto`. `status`: `success`/`error` |
+
+### Financeiro — Boletos a Pagar
+| Tabela | Campos principais | Descrição |
+|---|---|---|
+| `boletos` | id, codigo_barras (44), linha_digitavel (47), banco_emissor, valor, vencimento, beneficiario_id, beneficiario_texto, observacao, foto_path, status (registrado/pago), capturado_por, capturado_em, pago_em, pago_por | Boletos registrados via scan mobile |
+| `boleto_beneficiarios` | id, razao_social, banco, campo_livre_prefix (6), criado_em, criado_por | Aprendizado de empresas. UNIQUE em (banco, campo_livre_prefix) |
 
 ### Tiny ERP — Sync de Pedidos
 | Tabela | Campos principais | Descrição |
@@ -150,6 +163,22 @@ warehouse-picker v2/
 | GET | `/resolve?barcode=` | Resolve EAN para SKU |
 | GET | `/` | Lista todos os produtos |
 | POST | `/product` | Cria produto manual |
+
+### Financeiro `/api/financeiro`
+| Método | Rota | O que faz |
+|---|---|---|
+| POST | `/boletos/scan` | Parseia código (sem salvar), sugere beneficiário, sinaliza duplicata |
+| POST | `/boletos` | Salva boleto + cria beneficiário se novo. 409 em duplicata |
+| GET | `/boletos` | Lista com filtros (status, vencimento, beneficiario_id, valor min/max). Retorna `{boletos, total, valor_total}` |
+| GET | `/boletos/{id}` | Detalhe completo |
+| PATCH | `/boletos/{id}` | Edita empresa/observação |
+| POST | `/boletos/{id}/pagar` | Marca como pago |
+| POST | `/boletos/{id}/reabrir` | Reverte para registrado |
+| DELETE | `/boletos/{id}` | Remove registro + foto (Master only) |
+| GET | `/beneficiarios?q=` | Autocomplete de empresas |
+| GET | `/foto/{boleto_id}` | Stream da foto JPG anexada |
+
+Parser FEBRABAN em `services/boleto_parser.py` (puro, 18 testes unitários). Aprendizado de beneficiário por `(banco, primeiros 6 dígitos do campo livre)`.
 
 ---
 
