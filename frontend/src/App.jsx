@@ -16,6 +16,9 @@ import PickingListsHistory from './pages/PickingListsHistory'
 import PickingListDetail from './pages/PickingListDetail'
 import LandingNVS from './pages/LandingNVS'
 import SiteNJS from './pages/SiteNJS'
+import FinanceiroScan from './pages/FinanceiroScan'
+import FinanceiroConfirmar from './pages/FinanceiroConfirmar'
+import FinanceiroPainel from './pages/FinanceiroPainel'
 
 function AppRoutes() {
   const location = useLocation()
@@ -42,6 +45,9 @@ function AppRoutes() {
           <Route path="/separacao/listas" element={<PickingListsHistory />} />
           <Route path="/separacao/listas/:listId" element={<PickingListDetail />} />
           <Route path="/shortage-report" element={<ShortageReport />} />
+          <Route path="/financeiro" element={<FinanceiroPainel />} />
+          <Route path="/financeiro/scan" element={<FinanceiroScan />} />
+          <Route path="/financeiro/confirmar" element={<FinanceiroConfirmar />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
