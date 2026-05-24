@@ -134,18 +134,20 @@ export default function FinanceiroScan() {
 /**
  * Formata uma linha digitável (47 dígitos) no padrão do boleto físico:
  * "23792.37213 90016.790967 25000.527306 3 14580000058182"
+ * Estrutura: 5.5 (10) + 5.6 (11) + 5.6 (11) + 1 (DV) + 14 (fator+valor) = 47.
  * Aceita digitação incremental: vai inserindo separadores conforme o usuário digita.
  */
 function formatarLinhaDigitavel(raw) {
   const d = raw.replace(/\D/g, '')
+  // Limites cumulativos: 5, 10, 15, 21, 26, 32, 33, 47
   if (d.length <= 5) return d
   if (d.length <= 10) return `${d.slice(0, 5)}.${d.slice(5)}`
-  if (d.length <= 16) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10)}`
-  if (d.length <= 21) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 16)}.${d.slice(16)}`
-  if (d.length <= 27) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 16)}.${d.slice(16, 21)} ${d.slice(21)}`
-  if (d.length <= 32) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 16)}.${d.slice(16, 21)} ${d.slice(21, 27)}.${d.slice(27)}`
-  if (d.length <= 33) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 16)}.${d.slice(16, 21)} ${d.slice(21, 27)}.${d.slice(27, 32)} ${d.slice(32)}`
-  return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 16)}.${d.slice(16, 21)} ${d.slice(21, 27)}.${d.slice(27, 32)} ${d.slice(32, 33)} ${d.slice(33, 47)}`
+  if (d.length <= 15) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10)}`
+  if (d.length <= 21) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 15)}.${d.slice(15)}`
+  if (d.length <= 26) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 15)}.${d.slice(15, 21)} ${d.slice(21)}`
+  if (d.length <= 32) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 15)}.${d.slice(15, 21)} ${d.slice(21, 26)}.${d.slice(26)}`
+  if (d.length <= 33) return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 15)}.${d.slice(15, 21)} ${d.slice(21, 26)}.${d.slice(26, 32)} ${d.slice(32)}`
+  return `${d.slice(0, 5)}.${d.slice(5, 10)} ${d.slice(10, 15)}.${d.slice(15, 21)} ${d.slice(21, 26)}.${d.slice(26, 32)} ${d.slice(32, 33)} ${d.slice(33, 47)}`
 }
 
 function ScanManualFallback({ erro, onSubmit, onVoltar }) {
