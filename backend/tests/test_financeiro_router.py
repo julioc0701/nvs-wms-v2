@@ -1,10 +1,37 @@
-"""Testes de integração das rotas /api/financeiro."""
+"""Testes de integração das rotas /api/financeiro.
+
+IMPORTANTE: usa um DB SQLite isolado por sessão de teste (arquivo temporário)
+para NUNCA tocar no banco de desenvolvimento (`warehouse_v3_local.db`).
+"""
+import os
+import tempfile
 import pytest
 from fastapi.testclient import TestClient
 
 
 # Código fictício válido (DV mod 11 = 5) usado nos testes
 CODIGO_BOLETO_VALIDO = "237" + "9" + "5" + "3380" + "0000010005" + ("0" * 25)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolar_db():
+    """Aponta DATABASE_URL para um arquivo temporário ANTES de qualquer import do app."""
+    tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+    tmp.close()
+    os.environ['DATABASE_URL'] = f'sqlite:///{tmp.name}'
+    # Cria tabelas no DB temporário
+    from database import init_db
+    init_db()
+    # Garante operador Master pra testes que precisam dele
+    from database import get_db
+    from models import Operator
+    db = next(get_db())
+    if not db.query(Operator).filter_by(name='Master').first():
+        db.add(Operator(name='Master', pin_code='1234'))
+        db.commit()
+    db.close()
+    yield tmp.name
+    os.unlink(tmp.name)
 
 
 @pytest.fixture
@@ -28,7 +55,7 @@ def operator_id(db):
 
 @pytest.fixture(autouse=True)
 def limpar_tabelas(db):
-    """Limpa boletos + beneficiários antes de cada teste."""
+    """Limpa boletos + beneficiários antes de cada teste (DB já é isolado)."""
     from models import Boleto, BoletoBeneficiario
     db.query(Boleto).delete()
     db.query(BoletoBeneficiario).delete()
