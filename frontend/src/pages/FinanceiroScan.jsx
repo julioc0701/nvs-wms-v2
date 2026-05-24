@@ -10,25 +10,43 @@ export default function FinanceiroScan() {
   const controlsRef = useRef(null)
   const [erro, setErro] = useState(null)
   const [estado, setEstado] = useState('scanning') // scanning | processando | manual
+  const [cameraAtiva, setCameraAtiva] = useState(false)
 
   useEffect(() => {
     if (estado !== 'scanning') return
+
+    // Hints do ZXing — TRY_HARDER faz diferença grande pra códigos ITF de boleto.
     const hints = new Map()
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.ITF,
       BarcodeFormat.CODE_128,
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.EAN_13,
     ])
-    const reader = new BrowserMultiFormatReader(hints)
+    hints.set(DecodeHintType.TRY_HARDER, true)
+
+    // Time between frames (ms). Padrão 500; reduzimos pra 150 = mais tentativas.
+    const reader = new BrowserMultiFormatReader(hints, 150)
     let ultimoCodigo = null
     let mounted = true
 
+    // Pede câmera TRASEIRA em resolução alta — essencial pra ler código fino de boleto
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    }
+
     reader
-      .decodeFromVideoDevice(undefined, videoRef.current, (result, _err, controls) => {
+      .decodeFromConstraints(constraints, videoRef.current, (result, _err, controls) => {
         if (!mounted) {
           controls?.stop()
           return
         }
         controlsRef.current = controls
+        setCameraAtiva(true)
         if (!result) return
         const texto = result.getText()
         if (texto === ultimoCodigo) return
@@ -80,12 +98,26 @@ export default function FinanceiroScan() {
     <div className="fixed inset-0 bg-black z-50 flex flex-col">
       <div className="flex items-center justify-between p-4 text-white">
         <button onClick={() => navigate('/sessions')} className="text-sm">← Voltar</button>
-        <span className="text-sm">Aponte para o código de barras</span>
+        <span className="text-sm">
+          {cameraAtiva ? 'Aponte para o código de barras' : 'Iniciando câmera…'}
+        </span>
         <button onClick={() => setEstado('manual')} className="text-sm underline">Digitar</button>
       </div>
       <div className="relative flex-1 flex items-center justify-center">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-        <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-32 border-2 border-cyan-400 rounded-lg pointer-events-none" />
+        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+        {/* Mira do scanner */}
+        <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-32 border-2 border-cyan-400 rounded-lg pointer-events-none">
+          {/* Linha animada indicando que o scanner está lendo */}
+          {cameraAtiva && estado === 'scanning' && (
+            <div className="absolute inset-x-0 top-1/2 h-0.5 bg-cyan-400 shadow-[0_0_8px_2px_rgba(34,211,238,0.8)] animate-pulse" />
+          )}
+        </div>
+        {/* Dica abaixo da mira */}
+        {cameraAtiva && estado === 'scanning' && (
+          <div className="absolute bottom-24 inset-x-0 text-center text-white/80 text-xs px-6">
+            Mantenha o código de barras dentro do retângulo, parado, com boa iluminação.
+          </div>
+        )}
         {estado === 'processando' && (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
             Processando…
