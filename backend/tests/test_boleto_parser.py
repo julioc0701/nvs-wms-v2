@@ -36,3 +36,41 @@ def test_dv_mod10_rejeita_nao_digito():
     from services.boleto_parser import dv_mod10
     with pytest.raises(ValueError):
         dv_mod10("12345abc90")
+
+
+# ── DV mod 11 (DV geral do código de barras) ─────────────────────────────────
+
+
+def test_dv_mod11_todos_zeros_resulta_em_um():
+    """Soma 0 → resto 0 → DV bruto = 11 → wrap para 1."""
+    from services.boleto_parser import dv_mod11_codigo_barras
+    assert dv_mod11_codigo_barras("0" * 43) == 1
+
+
+def test_dv_mod11_todos_uns():
+    """
+    43 dígitos '1', pesos cíclicos [2,3,4,5,6,7] R→L.
+    Cada ciclo de 6 pos: soma = 2+3+4+5+6+7 = 27.
+    7 ciclos completos (42 pos) + 1 pos extra (peso 2) = 7*27 + 2 = 191.
+    191 % 11 = 4; DV = 11 - 4 = 7.
+    """
+    from services.boleto_parser import dv_mod11_codigo_barras
+    assert dv_mod11_codigo_barras("1" * 43) == 7
+
+
+def test_dv_mod11_boleto_construido_manualmente():
+    """
+    Boleto fictício: banco=237, moeda=9, fator=3380, valor=0000010005, livre=25 zeros.
+    Código sem DV: "2379" + "3380" + "0000010005" + ("0" * 25)
+    Cálculo manual produz soma = 171, resto = 6, DV = 5.
+    """
+    from services.boleto_parser import dv_mod11_codigo_barras
+    codigo_sem_dv = "2379" + "3380" + "0000010005" + ("0" * 25)
+    assert len(codigo_sem_dv) == 43
+    assert dv_mod11_codigo_barras(codigo_sem_dv) == 5
+
+
+def test_dv_mod11_rejeita_tamanho_errado():
+    from services.boleto_parser import dv_mod11_codigo_barras
+    with pytest.raises(ValueError):
+        dv_mod11_codigo_barras("123")
