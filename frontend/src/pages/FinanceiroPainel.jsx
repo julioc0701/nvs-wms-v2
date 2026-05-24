@@ -4,6 +4,7 @@ import { Eye, CheckCircle2 } from 'lucide-react'
 import { api } from '../api/client'
 import { nomeBanco, urgenciaVencimento } from '../utils/boletoBancos'
 import FinanceiroDrawer from '../components/FinanceiroDrawer'
+import FinanceiroConfirmDialog from '../components/dialogs/FinanceiroConfirmDialog'
 
 export default function FinanceiroPainel() {
   const navigate = useNavigate()
@@ -23,6 +24,7 @@ export default function FinanceiroPainel() {
   const [dados, setDados] = useState({ boletos: [], total: 0, valor_total: 0 })
   const [carregando, setCarregando] = useState(false)
   const [selecionado, setSelecionado] = useState(null)
+  const [pagarDialog, setPagarDialog] = useState(null) // boleto a marcar como pago
 
   async function carregar() {
     setCarregando(true)
@@ -39,9 +41,9 @@ export default function FinanceiroPainel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(filtros)])
 
-  async function pagar(id) {
-    if (!confirm('Marcar este boleto como pago?')) return
-    await api.pagarBoleto(id, operador.id)
+  async function confirmarPagar() {
+    await api.pagarBoleto(pagarDialog.id, operador.id)
+    setPagarDialog(null)
     carregar()
   }
 
@@ -140,7 +142,7 @@ export default function FinanceiroPainel() {
                       <Eye size={18} className="text-slate-600 hover:text-cyan-600" />
                     </button>
                     {b.status === 'registrado' && (
-                      <button onClick={() => pagar(b.id)} title="Marcar como pago">
+                      <button onClick={() => setPagarDialog(b)} title="Marcar como pago">
                         <CheckCircle2 size={18} className="text-slate-600 hover:text-green-600" />
                       </button>
                     )}
@@ -157,6 +159,42 @@ export default function FinanceiroPainel() {
           boleto={selecionado}
           onClose={() => setSelecionado(null)}
           onChange={() => { carregar(); setSelecionado(null) }}
+        />
+      )}
+
+      {pagarDialog && (
+        <FinanceiroConfirmDialog
+          titulo="Marcar como pago?"
+          iconBg="bg-green-100"
+          iconColor="text-green-600"
+          icon={<CheckCircle2 size={28} strokeWidth={2.5} />}
+          detalhes={
+            <>
+              <p className="text-gray-500 text-xs uppercase font-bold tracking-wider mb-1">EMPRESA</p>
+              <p className="text-xl font-black text-gray-800 mb-4">
+                {pagarDialog.beneficiario_razao_social || pagarDialog.beneficiario_texto || '—'}
+              </p>
+              <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4">
+                <div>
+                  <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">VALOR</p>
+                  <p className="text-lg font-bold text-green-700">
+                    {pagarDialog.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-xs uppercase font-bold tracking-wider">VENCIMENTO</p>
+                  <p className="text-lg font-bold text-gray-700">
+                    {new Date(pagarDialog.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+              </div>
+            </>
+          }
+          pergunta="Após confirmar, o boleto sai da lista de pendentes. Você pode reabrir depois pelo painel de detalhe."
+          confirmLabel="MARCAR COMO PAGO"
+          confirmClasses="bg-green-600 hover:bg-green-700 shadow-green-200"
+          onConfirm={confirmarPagar}
+          onCancel={() => setPagarDialog(null)}
         />
       )}
     </div>
