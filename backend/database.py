@@ -139,7 +139,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan, Boleto, BoletoBeneficiario  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -583,3 +583,42 @@ def init_db():
                 print("--- LIMPEZA_FANTASMA: nenhuma duplicata encontrada (skip) ---")
         except Exception as e:
             print(f"--- LIMPEZA_FANTASMA ERROR: {e} ---")
+
+        # ── FINANCEIRO — BOLETOS A PAGAR ──────────────────────────────────────
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS boleto_beneficiarios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                razao_social VARCHAR(200) NOT NULL,
+                banco VARCHAR(3) NOT NULL,
+                campo_livre_prefix VARCHAR(6) NOT NULL,
+                criado_em DATETIME NOT NULL,
+                criado_por INTEGER REFERENCES operators(id)
+            )
+        """))
+        conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_benef_banco_prefix
+            ON boleto_beneficiarios(banco, campo_livre_prefix)
+        """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS boletos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo_barras VARCHAR(44) NOT NULL,
+                linha_digitavel VARCHAR(47) NOT NULL,
+                banco_emissor VARCHAR(3) NOT NULL,
+                valor FLOAT NOT NULL,
+                vencimento DATE NOT NULL,
+                beneficiario_id INTEGER REFERENCES boleto_beneficiarios(id),
+                beneficiario_texto VARCHAR(200),
+                observacao TEXT,
+                foto_path VARCHAR(300),
+                status VARCHAR(20) NOT NULL DEFAULT 'registrado',
+                capturado_por INTEGER NOT NULL REFERENCES operators(id),
+                capturado_em DATETIME NOT NULL,
+                pago_em DATETIME,
+                pago_por INTEGER REFERENCES operators(id)
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_status ON boletos(status)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_vencimento ON boletos(vencimento)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_codigo ON boletos(codigo_barras)"))
+        conn.commit()
