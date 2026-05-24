@@ -42,10 +42,16 @@ export default function Layout() {
 
   const sidebarVisible = sidebarOpen || sidebarPinned
 
-  // Redireciona não-master no celular para /separacao/listas (fora da rota de separação)
+  // Redirecionamento mobile:
+  //   • Master no celular → /financeiro/scan (foco em escanear boletos)
+  //   • Não-master no celular → /separacao/listas (foco em separação)
   useEffect(() => {
     const isLogin = location.pathname === '/'
-    if (!isMaster && isMobilePhone && !isLogin) {
+    if (!isMobilePhone || isLogin) return
+    if (isMaster) {
+      const inFinanceiro = location.pathname.startsWith('/financeiro')
+      if (!inFinanceiro) navigate('/financeiro/scan')
+    } else {
       const inSeparacao = location.pathname.startsWith('/separacao')
       if (!inSeparacao) navigate('/separacao/listas')
     }
