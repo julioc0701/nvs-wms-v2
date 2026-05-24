@@ -13,7 +13,7 @@ load_dotenv()
 log = get_logger("api")
 
 from database import init_db, get_db
-from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs, stats, tiny, ai, zebra_ws, ml_full_plans
+from routers import sessions, operators, labels, printers, seed, barcodes, print_jobs, stats, tiny, ai, zebra_ws, ml_full_plans, financeiro
 from models import Operator
 from services.sync_engine import recover_stale_runs, start_local_scheduler, start_marker_sync, stop_local_scheduler
 
@@ -50,6 +50,7 @@ app.include_router(tiny.router, prefix="/api/tiny", tags=["tiny"])
 app.include_router(ai.router, prefix="/api/v2/ai", tags=["ai"])
 app.include_router(zebra_ws.router)   # WebSocket sem prefixo: /ws/zebra-agent/{id} + /api/zebra/agent-status
 app.include_router(ml_full_plans.router, prefix="/api/ml-full-plans", tags=["ml-full-plans"])
+app.include_router(financeiro.router, prefix="/api/financeiro", tags=["financeiro"])
 
 DEFAULT_OPERATORS = ["Master", "Julio", "Cris", "Rafael", "Luidi", "Weligton", "Cristofer", "Renan"]
 
