@@ -635,7 +635,8 @@ def init_db():
         conn.commit()
 
         # ── Migrações pra extensão de lançamentos (categoria, descricao, chave_pix) ──
-        boleto_cols = [c["name"] for c in insp.get_columns("boletos")]
+        boleto_cols_info = insp.get_columns("boletos")
+        boleto_cols = [c["name"] for c in boleto_cols_info]
         if "categoria_id" not in boleto_cols:
             conn.execute(text("ALTER TABLE boletos ADD COLUMN categoria_id INTEGER REFERENCES lancamento_categorias(id)"))
         if "descricao" not in boleto_cols:
@@ -643,6 +644,58 @@ def init_db():
         if "chave_pix" not in boleto_cols:
             conn.execute(text("ALTER TABLE boletos ADD COLUMN chave_pix VARCHAR(200)"))
         conn.commit()
+
+        # SQLite não suporta ALTER COLUMN para tornar NOT NULL em nullable.
+        # Detecta se codigo_barras / linha_digitavel / banco_emissor ainda são
+        # NOT NULL e recria a tabela com schema correto se for o caso.
+        cols_atualizado = {c["name"]: c for c in insp.get_columns("boletos")}
+        precisa_recriar = any(
+            not cols_atualizado.get(col, {"nullable": True}).get("nullable", True)
+            for col in ("codigo_barras", "linha_digitavel", "banco_emissor")
+        )
+        if precisa_recriar:
+            print("--- DATABASE MIGRATION: tornando colunas de boleto nullable ---")
+            conn.execute(text("""
+                CREATE TABLE boletos_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    codigo_barras VARCHAR(44),
+                    linha_digitavel VARCHAR(47),
+                    banco_emissor VARCHAR(3),
+                    valor FLOAT NOT NULL,
+                    vencimento DATE NOT NULL,
+                    beneficiario_id INTEGER REFERENCES boleto_beneficiarios(id),
+                    beneficiario_texto VARCHAR(200),
+                    observacao TEXT,
+                    foto_path VARCHAR(300),
+                    status VARCHAR(20) NOT NULL DEFAULT 'registrado',
+                    capturado_por INTEGER NOT NULL REFERENCES operators(id),
+                    capturado_em DATETIME NOT NULL,
+                    pago_em DATETIME,
+                    pago_por INTEGER REFERENCES operators(id),
+                    categoria_id INTEGER REFERENCES lancamento_categorias(id),
+                    descricao TEXT,
+                    chave_pix VARCHAR(200)
+                )
+            """))
+            conn.execute(text("""
+                INSERT INTO boletos_new
+                SELECT id, codigo_barras, linha_digitavel, banco_emissor, valor, vencimento,
+                       beneficiario_id, beneficiario_texto, observacao, foto_path, status,
+                       capturado_por, capturado_em, pago_em, pago_por, categoria_id,
+                       descricao, chave_pix
+                FROM boletos
+            """))
+            conn.execute(text("DROP TABLE boletos"))
+            conn.execute(text("ALTER TABLE boletos_new RENAME TO boletos"))
+            # Recria índices
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_status ON boletos(status)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_vencimento ON boletos(vencimento)"))
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_boletos_codigo_unique "
+                "ON boletos(codigo_barras) WHERE codigo_barras IS NOT NULL"
+            ))
+            conn.commit()
+            print("--- DATABASE MIGRATION: boletos.codigo_barras/linha_digitavel/banco_emissor agora nullable ---")
 
         # ── Categorias de lançamento ──
         conn.execute(text("""
