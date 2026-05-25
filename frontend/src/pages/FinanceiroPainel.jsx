@@ -237,6 +237,25 @@ function StatTileLight({ label, qtd, valor, sublabel, onClick, ativo }) {
   )
 }
 
+function StatTileRed({ label, qtd, valor, sublabel, onClick, ativo }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'rounded-xl border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] p-3.5 text-left transition-all hover:shadow-md active:scale-[0.98]',
+        ativo && 'ring-2 ring-red-400'
+      )}
+    >
+      <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-red-500 mb-2">{label}</p>
+      <p className="text-2xl font-black text-red-700 tabular-nums">{qtd}</p>
+      <p className="text-[11px] text-red-600 mt-1.5 font-mono">
+        R$ {valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+      </p>
+      {sublabel && <p className="text-[10px] text-red-500/80 mt-0.5">{sublabel}</p>}
+    </button>
+  )
+}
+
 // ── Painel principal ─────────────────────────────────────────────────────────
 
 export default function FinanceiroPainel() {
@@ -326,20 +345,6 @@ export default function FinanceiroPainel() {
     setFiltros({ ...filtros, status: 'registrado' })
   }
 
-  // Métricas derivadas
-  const totalNoFiltro = stats.total_a_pagar.qtd + stats.pagos.qtd
-  const taxaPagamento = totalNoFiltro > 0
-    ? Math.round((stats.pagos.qtd / totalNoFiltro) * 100)
-    : 0
-  const valorMovimentado = stats.total_a_pagar.valor + stats.pagos.valor
-  const totalDist = stats.total_a_pagar.qtd + stats.vencidos.qtd + stats.pagos.qtd
-  const shareAPagar = totalDist > 0 ? Math.round((stats.total_a_pagar.qtd / totalDist) * 100) : 0
-  const shareVencidos = totalDist > 0 ? Math.round((stats.vencidos.qtd / totalDist) * 100) : 0
-  const sharePagos = totalDist > 0 ? Math.round((stats.pagos.qtd / totalDist) * 100) : 0
-  const valorImpactoVencidos = valorMovimentado > 0
-    ? Math.round((stats.vencidos.valor / valorMovimentado) * 100)
-    : 0
-
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
       {/* Header */}
@@ -353,134 +358,32 @@ export default function FinanceiroPainel() {
         </button>
       </div>
 
-      {/* Painel Executivo Financeiro */}
-      <div className="panel-elevated p-4 md:p-5 space-y-4">
-        {/* Hero */}
-        <div className="chart-card bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] rounded-2xl p-4 md:p-5">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
-            <div>
-              <p className="section-kicker mb-2 flex items-center gap-2">
-                <Wallet size={14} /> Painel Financeiro
-              </p>
-              <div className="flex items-end gap-3">
-                <span className="font-black text-slate-900 tracking-tighter tabular-nums text-4xl md:text-5xl">
-                  R$ {stats.total_a_pagar.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </span>
-                <span className="text-sm md:text-base text-slate-600 font-semibold tabular-nums pb-1.5">
-                  a pagar · {stats.total_a_pagar.qtd} {stats.total_a_pagar.qtd === 1 ? 'boleto' : 'boletos'}
-                </span>
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-400 bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)] backdrop-blur px-4 py-3">
-              <p className="text-[11px] uppercase tracking-[0.18em] font-bold text-slate-500">Taxa de Pagamento</p>
-              <p className="text-2xl font-black text-slate-900 tabular-nums">{taxaPagamento}%</p>
-            </div>
-          </div>
-
-          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden mb-2">
-            <div
-              className="h-full bg-slate-900 rounded-full transition-all duration-1000 ease-out"
-              style={{ width: `${taxaPagamento}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-[11px] text-slate-500 font-semibold">
-            <span>{stats.pagos.qtd} pagos no período</span>
-            <span>Meta: 100% pago até o vencimento</span>
-          </div>
-        </div>
-
-        {/* 4 stat tiles */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <StatTileDark
-            label="A Pagar (filtro)"
-            qtd={stats.total_a_pagar.qtd}
-            valor={stats.total_a_pagar.valor}
-            sublabel="boletos pendentes"
-            onClick={filtroAPagar}
-            ativo={filtros.status === 'registrado'}
-          />
-          <StatTileLight
-            label="Vencidos (todos)"
-            qtd={stats.vencidos.qtd}
-            valor={stats.vencidos.valor}
-            sublabel="independe do filtro"
-            onClick={filtroVencidos}
-            ativo={filtros.status === 'atrasado'}
-          />
-          <StatTileLight
-            label="Pagos (filtro)"
-            qtd={stats.pagos.qtd}
-            valor={stats.pagos.valor}
-            sublabel="por data de pagamento"
-            onClick={filtroPagos}
-            ativo={filtros.status === 'pago'}
-          />
-          <StatTileLight
-            label="Movimentação"
-            qtd={totalNoFiltro}
-            valor={valorMovimentado}
-            sublabel="a pagar + pagos"
-            onClick={() => setFiltros({ ...filtros, status: '' })}
-            ativo={filtros.status === ''}
-          />
-        </div>
-
-        {/* Distribuição + Alerta Vencidos */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-          <div className="chart-card bg-[linear-gradient(135deg,#f8fafc_0%,#e2e8f0_60%,#cbd5e1_100%)]">
-            <p className="section-kicker mb-3">Distribuição de Status</p>
-            {[
-              { label: 'A Pagar', value: stats.total_a_pagar.qtd, share: shareAPagar, tone: 'bg-slate-500' },
-              { label: 'Vencidos', value: stats.vencidos.qtd, share: shareVencidos, tone: 'bg-red-600' },
-              { label: 'Pagos', value: stats.pagos.qtd, share: sharePagos, tone: 'bg-emerald-600' },
-            ].map((r) => (
-              <div key={r.label} className="mb-3 last:mb-0">
-                <div className="flex justify-between text-xs font-semibold text-slate-700 mb-1">
-                  <span>{r.label}</span>
-                  <span className="tabular-nums">{r.value} ({r.share}%)</span>
-                </div>
-                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className={cn('h-full rounded-full transition-all', r.tone)}
-                    style={{ width: `${r.share}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={filtroVencidos}
-            className="text-left w-full rounded-xl border border-red-400 bg-red-50/40 p-4 shadow-sm hover:bg-red-50 hover:border-red-500 hover:shadow-md transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-300"
-          >
-            <p className="section-kicker text-red-600 mb-3 flex items-center justify-between">
-              <span>Alerta de Vencidos</span>
-              <ArrowRight size={14} className="text-red-400" />
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-              <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Boletos</p>
-                <p className="text-2xl font-black text-red-700 tabular-nums">{stats.vencidos.qtd}</p>
-              </div>
-              <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">Valor</p>
-                <p className="text-2xl font-black text-red-700 tabular-nums">
-                  R$ {stats.vencidos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                </p>
-              </div>
-              <div className="rounded-lg border border-red-400 bg-[linear-gradient(135deg,#fff1f2_0%,#fee2e2_60%,#fecaca_100%)] px-3 py-2">
-                <p className="text-[10px] uppercase tracking-wide font-bold text-red-500">% do Total</p>
-                <p className="text-2xl font-black text-red-700 tabular-nums">{valorImpactoVencidos}%</p>
-              </div>
-            </div>
-            <div className="text-xs font-semibold text-red-700 bg-red-100/70 border border-red-400 rounded-lg px-3 py-2">
-              {stats.vencidos.qtd > 0
-                ? `Prioridade: pagar ${stats.vencidos.qtd} ${stats.vencidos.qtd === 1 ? 'boleto vencido' : 'boletos vencidos'} antes de novas multas.`
-                : 'Sem boletos vencidos. Tudo em dia.'}
-            </div>
-          </button>
-        </div>
+      {/* 3 stat tiles no estilo Supervisor */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <StatTileDark
+          label="A Pagar (filtro)"
+          qtd={stats.total_a_pagar.qtd}
+          valor={stats.total_a_pagar.valor}
+          sublabel="boletos pendentes"
+          onClick={filtroAPagar}
+          ativo={filtros.status === 'registrado'}
+        />
+        <StatTileRed
+          label="Vencidos (todos)"
+          qtd={stats.vencidos.qtd}
+          valor={stats.vencidos.valor}
+          sublabel="independe do filtro"
+          onClick={filtroVencidos}
+          ativo={filtros.status === 'atrasado'}
+        />
+        <StatTileLight
+          label="Pagos (filtro)"
+          qtd={stats.pagos.qtd}
+          valor={stats.pagos.valor}
+          sublabel="por data de pagamento"
+          onClick={filtroPagos}
+          ativo={filtros.status === 'pago'}
+        />
       </div>
 
       {/* Filtros */}
