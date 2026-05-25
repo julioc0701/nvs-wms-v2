@@ -61,12 +61,15 @@ def _detectar_provider() -> tuple[str, str, str, str]:
     )
 
 _PROMPT = (
-    "Esta imagem é de um boleto bancário brasileiro. "
-    "Localize a linha digitável (sequência de 47 dígitos numéricos agrupados "
-    "tipo '00000.00000 00000.000000 00000.000000 0 00000000000000') "
-    "que aparece impressa acima do código de barras. "
-    "Responda APENAS com os 47 dígitos, sem pontos, sem espaços, sem texto adicional. "
-    "Se não conseguir identificar com certeza, responda exatamente: NAO_ENCONTRADO."
+    "Esta imagem é uma foto de um boleto bancário brasileiro. "
+    "A foto pode estar rotacionada (deitada, de cabeça pra baixo ou em qualquer ângulo). "
+    "Olhe com atenção em todas as direções da imagem e encontre a 'linha digitável' — "
+    "uma sequência de 47 dígitos numéricos agrupados (geralmente impressa "
+    "acima do código de barras grosso). "
+    "Exemplo de formato: 23792.37213 90016.790967 25000.527306 3 14580000058182. "
+    "RESPONDA APENAS com os 47 dígitos numéricos CONSECUTIVOS, sem pontos, sem espaços, "
+    "sem qualquer outro texto. "
+    "Se não conseguir identificar com 100% de certeza, responda exatamente: NAO_ENCONTRADO"
 )
 
 
