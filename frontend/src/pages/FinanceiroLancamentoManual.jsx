@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Camera, FileText, Wallet } from 'lucide-react'
+import { ArrowLeft, Plus, Camera, FileText } from 'lucide-react'
 import { api } from '../api/client'
 
 /**
@@ -117,68 +117,31 @@ export default function FinanceiroLancamentoManual() {
   }
 
   return (
-    <div className="min-h-screen md:grid md:grid-cols-2">
-      {/* ── ESQUERDA: identidade visual (só desktop) ────────────────────────── */}
-      <aside
-        className="hidden md:flex relative overflow-hidden flex-col justify-between p-12 text-white"
-        style={{
-          background:
-            'linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #38bdf8 100%)',
-        }}
-      >
-        <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-white/10" />
-        <div className="absolute -left-10 bottom-10 w-48 h-48 rounded-full bg-white/5" />
-
-        <button
-          onClick={() => navigate('/financeiro/scan')}
-          className="relative z-10 flex items-center gap-2 text-white/80 hover:text-white text-sm font-semibold w-fit"
-        >
-          <ArrowLeft size={18} /> Voltar
-        </button>
-
-        <div className="relative z-10 space-y-5 max-w-md">
-          <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center">
-            <Wallet size={28} />
-          </div>
+    <div className="min-h-screen bg-white flex flex-col">
+      {/* Header igual ao módulo de bipagem (Separação) */}
+      <div className="px-4 py-3 sm:px-8 sm:py-5 flex items-center justify-between border-b border-slate-100 bg-white z-10 sticky top-0">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate('/financeiro/scan')}
+            className="p-2 hover:bg-slate-50 rounded-full transition-colors text-slate-400"
+          >
+            <ArrowLeft size={20} />
+          </button>
           <div>
-            <h1 className="text-4xl font-black tracking-tight mb-3">
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">
               Novo lançamento manual
             </h1>
-            <p className="text-blue-100/90 text-base leading-relaxed">
-              Registre despesas, PIX para fornecedor ou funcionário,
-              taxas, reembolsos, contas de consumo e qualquer outro
-              pagamento que não tenha boleto bancário.
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">
+              Despesa · PIX · Taxa · Reembolso
             </p>
           </div>
-          <div className="pt-4 space-y-2 text-sm text-blue-100/70">
-            <p>📎 Anexe foto ou PDF do comprovante</p>
-            <p>🏷️ Categorize automaticamente</p>
-            <p>📊 Aparece junto dos boletos no painel</p>
-          </div>
         </div>
+      </div>
 
-        <p className="relative z-10 text-xs text-blue-100/50">
-          NVS · Módulo Financeiro
-        </p>
-      </aside>
-
-      {/* ── DIREITA (desktop) / ÚNICA (mobile) ─────────────────────────────── */}
-      <main
-        className="min-h-screen md:bg-white"
-        style={{
-          background: 'linear-gradient(135deg, #ffffff 0%, #60a5fa 35%, #1e3a8a 100%)',
-        }}
-      >
-        {/* Header mobile (só aparece em mobile) */}
-        <div className="md:hidden sticky top-0 bg-white/85 backdrop-blur border-b border-slate-200 z-10 px-4 py-3 flex items-center gap-3">
-          <button onClick={() => navigate('/financeiro/scan')} className="p-1 -ml-1">
-            <ArrowLeft size={22} />
-          </button>
-          <h1 className="text-base font-bold flex-1">Novo lançamento manual</h1>
-        </div>
-
-        <div className="p-4 md:p-12 max-w-md md:max-w-lg mx-auto md:mx-0">
-          <div className="bg-white rounded-2xl shadow-xl shadow-blue-900/10 p-5 md:p-0 md:shadow-none md:bg-transparent space-y-4">
+      {/* Conteúdo */}
+      <div className="flex-1 p-4 sm:p-8">
+        <div className="max-w-2xl mx-auto">
+          <div className="space-y-4">
         {/* Categoria */}
         <div>
           <label className="text-sm font-semibold text-slate-700 mb-1 block">
@@ -352,9 +315,9 @@ export default function FinanceiroLancamentoManual() {
         >
           {salvando ? 'Salvando…' : 'Salvar lançamento'}
         </button>
+          </div>
         </div>
-        </div>
-      </main>
+      </div>
     </div>
   )
 }
