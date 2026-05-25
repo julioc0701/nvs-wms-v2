@@ -172,9 +172,11 @@ export default function FinanceiroBoletoDetalhe() {
           <div className="bg-white rounded-xl p-4 shadow-sm">
             <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Vencimento</div>
             <div className="text-xl font-bold text-slate-900">{vencFmt}</div>
-            <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded ${urg.classes}`}>
-              {urg.label}
-            </span>
+            {boleto.status === 'registrado' && (
+              <span className={`text-xs mt-1 inline-block px-2 py-0.5 rounded ${urg.classes}`}>
+                {urg.label}
+              </span>
+            )}
           </div>
         </div>
 

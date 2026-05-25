@@ -551,8 +551,10 @@ export default function FinanceiroPainel() {
                   </div>
                   <div className="flex items-center gap-2 text-xs text-slate-600">
                     <span>Venc. {new Date(b.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}</span>
-                    <span className={`px-2 py-0.5 rounded ${urg.classes}`}>{urg.label}</span>
-                    <span className="ml-auto">{b.banco_emissor}</span>
+                    {b.status === 'registrado' && (
+                      <span className={`px-2 py-0.5 rounded ${urg.classes}`}>{urg.label}</span>
+                    )}
+                    {b.banco_emissor && <span className="ml-auto">{b.banco_emissor}</span>}
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className={`px-2 py-0.5 rounded text-xs ${b.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
@@ -604,11 +606,17 @@ export default function FinanceiroPainel() {
                     </td>
                     <td className="p-3">
                       {new Date(b.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
-                      <span className={`ml-2 text-xs px-2 py-0.5 rounded ${urg.classes}`}>
-                        {urg.label}
-                      </span>
+                      {b.status === 'registrado' && (
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded ${urg.classes}`}>
+                          {urg.label}
+                        </span>
+                      )}
                     </td>
-                    <td className="p-3">{b.banco_emissor} · {nomeBanco(b.banco_emissor)}</td>
+                    <td className="p-3">
+                      {b.banco_emissor
+                        ? `${b.banco_emissor} · ${nomeBanco(b.banco_emissor)}`
+                        : <span className="text-slate-400">—</span>}
+                    </td>
                     <td className="p-3">{b.capturado_por_nome}</td>
                     <td className="p-3">
                       <span className={`px-2 py-0.5 rounded text-xs ${b.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
