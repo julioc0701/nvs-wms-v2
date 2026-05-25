@@ -275,7 +275,13 @@ export default function FinanceiroPainel() {
     vencimento_ate: semana.ate,
     valor_min: '',
     valor_max: '',
+    categoria_id: '',
   })
+  const [categorias, setCategorias] = useState([])
+
+  useEffect(() => {
+    api.listarCategorias().then(setCategorias).catch(() => {})
+  }, [])
 
   const [dados, setDados] = useState({ boletos: [], total: 0, valor_total: 0 })
   const [stats, setStats] = useState({
@@ -482,6 +488,17 @@ export default function FinanceiroPainel() {
           <option value="pago">Pagos</option>
         </select>
 
+        <select
+          value={filtros.categoria_id}
+          onChange={(e) => setFiltros({ ...filtros, categoria_id: e.target.value })}
+          className="border rounded-full px-3 h-10 text-xs font-medium bg-white"
+        >
+          <option value="">Todas categorias</option>
+          {categorias.map((c) => (
+            <option key={c.id} value={c.id}>{c.nome}</option>
+          ))}
+        </select>
+
         <input
           type="number"
           step="0.01"
@@ -537,11 +554,16 @@ export default function FinanceiroPainel() {
                     <span className={`px-2 py-0.5 rounded ${urg.classes}`}>{urg.label}</span>
                     <span className="ml-auto">{b.banco_emissor}</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span className={`px-2 py-0.5 rounded text-xs ${b.status === 'pago' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
                       {b.status}
                     </span>
-                    <span className="text-xs text-slate-500">por {b.capturado_por_nome}</span>
+                    {b.categoria_nome && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-cyan-100 text-cyan-700">
+                        {b.categoria_nome}
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-500 ml-auto">por {b.capturado_por_nome}</span>
                   </div>
                 </button>
               )
@@ -555,6 +577,7 @@ export default function FinanceiroPainel() {
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-3">Empresa</th>
+                <th className="p-3">Categoria</th>
                 <th className="p-3 text-right">Valor</th>
                 <th className="p-3">Vencimento</th>
                 <th className="p-3">Banco</th>
@@ -569,6 +592,13 @@ export default function FinanceiroPainel() {
                 return (
                   <tr key={b.id} className="border-t hover:bg-slate-50">
                     <td className="p-3">{b.beneficiario_razao_social || b.beneficiario_texto || '—'}</td>
+                    <td className="p-3">
+                      {b.categoria_nome ? (
+                        <span className="px-2 py-0.5 rounded text-xs bg-cyan-100 text-cyan-700">
+                          {b.categoria_nome}
+                        </span>
+                      ) : <span className="text-slate-400">—</span>}
+                    </td>
                     <td className="p-3 text-right font-mono">
                       {b.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </td>

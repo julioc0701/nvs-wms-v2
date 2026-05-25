@@ -178,22 +178,62 @@ export default function FinanceiroBoletoDetalhe() {
           </div>
         </div>
 
+        {/* Categoria */}
+        {boleto.categoria_nome && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Categoria</div>
+            <div className="font-semibold">
+              <span className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-700 text-sm">
+                {boleto.categoria_nome}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Banco */}
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Banco</div>
-          <div className="font-semibold">{boleto.banco_emissor} · {nomeBanco(boleto.banco_emissor)}</div>
-        </div>
+        {boleto.banco_emissor && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Banco</div>
+            <div className="font-semibold">{boleto.banco_emissor} · {nomeBanco(boleto.banco_emissor)}</div>
+          </div>
+        )}
 
         {/* Linha digitável */}
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Linha digitável</span>
-            <button onClick={copiarLinha} className="text-cyan-600 text-sm flex items-center gap-1">
-              <Copy size={14} /> Copiar
-            </button>
+        {boleto.linha_digitavel && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Linha digitável</span>
+              <button onClick={copiarLinha} className="text-cyan-600 text-sm flex items-center gap-1">
+                <Copy size={14} /> Copiar
+              </button>
+            </div>
+            <code className="text-xs break-all text-slate-700 font-mono">{boleto.linha_digitavel}</code>
           </div>
-          <code className="text-xs break-all text-slate-700 font-mono">{boleto.linha_digitavel}</code>
-        </div>
+        )}
+
+        {/* Chave PIX */}
+        {boleto.chave_pix && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Chave PIX</span>
+              <button
+                onClick={() => navigator.clipboard?.writeText(boleto.chave_pix)}
+                className="text-cyan-600 text-sm flex items-center gap-1"
+              >
+                <Copy size={14} /> Copiar
+              </button>
+            </div>
+            <code className="text-xs break-all text-slate-700 font-mono">{boleto.chave_pix}</code>
+          </div>
+        )}
+
+        {/* Descrição */}
+        {boleto.descricao && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Descrição</div>
+            <div className="text-slate-800">{boleto.descricao}</div>
+          </div>
+        )}
 
         {/* Observação */}
         <div className="bg-white rounded-xl p-4 shadow-sm">

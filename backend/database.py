@@ -139,7 +139,7 @@ def get_db():
 
 
 def init_db():
-    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan, Boleto, BoletoBeneficiario  # noqa
+    from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan, Boleto, BoletoBeneficiario, LancamentoCategoria  # noqa
     Base.metadata.create_all(bind=engine)
 
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
@@ -620,7 +620,82 @@ def init_db():
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_status ON boletos(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_boletos_vencimento ON boletos(vencimento)"))
-        # UNIQUE no codigo_barras garante que o mesmo boleto não seja registrado 2x
-        # mesmo em condição de corrida (dois requests simultâneos).
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_boletos_codigo_unique ON boletos(codigo_barras)"))
+        # UNIQUE partial no codigo_barras: só checa unicidade se o valor não for NULL.
+        # Lançamentos manuais (PIX, despesa) ficam sem código e não são afetados.
+        # Recria o índice se existir como UNIQUE não-partial (legado).
+        try:
+            conn.execute(text("DROP INDEX IF EXISTS idx_boletos_codigo_unique"))
+            conn.execute(text("DROP INDEX IF EXISTS idx_boletos_codigo"))
+        except Exception:
+            pass
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_boletos_codigo_unique "
+            "ON boletos(codigo_barras) WHERE codigo_barras IS NOT NULL"
+        ))
+        conn.commit()
+
+        # ── Migrações pra extensão de lançamentos (categoria, descricao, chave_pix) ──
+        boleto_cols = [c["name"] for c in insp.get_columns("boletos")]
+        if "categoria_id" not in boleto_cols:
+            conn.execute(text("ALTER TABLE boletos ADD COLUMN categoria_id INTEGER REFERENCES lancamento_categorias(id)"))
+        if "descricao" not in boleto_cols:
+            conn.execute(text("ALTER TABLE boletos ADD COLUMN descricao TEXT"))
+        if "chave_pix" not in boleto_cols:
+            conn.execute(text("ALTER TABLE boletos ADD COLUMN chave_pix VARCHAR(200)"))
+        conn.commit()
+
+        # ── Categorias de lançamento ──
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS lancamento_categorias (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome VARCHAR(100) NOT NULL UNIQUE,
+                icon VARCHAR(30),
+                ordem INTEGER NOT NULL DEFAULT 0,
+                ativa BOOLEAN NOT NULL DEFAULT 1,
+                criada_em DATETIME NOT NULL,
+                criada_por INTEGER REFERENCES operators(id)
+            )
+        """))
+        conn.commit()
+
+        # Pré-seed das categorias padrão se a tabela estiver vazia
+        existe = conn.execute(text("SELECT COUNT(*) FROM lancamento_categorias")).scalar()
+        if existe == 0:
+            categorias_seed = [
+                ("Boleto", "file-text", 1),
+                ("PIX Fornecedor", "zap", 2),
+                ("PIX Funcionário", "user", 3),
+                ("Taxa", "receipt", 4),
+                ("Reembolso", "rotate-ccw", 5),
+                ("Água", "droplet", 6),
+                ("Luz", "lightbulb", 7),
+                ("Internet", "wifi", 8),
+                ("Aluguel", "home", 9),
+                ("Multa", "alert-triangle", 10),
+                ("Outros", "more-horizontal", 99),
+            ]
+            for nome, icon, ordem in categorias_seed:
+                conn.execute(
+                    text(
+                        "INSERT INTO lancamento_categorias (nome, icon, ordem, ativa, criada_em) "
+                        "VALUES (:n, :i, :o, 1, :c)"
+                    ),
+                    {"n": nome, "i": icon, "o": ordem, "c": __import__('datetime').datetime.utcnow().isoformat()},
+                )
+            conn.commit()
+            print(f"--- LANCAMENTO_CATEGORIAS: {len(categorias_seed)} categorias padrão inseridas ---")
+
+        # Backfill: marca boletos antigos sem categoria como "Boleto" (id=1 após seed)
+        try:
+            boleto_cat_id = conn.execute(
+                text("SELECT id FROM lancamento_categorias WHERE nome = 'Boleto' LIMIT 1")
+            ).scalar()
+            if boleto_cat_id:
+                conn.execute(
+                    text("UPDATE boletos SET categoria_id = :cid WHERE categoria_id IS NULL AND codigo_barras IS NOT NULL"),
+                    {"cid": boleto_cat_id},
+                )
+                conn.commit()
+        except Exception:
+            pass
         conn.commit()

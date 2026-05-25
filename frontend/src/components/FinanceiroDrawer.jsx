@@ -92,16 +92,46 @@ export default function FinanceiroDrawer({ boleto, onClose, onChange }) {
             {new Date(boleto.vencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
           </Campo>
 
-          <Campo label="Banco">
-            {boleto.banco_emissor} · {nomeBanco(boleto.banco_emissor)}
-          </Campo>
+          {boleto.categoria_nome && (
+            <Campo label="Categoria">
+              <span className="px-2 py-0.5 rounded bg-cyan-100 text-cyan-700 text-xs font-semibold">
+                {boleto.categoria_nome}
+              </span>
+            </Campo>
+          )}
 
-          <Campo label="Linha digitável">
-            <div className="flex items-center gap-2">
-              <code className="text-xs break-all">{boleto.linha_digitavel}</code>
-              <button onClick={copiarLinha} title="Copiar"><Copy size={14} /></button>
-            </div>
-          </Campo>
+          {boleto.banco_emissor && (
+            <Campo label="Banco">
+              {boleto.banco_emissor} · {nomeBanco(boleto.banco_emissor)}
+            </Campo>
+          )}
+
+          {boleto.linha_digitavel && (
+            <Campo label="Linha digitável">
+              <div className="flex items-center gap-2">
+                <code className="text-xs break-all">{boleto.linha_digitavel}</code>
+                <button onClick={copiarLinha} title="Copiar"><Copy size={14} /></button>
+              </div>
+            </Campo>
+          )}
+
+          {boleto.chave_pix && (
+            <Campo label="Chave PIX">
+              <div className="flex items-center gap-2">
+                <code className="text-xs break-all">{boleto.chave_pix}</code>
+                <button
+                  onClick={() => navigator.clipboard?.writeText(boleto.chave_pix)}
+                  title="Copiar"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+            </Campo>
+          )}
+
+          {boleto.descricao && (
+            <Campo label="Descrição">{boleto.descricao}</Campo>
+          )}
 
           <Campo label="Observação">
             {editando ? (

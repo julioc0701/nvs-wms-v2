@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Keyboard, Loader2, RefreshCw, FileText } from 'lucide-react'
+import { Camera, Keyboard, Loader2, RefreshCw, FileText, PenLine } from 'lucide-react'
 import { api } from '../api/client'
 
 /**
@@ -230,6 +230,22 @@ export default function FinanceiroScan() {
         >
           <Keyboard size={48} />
           <span className="text-lg font-semibold">Digitar código manualmente</span>
+        </button>
+
+        {/* Separador */}
+        <div className="flex items-center gap-3 my-1">
+          <div className="flex-1 h-px bg-slate-700" />
+          <span className="text-xs text-slate-500 uppercase tracking-wider">ou</span>
+          <div className="flex-1 h-px bg-slate-700" />
+        </div>
+
+        <button
+          onClick={() => navigate('/financeiro/lancamento-manual')}
+          className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-amber-900/30 transition-all flex flex-col items-center gap-3"
+        >
+          <PenLine size={48} />
+          <span className="text-lg font-bold">Lançamento manual</span>
+          <span className="text-xs text-amber-100/80">Despesa, PIX, fornecedor, etc.</span>
         </button>
       </div>
     </TelaCheia>

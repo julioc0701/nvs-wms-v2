@@ -258,6 +258,14 @@ export const api = {
   listarBeneficiarios: (q = '') =>
     req('GET', `/financeiro/beneficiarios${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   fotoBoletoUrl: (id) => `${BASE}/financeiro/foto/${id}`,
+  // Categorias de lançamento
+  listarCategorias: (incluirInativas = false) =>
+    req('GET', `/financeiro/categorias${incluirInativas ? '?incluir_inativas=true' : ''}`),
+  criarCategoria: (data) => req('POST', '/financeiro/categorias', data),
+  editarCategoria: (id, data) => req('PATCH', `/financeiro/categorias/${id}`, data),
+  desativarCategoria: (id) => req('DELETE', `/financeiro/categorias/${id}`),
+  // Lançamento manual (sem código de barras)
+  criarLancamentoManual: (data) => req('POST', '/financeiro/lancamentos-manuais', data),
 
   // Generic Helpers
   get: (path) => req('GET', path),

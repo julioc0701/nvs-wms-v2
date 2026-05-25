@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 from database import get_db
-from models import Boleto, BoletoBeneficiario
+from models import Boleto, BoletoBeneficiario, LancamentoCategoria
 from services.boleto_parser import parse_boleto, BoletoInvalidoError
 from services.boleto_storage import salvar_foto_base64, caminho_foto, excluir_foto
 from services.boleto_vision import extrair_linha_digitavel, BoletoVisionError
@@ -24,6 +24,32 @@ class ScanRequest(BaseModel):
 
 class ScanFotoRequest(BaseModel):
     foto_base64: str
+
+
+class CriarLancamentoManualRequest(BaseModel):
+    operator_id: int
+    categoria_id: int
+    beneficiario_texto: str
+    valor: float
+    vencimento: str  # ISO date
+    chave_pix: str | None = None
+    descricao: str | None = None
+    observacao: str | None = None
+    foto_base64: str | None = None
+
+
+class CategoriaCreate(BaseModel):
+    nome: str
+    icon: str | None = None
+    ordem: int = 50
+    criada_por: int | None = None
+
+
+class CategoriaUpdate(BaseModel):
+    nome: str | None = None
+    icon: str | None = None
+    ordem: int | None = None
+    ativa: bool | None = None
 
 
 class CriarBoletoRequest(BaseModel):
@@ -49,7 +75,7 @@ class PagarRequest(BaseModel):
 
 
 def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
-    """Serializa Boleto incluindo nome do beneficiário e operadores."""
+    """Serializa Boleto/Lançamento incluindo nome do beneficiário, operadores e categoria."""
     from models import Operator
     benef = (
         db.query(BoletoBeneficiario).filter_by(id=b.beneficiario_id).first()
@@ -57,6 +83,10 @@ def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
     )
     capturador = db.query(Operator).filter_by(id=b.capturado_por).first()
     pagador = db.query(Operator).filter_by(id=b.pago_por).first() if b.pago_por else None
+    categoria = (
+        db.query(LancamentoCategoria).filter_by(id=b.categoria_id).first()
+        if b.categoria_id else None
+    )
     return {
         "id": b.id,
         "codigo_barras": b.codigo_barras,
@@ -76,6 +106,11 @@ def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
         "pago_em": b.pago_em.isoformat() if b.pago_em else None,
         "pago_por": b.pago_por,
         "pago_por_nome": pagador.name if pagador else None,
+        "categoria_id": b.categoria_id,
+        "categoria_nome": categoria.nome if categoria else None,
+        "categoria_icon": categoria.icon if categoria else None,
+        "descricao": b.descricao,
+        "chave_pix": b.chave_pix,
     }
 
 
@@ -220,6 +255,8 @@ def criar_boleto(body: CriarBoletoRequest, db: DBSession = Depends(get_db)):
             db.flush()
             benef_id = novo_benef.id
 
+    # Atribui categoria=Boleto automaticamente (qualquer scan/digit é boleto bancário)
+    cat_boleto = db.query(LancamentoCategoria).filter_by(nome="Boleto").first()
     boleto = Boleto(
         codigo_barras=parsed.codigo_barras,
         linha_digitavel=parsed.linha_digitavel,
@@ -232,6 +269,7 @@ def criar_boleto(body: CriarBoletoRequest, db: DBSession = Depends(get_db)):
         status="registrado",
         capturado_por=body.operator_id,
         capturado_em=datetime.utcnow(),
+        categoria_id=cat_boleto.id if cat_boleto else None,
     )
     db.add(boleto)
     try:
@@ -262,6 +300,7 @@ def listar_boletos(
     beneficiario_id: int | None = None,
     valor_min: float | None = None,
     valor_max: float | None = None,
+    categoria_id: int | None = None,
     db: DBSession = Depends(get_db),
 ):
     q = db.query(Boleto)
@@ -276,6 +315,8 @@ def listar_boletos(
         q = q.filter(Boleto.vencimento <= DateType.fromisoformat(vencimento_ate))
     if beneficiario_id:
         q = q.filter(Boleto.beneficiario_id == beneficiario_id)
+    if categoria_id:
+        q = q.filter(Boleto.categoria_id == categoria_id)
     if valor_min is not None:
         q = q.filter(Boleto.valor >= valor_min)
     if valor_max is not None:
@@ -421,6 +462,107 @@ def baixar_foto(boleto_id: int, db: DBSession = Depends(get_db)):
     if not caminho:
         raise HTTPException(404, "Arquivo de foto não existe no disco")
     return FileResponse(caminho, media_type="image/jpeg")
+
+
+@router.post("/lancamentos-manuais", status_code=201)
+def criar_lancamento_manual(body: CriarLancamentoManualRequest, db: DBSession = Depends(get_db)):
+    """Cria um lançamento sem código de barras (despesa, PIX, etc).
+
+    Categoria é obrigatória. Demais campos do boleto bancário ficam vazios.
+    """
+    # Valida categoria
+    categoria = db.query(LancamentoCategoria).filter_by(id=body.categoria_id, ativa=True).first()
+    if not categoria:
+        raise HTTPException(404, "Categoria não encontrada ou inativa")
+
+    # Aprendizado de beneficiário (mesma lógica do criar boleto, mas sem banco/prefix)
+    # Por enquanto, simplesmente armazena como texto livre — beneficiário_id fica null
+    boleto = Boleto(
+        valor=body.valor,
+        vencimento=DateType.fromisoformat(body.vencimento),
+        beneficiario_texto=body.beneficiario_texto.strip(),
+        observacao=body.observacao,
+        descricao=body.descricao,
+        chave_pix=body.chave_pix,
+        categoria_id=body.categoria_id,
+        status="registrado",
+        capturado_por=body.operator_id,
+        capturado_em=datetime.utcnow(),
+    )
+    db.add(boleto)
+    db.flush()
+
+    if body.foto_base64:
+        nome_arquivo = salvar_foto_base64(boleto.id, body.foto_base64)
+        boleto.foto_path = nome_arquivo
+
+    db.commit()
+    db.refresh(boleto)
+    return _boleto_to_dict(boleto, db)
+
+
+# ── Categorias CRUD ──────────────────────────────────────────────────────────
+
+
+@router.get("/categorias")
+def listar_categorias(incluir_inativas: bool = False, db: DBSession = Depends(get_db)):
+    q = db.query(LancamentoCategoria)
+    if not incluir_inativas:
+        q = q.filter(LancamentoCategoria.ativa == True)
+    q = q.order_by(LancamentoCategoria.ordem.asc(), LancamentoCategoria.nome.asc())
+    return [
+        {"id": c.id, "nome": c.nome, "icon": c.icon, "ordem": c.ordem, "ativa": c.ativa}
+        for c in q.all()
+    ]
+
+
+@router.post("/categorias", status_code=201)
+def criar_categoria(body: CategoriaCreate, db: DBSession = Depends(get_db)):
+    nome = body.nome.strip()
+    if not nome:
+        raise HTTPException(400, "Nome obrigatório")
+    existente = db.query(LancamentoCategoria).filter_by(nome=nome).first()
+    if existente:
+        raise HTTPException(409, f"Categoria '{nome}' já existe")
+    cat = LancamentoCategoria(
+        nome=nome,
+        icon=body.icon,
+        ordem=body.ordem,
+        criada_por=body.criada_por,
+    )
+    db.add(cat)
+    db.commit()
+    db.refresh(cat)
+    return {"id": cat.id, "nome": cat.nome, "icon": cat.icon, "ordem": cat.ordem, "ativa": cat.ativa}
+
+
+@router.patch("/categorias/{cat_id}")
+def editar_categoria(cat_id: int, body: CategoriaUpdate, db: DBSession = Depends(get_db)):
+    cat = db.query(LancamentoCategoria).filter_by(id=cat_id).first()
+    if not cat:
+        raise HTTPException(404, "Categoria não encontrada")
+    if body.nome is not None:
+        cat.nome = body.nome.strip()
+    if body.icon is not None:
+        cat.icon = body.icon
+    if body.ordem is not None:
+        cat.ordem = body.ordem
+    if body.ativa is not None:
+        cat.ativa = body.ativa
+    db.commit()
+    db.refresh(cat)
+    return {"id": cat.id, "nome": cat.nome, "icon": cat.icon, "ordem": cat.ordem, "ativa": cat.ativa}
+
+
+@router.delete("/categorias/{cat_id}")
+def desativar_categoria(cat_id: int, db: DBSession = Depends(get_db)):
+    """Soft delete — marca como inativa. Não exclui (preserva histórico)."""
+    cat = db.query(LancamentoCategoria).filter_by(id=cat_id).first()
+    if not cat:
+        raise HTTPException(404, "Categoria não encontrada")
+    cat.ativa = False
+    db.commit()
+    return {"status": "ok", "id": cat.id}
 
 
 @router.get("/beneficiarios")

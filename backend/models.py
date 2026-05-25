@@ -466,14 +466,36 @@ class BoletoBeneficiario(Base):
     criado_por: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
 
 
+class LancamentoCategoria(Base):
+    """Categorias de lançamento (Boleto, PIX Fornecedor, Água, Luz, etc.).
+
+    Gerenciada pelo Master via UI — não precisa deploy pra criar nova.
+    """
+    __tablename__ = "lancamento_categorias"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    icon: Mapped[str | None] = mapped_column(String(30))  # nome do ícone Lucide
+    ordem: Mapped[int] = mapped_column(Integer, default=0)
+    ativa: Mapped[bool] = mapped_column(Boolean, default=True)
+    criada_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    criada_por: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
+
+
 class Boleto(Base):
-    """Boleto a pagar registrado via scan mobile."""
+    """Lançamento financeiro a pagar — boleto, PIX, despesa manual, etc.
+
+    Embora a tabela ainda se chame `boletos` por compatibilidade, hoje abriga
+    todo tipo de lançamento via campo `categoria_id`.
+    """
     __tablename__ = "boletos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    codigo_barras: Mapped[str] = mapped_column(String(44), nullable=False)
-    linha_digitavel: Mapped[str] = mapped_column(String(47), nullable=False)
-    banco_emissor: Mapped[str] = mapped_column(String(3), nullable=False)
+    # Campos do boleto bancário (nullable — só preenche se categoria=Boleto)
+    codigo_barras: Mapped[str | None] = mapped_column(String(44))
+    linha_digitavel: Mapped[str | None] = mapped_column(String(47))
+    banco_emissor: Mapped[str | None] = mapped_column(String(3))
+    # Dados comuns a todo lançamento
     valor: Mapped[float] = mapped_column(Float, nullable=False)
     vencimento: Mapped[date] = mapped_column(Date, nullable=False)
     beneficiario_id: Mapped[int | None] = mapped_column(ForeignKey("boleto_beneficiarios.id"))
@@ -485,3 +507,7 @@ class Boleto(Base):
     capturado_em: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     pago_em: Mapped[datetime | None] = mapped_column(DateTime)
     pago_por: Mapped[int | None] = mapped_column(ForeignKey("operators.id"))
+    # Extensão pra lançamentos não-boleto (PIX, despesa, etc.)
+    categoria_id: Mapped[int | None] = mapped_column(ForeignKey("lancamento_categorias.id"))
+    descricao: Mapped[str | None] = mapped_column(Text)
+    chave_pix: Mapped[str | None] = mapped_column(String(200))

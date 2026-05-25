@@ -20,6 +20,7 @@ import FinanceiroScan from './pages/FinanceiroScan'
 import FinanceiroConfirmar from './pages/FinanceiroConfirmar'
 import FinanceiroPainel from './pages/FinanceiroPainel'
 import FinanceiroBoletoDetalhe from './pages/FinanceiroBoletoDetalhe'
+import FinanceiroLancamentoManual from './pages/FinanceiroLancamentoManual'
 
 function AppRoutes() {
   const location = useLocation()
@@ -50,6 +51,7 @@ function AppRoutes() {
           <Route path="/financeiro/scan" element={<FinanceiroScan />} />
           <Route path="/financeiro/confirmar" element={<FinanceiroConfirmar />} />
           <Route path="/financeiro/boleto/:id" element={<FinanceiroBoletoDetalhe />} />
+          <Route path="/financeiro/lancamento-manual" element={<FinanceiroLancamentoManual />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
