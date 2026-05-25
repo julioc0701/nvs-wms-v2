@@ -25,7 +25,14 @@ export default function FinanceiroConfirmar() {
     const d = JSON.parse(dadosStr)
     setDados(d)
     setCodigo(codStr || d.codigo_barras)
-    if (d.beneficiario_sugerido) setEmpresa(d.beneficiario_sugerido.razao_social)
+    // Prioridade pra pré-preencher empresa:
+    //   1. Beneficiário sugerido (aprendizado prévio) — confiança alta
+    //   2. Beneficiário extraído pela IA/PDF — auto-detectado nessa captura
+    if (d.beneficiario_sugerido) {
+      setEmpresa(d.beneficiario_sugerido.razao_social)
+    } else if (d.beneficiario_extraido) {
+      setEmpresa(d.beneficiario_extraido)
+    }
     if (d.duplicata) setDuplicata(d.duplicata)
   }, [navigate])
 
@@ -140,7 +147,19 @@ export default function FinanceiroConfirmar() {
 
       <div className="space-y-3">
         <div className="relative">
-          <label className="text-sm text-slate-600">Empresa</label>
+          <label className="text-sm text-slate-600 flex items-center gap-2">
+            Empresa
+            {dados.beneficiario_extraido && !dados.beneficiario_sugerido && (
+              <span className="text-xs bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded">
+                ✨ auto-detectado, confira
+              </span>
+            )}
+            {dados.beneficiario_sugerido && (
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                ↺ usado anteriormente
+              </span>
+            )}
+          </label>
           <input
             value={empresa}
             onChange={(e) => buscarSugestoes(e.target.value)}

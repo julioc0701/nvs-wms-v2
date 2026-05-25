@@ -82,8 +82,14 @@ def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-def _parsed_para_dict(parsed, db: DBSession) -> dict:
-    """Monta a resposta do scan a partir de um BoletoParsed (com sugestão + duplicata)."""
+def _parsed_para_dict(parsed, db: DBSession, beneficiario_extraido: str | None = None) -> dict:
+    """Monta a resposta do scan a partir de um BoletoParsed.
+
+    Inclui:
+      - sugestão de beneficiário do cadastro aprendido (matched por banco+prefix)
+      - beneficiário extraído pela IA/PDF (texto livre, opcional)
+      - duplicata caso o boleto já esteja registrado
+    """
     existente = db.query(Boleto).filter(Boleto.codigo_barras == parsed.codigo_barras).first()
     duplicata = None
     if existente:
@@ -113,6 +119,7 @@ def _parsed_para_dict(parsed, db: DBSession) -> dict:
         "campo_livre": parsed.campo_livre,
         "dv_ok": parsed.dv_ok,
         "beneficiario_sugerido": beneficiario_sugerido,
+        "beneficiario_extraido": beneficiario_extraido,
         "duplicata": duplicata,
     }
 
@@ -141,40 +148,36 @@ async def scan_boleto_pdf(file: UploadFile = File(...), db: DBSession = Depends(
         raise HTTPException(status_code=400, detail="PDF maior que 10 MB")
 
     try:
-        linha = extrair_linha_digitavel_de_pdf(content)
+        pdf_result = extrair_linha_digitavel_de_pdf(content)
     except BoletoPdfError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        parsed = parse_boleto(linha)
+        parsed = parse_boleto(pdf_result.linha_digitavel)
     except BoletoInvalidoError as e:
         raise HTTPException(
             status_code=422,
-            detail=f"PDF tem '{linha[:20]}...' mas não é um boleto válido: {e}",
+            detail=f"PDF tem '{pdf_result.linha_digitavel[:20]}...' mas não é um boleto válido: {e}",
         )
-    return _parsed_para_dict(parsed, db)
+    return _parsed_para_dict(parsed, db, beneficiario_extraido=pdf_result.beneficiario)
 
 
 @router.post("/boletos/scan-foto")
 async def scan_boleto_foto(body: ScanFotoRequest, db: DBSession = Depends(get_db)):
-    """Recebe foto base64, extrai linha digitável via Gemini Vision e parseia.
-
-    Retorna o mesmo shape do `/scan` (dados parseados + sugestão de beneficiário
-    + duplicata) para que o frontend possa usar o mesmo fluxo de confirmação.
-    """
+    """Recebe foto base64, extrai linha digitável + beneficiário via Vision AI e parseia."""
     try:
-        linha = await extrair_linha_digitavel(body.foto_base64)
+        vision_result = await extrair_linha_digitavel(body.foto_base64)
     except BoletoVisionError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
     try:
-        parsed = parse_boleto(linha)
+        parsed = parse_boleto(vision_result.linha_digitavel)
     except BoletoInvalidoError as e:
         raise HTTPException(
             status_code=422,
-            detail=f"A IA leu '{linha[:20]}...' mas não é um boleto válido: {e}",
+            detail=f"A IA leu '{vision_result.linha_digitavel[:20]}...' mas não é um boleto válido: {e}",
         )
-    return _parsed_para_dict(parsed, db)
+    return _parsed_para_dict(parsed, db, beneficiario_extraido=vision_result.beneficiario)
 
 
 @router.post("/boletos", status_code=201)
