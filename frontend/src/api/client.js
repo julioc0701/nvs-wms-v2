@@ -227,6 +227,11 @@ export const api = {
     req('POST', '/financeiro/boletos/scan', { codigo_ou_linha: codigoOuLinha }),
   scanBoletoFoto: (fotoBase64) =>
     req('POST', '/financeiro/boletos/scan-foto', { foto_base64: fotoBase64 }),
+  scanBoletoPdf: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return req('POST', '/financeiro/boletos/scan-pdf', fd, true)
+  },
   criarBoleto: (data) => req('POST', '/financeiro/boletos', data),
   listarBoletos: (filtros = {}) => {
     const params = new URLSearchParams()

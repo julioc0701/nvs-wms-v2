@@ -81,7 +81,7 @@ export default function FinanceiroConfirmar() {
       })
       sessionStorage.removeItem('boletoScanResult')
       sessionStorage.removeItem('boletoScanCodigo')
-      navigate('/financeiro/scan')
+      navigate('/financeiro')
     } catch (e) {
       alert(`Erro: ${e.message}`)
     } finally {

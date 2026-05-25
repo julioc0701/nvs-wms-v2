@@ -1,6 +1,6 @@
 """Rotas de Financeiro — Boletos a pagar."""
 from datetime import date as DateType, datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +10,7 @@ from models import Boleto, BoletoBeneficiario
 from services.boleto_parser import parse_boleto, BoletoInvalidoError
 from services.boleto_storage import salvar_foto_base64, caminho_foto, excluir_foto
 from services.boleto_vision import extrair_linha_digitavel, BoletoVisionError
+from services.boleto_pdf import extrair_linha_digitavel_de_pdf, BoletoPdfError
 
 router = APIRouter()
 
@@ -123,6 +124,34 @@ def scan_boleto(body: ScanRequest, db: DBSession = Depends(get_db)):
         parsed = parse_boleto(body.codigo_ou_linha)
     except BoletoInvalidoError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return _parsed_para_dict(parsed, db)
+
+
+@router.post("/boletos/scan-pdf")
+async def scan_boleto_pdf(file: UploadFile = File(...), db: DBSession = Depends(get_db)):
+    """Recebe upload de PDF de boleto, extrai linha digitável via pdfplumber e parseia.
+
+    Retorna o mesmo shape do `/scan` e `/scan-foto` para que o frontend possa usar
+    o mesmo fluxo de confirmação.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Arquivo precisa ser PDF")
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10 MB
+        raise HTTPException(status_code=400, detail="PDF maior que 10 MB")
+
+    try:
+        linha = extrair_linha_digitavel_de_pdf(content)
+    except BoletoPdfError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        parsed = parse_boleto(linha)
+    except BoletoInvalidoError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"PDF tem '{linha[:20]}...' mas não é um boleto válido: {e}",
+        )
     return _parsed_para_dict(parsed, db)
 
 

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Keyboard, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, Keyboard, Loader2, RefreshCw, FileText } from 'lucide-react'
 import { api } from '../api/client'
 
 /**
@@ -21,6 +21,8 @@ export default function FinanceiroScan() {
   const [fotoB64, setFotoB64] = useState(null)
   const [erro, setErro] = useState(null)
   const fileInputRef = useRef(null)
+  const pdfInputRef = useRef(null)
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
 
   async function comprimirFoto(file) {
     return new Promise((resolve) => {
@@ -56,6 +58,20 @@ export default function FinanceiroScan() {
     setErro(null)
     try {
       const dados = await api.scanBoletoFoto(fotoB64)
+      sessionStorage.setItem('boletoScanResult', JSON.stringify(dados))
+      sessionStorage.setItem('boletoScanCodigo', dados.codigo_barras)
+      navigate('/financeiro/confirmar')
+    } catch (e) {
+      setErro(e.message)
+      setEstado('falhou')
+    }
+  }
+
+  async function processarPdf(file) {
+    setEstado('lendo')
+    setErro(null)
+    try {
+      const dados = await api.scanBoletoPdf(file)
       sessionStorage.setItem('boletoScanResult', JSON.stringify(dados))
       sessionStorage.setItem('boletoScanCodigo', dados.codigo_barras)
       navigate('/financeiro/confirmar')
@@ -157,7 +173,7 @@ export default function FinanceiroScan() {
   return (
     <TelaCheia>
       <button
-        onClick={() => navigate('/sessions')}
+        onClick={() => navigate('/financeiro')}
         className="absolute top-4 left-4 text-sm text-slate-400"
       >
         ← Voltar
@@ -165,7 +181,7 @@ export default function FinanceiroScan() {
 
       <h1 className="text-2xl font-bold text-white mb-2">Registrar boleto</h1>
       <p className="text-slate-400 text-sm mb-8 text-center px-4">
-        Tire uma foto do boleto ou digite o código
+        {isMobile ? 'Tire uma foto do boleto ou digite o código' : 'Anexe PDF, tire foto ou digite o código'}
       </p>
 
       <input
@@ -176,8 +192,30 @@ export default function FinanceiroScan() {
         onChange={onArquivoEscolhido}
         className="hidden"
       />
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) processarPdf(f)
+          e.target.value = ''
+        }}
+        className="hidden"
+      />
 
       <div className="flex flex-col gap-4 w-full max-w-sm px-4">
+        {!isMobile && (
+          <button
+            onClick={() => pdfInputRef.current?.click()}
+            className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-emerald-900/30 transition-all flex flex-col items-center gap-3"
+          >
+            <FileText size={48} />
+            <span className="text-lg font-bold">Anexar PDF do boleto</span>
+            <span className="text-xs text-emerald-100/80">Mais rápido e preciso</span>
+          </button>
+        )}
+
         <button
           onClick={() => fileInputRef.current?.click()}
           className="bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-cyan-900/30 transition-all flex flex-col items-center gap-3"

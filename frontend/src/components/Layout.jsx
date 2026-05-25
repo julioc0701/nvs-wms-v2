@@ -43,16 +43,15 @@ export default function Layout() {
   const sidebarVisible = sidebarOpen || sidebarPinned
 
   // Redirecionamento mobile:
-  //   • Master no celular → /financeiro/scan ou /financeiro/confirmar (foco em escanear boletos)
-  //     Outras rotas do financeiro (ex: painel /financeiro) são desktop-only e redirecionam pro scan.
+  //   • Master no celular → /financeiro (painel mobile). Sub-rotas /financeiro/*
+  //     são livres (scan, confirmar, boleto/:id).
   //   • Não-master no celular → /separacao/listas (foco em separação)
   useEffect(() => {
     const isLogin = location.pathname === '/'
     if (!isMobilePhone || isLogin) return
     if (isMaster) {
-      const rotasMobile = ['/financeiro/scan', '/financeiro/confirmar']
-      const emRotaMobile = rotasMobile.some(p => location.pathname.startsWith(p))
-      if (!emRotaMobile) navigate('/financeiro/scan')
+      const inFinanceiro = location.pathname.startsWith('/financeiro')
+      if (!inFinanceiro) navigate('/financeiro')
     } else {
       const inSeparacao = location.pathname.startsWith('/separacao')
       if (!inSeparacao) navigate('/separacao/listas')
