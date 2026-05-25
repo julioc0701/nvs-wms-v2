@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Keyboard, Loader2, RefreshCw, FileText, PenLine } from 'lucide-react'
+import { cn } from '../lib/utils'
+import { Camera, Keyboard, Loader2, RefreshCw, FileText, PenLine, ChevronRight } from 'lucide-react'
 import { api } from '../api/client'
 
 /**
@@ -174,15 +175,10 @@ export default function FinanceiroScan() {
     <TelaCheia>
       <button
         onClick={() => navigate('/financeiro')}
-        className="absolute top-4 left-4 text-sm text-slate-400"
+        className="absolute top-4 left-4 text-sm text-slate-400 flex items-center gap-1.5"
       >
         ← Voltar
       </button>
-
-      <h1 className="text-2xl font-bold text-white mb-2">Registrar boleto</h1>
-      <p className="text-slate-400 text-sm mb-8 text-center px-4">
-        {isMobile ? 'Tire uma foto do boleto ou digite o código' : 'Anexe PDF, tire foto ou digite o código'}
-      </p>
 
       <input
         ref={fileInputRef}
@@ -204,51 +200,112 @@ export default function FinanceiroScan() {
         className="hidden"
       />
 
-      <div className="flex flex-col gap-4 w-full max-w-sm px-4">
-        {!isMobile && (
+      <div className="w-full max-w-md px-4 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-1">Novo lançamento</h1>
+          <p className="text-sm text-slate-400">Como você quer registrar?</p>
+        </div>
+
+        {/* Card primário — PDF (recomendado, só desktop) ou Foto (mobile) */}
+        {!isMobile ? (
           <button
             onClick={() => pdfInputRef.current?.click()}
-            className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-emerald-900/30 transition-all flex flex-col items-center gap-3"
+            className="w-full bg-gradient-to-br from-cyan-500/15 to-cyan-700/10 hover:from-cyan-500/25 hover:to-cyan-700/20 active:scale-[0.98] border border-cyan-500/40 rounded-2xl p-5 transition-all flex items-center gap-4 text-left"
           >
-            <FileText size={48} />
-            <span className="text-lg font-bold">Anexar PDF do boleto</span>
-            <span className="text-xs text-emerald-100/80">Mais rápido e preciso</span>
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
+              <FileText size={26} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-bold text-base">Anexar PDF do boleto</div>
+              <div className="text-cyan-200/70 text-xs mt-0.5">Mais rápido e preciso</div>
+            </div>
+            <ChevronRight size={20} className="text-cyan-300/70 shrink-0" />
+          </button>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full bg-gradient-to-br from-cyan-500/15 to-cyan-700/10 hover:from-cyan-500/25 hover:to-cyan-700/20 active:scale-[0.98] border border-cyan-500/40 rounded-2xl p-5 transition-all flex items-center gap-4 text-left"
+          >
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
+              <Camera size={26} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-white font-bold text-base">Tirar foto do boleto</div>
+              <div className="text-cyan-200/70 text-xs mt-0.5">A IA lê e preenche os dados</div>
+            </div>
+            <ChevronRight size={20} className="text-cyan-300/70 shrink-0" />
           </button>
         )}
 
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-cyan-900/30 transition-all flex flex-col items-center gap-3"
-        >
-          <Camera size={48} />
-          <span className="text-lg font-bold">Tirar foto do boleto</span>
-        </button>
-
-        <button
-          onClick={() => setEstado('manual')}
-          className="border-2 border-slate-600 hover:bg-slate-800 active:scale-95 text-slate-200 rounded-2xl p-6 transition-all flex flex-col items-center gap-3"
-        >
-          <Keyboard size={48} />
-          <span className="text-lg font-semibold">Digitar código manualmente</span>
-        </button>
-
-        {/* Separador */}
-        <div className="flex items-center gap-3 my-1">
-          <div className="flex-1 h-px bg-slate-700" />
-          <span className="text-xs text-slate-500 uppercase tracking-wider">ou</span>
-          <div className="flex-1 h-px bg-slate-700" />
+        {/* Divisor */}
+        <div className="flex items-center gap-3 pt-2">
+          <div className="flex-1 h-px bg-slate-700/50" />
+          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+            Outras opções
+          </span>
+          <div className="flex-1 h-px bg-slate-700/50" />
         </div>
 
-        <button
-          onClick={() => navigate('/financeiro/lancamento-manual')}
-          className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-amber-900/30 transition-all flex flex-col items-center gap-3"
-        >
-          <PenLine size={48} />
-          <span className="text-lg font-bold">Lançamento manual</span>
-          <span className="text-xs text-amber-100/80">Despesa, PIX, fornecedor, etc.</span>
-        </button>
+        {/* Lista de outras opções */}
+        <div className="bg-slate-800/30 rounded-2xl border border-slate-700/50 overflow-hidden">
+          {/* Foto (no desktop, já que PDF é primário; no mobile esse é primário) */}
+          {!isMobile && (
+            <OpcaoItem
+              icon={<Camera size={22} />}
+              titulo="Foto do boleto"
+              subtitulo="A IA lê e preenche os dados"
+              onClick={() => fileInputRef.current?.click()}
+            />
+          )}
+
+          {/* PDF no mobile vira opção secundária (raramente usado em celular) */}
+          {isMobile && (
+            <OpcaoItem
+              icon={<FileText size={22} />}
+              titulo="Anexar PDF do boleto"
+              subtitulo="Leitura direta do arquivo"
+              onClick={() => pdfInputRef.current?.click()}
+            />
+          )}
+
+          <OpcaoItem
+            icon={<Keyboard size={22} />}
+            titulo="Digitar código manualmente"
+            subtitulo="Linha digitável de 47 dígitos"
+            onClick={() => setEstado('manual')}
+          />
+
+          <OpcaoItem
+            icon={<PenLine size={22} />}
+            titulo="Lançamento manual"
+            subtitulo="Despesa, PIX, fornecedor, etc."
+            onClick={() => navigate('/financeiro/lancamento-manual')}
+            ultimo
+          />
+        </div>
       </div>
     </TelaCheia>
+  )
+}
+
+function OpcaoItem({ icon, titulo, subtitulo, onClick, ultimo }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-700/30 active:bg-slate-700/50 transition-colors text-left',
+        !ultimo && 'border-b border-slate-700/40'
+      )}
+    >
+      <div className="w-9 h-9 rounded-lg bg-slate-700/40 flex items-center justify-center text-slate-300 shrink-0">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-slate-100 font-semibold text-sm">{titulo}</div>
+        <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{subtitulo}</div>
+      </div>
+      <ChevronRight size={18} className="text-slate-500 shrink-0" />
+    </button>
   )
 }
 
