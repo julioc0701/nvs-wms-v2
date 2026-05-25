@@ -345,21 +345,98 @@ export default function FinanceiroPainel() {
     setFiltros({ ...filtros, status: 'registrado' })
   }
 
+  // Para a taxa de pagamento no hero mobile
+  const totalNoFiltro = stats.total_a_pagar.qtd + stats.pagos.qtd
+  const taxaPagamento = totalNoFiltro > 0
+    ? Math.round((stats.pagos.qtd / totalNoFiltro) * 100)
+    : 0
+
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-4 pb-24 md:pb-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Financeiro — Boletos a Pagar</h1>
+        {/* No desktop, botão é inline. No mobile, vira FAB lá embaixo */}
         <button
           onClick={() => navigate('/financeiro/scan')}
-          className="flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-3 rounded-xl font-bold shadow"
+          className="hidden md:flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-3 rounded-xl font-bold shadow"
         >
           <Plus size={20} /> Adicionar boleto
         </button>
       </div>
 
-      {/* 3 stat tiles no estilo Supervisor */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* MOBILE: Hero + 2 chips */}
+      <div className="md:hidden space-y-3">
+        <button
+          onClick={filtroAPagar}
+          className={cn(
+            'w-full rounded-2xl border border-slate-700 bg-slate-900 text-white p-5 relative overflow-hidden text-left transition-all active:scale-[0.98]',
+            filtros.status === 'registrado' && 'ring-2 ring-cyan-400'
+          )}
+        >
+          <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/5" />
+          <div className="absolute -right-4 -bottom-8 w-24 h-24 rounded-full bg-cyan-500/10" />
+          <p className="text-[10px] uppercase tracking-[0.25em] font-bold text-slate-300 mb-2">
+            A Pagar esta semana
+          </p>
+          <p className="font-black tabular-nums text-4xl mb-1">
+            R$ {stats.total_a_pagar.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+          </p>
+          <p className="text-sm text-slate-300 mb-3">
+            {stats.total_a_pagar.qtd} {stats.total_a_pagar.qtd === 1 ? 'boleto' : 'boletos'}
+            {totalNoFiltro > 0 && ` · taxa ${taxaPagamento}% pago`}
+          </p>
+          <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-cyan-400 rounded-full transition-all duration-1000"
+              style={{ width: `${taxaPagamento}%` }}
+            />
+          </div>
+        </button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={filtroVencidos}
+            className={cn(
+              'rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-left active:scale-[0.98] transition-all',
+              filtros.status === 'atrasado' && 'ring-2 ring-red-400'
+            )}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <AlertTriangle size={14} className="text-red-600" />
+              <p className="text-[10px] uppercase tracking-wider font-bold text-red-600">Vencidos</p>
+            </div>
+            <p className="text-xl font-black text-red-700 tabular-nums leading-none">
+              {stats.vencidos.qtd}
+            </p>
+            <p className="text-[11px] text-red-600 mt-1 font-mono">
+              R$ {stats.vencidos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          </button>
+
+          <button
+            onClick={filtroPagos}
+            className={cn(
+              'rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-left active:scale-[0.98] transition-all',
+              filtros.status === 'pago' && 'ring-2 ring-cyan-400'
+            )}
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 size={14} className="text-emerald-600" />
+              <p className="text-[10px] uppercase tracking-wider font-bold text-slate-600">Pagos</p>
+            </div>
+            <p className="text-xl font-black text-slate-900 tabular-nums leading-none">
+              {stats.pagos.qtd}
+            </p>
+            <p className="text-[11px] text-slate-600 mt-1 font-mono">
+              R$ {stats.pagos.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            </p>
+          </button>
+        </div>
+      </div>
+
+      {/* DESKTOP: 3 stat tiles no estilo Supervisor */}
+      <div className="hidden md:grid grid-cols-3 gap-3">
         <StatTileDark
           label="A Pagar (filtro)"
           qtd={stats.total_a_pagar.qtd}
@@ -534,6 +611,15 @@ export default function FinanceiroPainel() {
           onChange={() => { carregar(); setSelecionado(null) }}
         />
       )}
+
+      {/* FAB mobile pra adicionar boleto */}
+      <button
+        onClick={() => navigate('/financeiro/scan')}
+        className="md:hidden fixed right-5 bottom-24 z-30 w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 active:scale-90 text-white shadow-xl shadow-cyan-900/30 flex items-center justify-center transition-all"
+        aria-label="Adicionar boleto"
+      >
+        <Plus size={28} strokeWidth={2.5} />
+      </button>
 
       {/* Dialog de pagar do desktop */}
       {pagarDialog && (
