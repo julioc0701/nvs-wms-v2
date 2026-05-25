@@ -142,7 +142,7 @@ export default function FinanceiroLancamentoManual() {
                     setCategoriaId(parseInt(e.target.value))
                   }
                 }}
-                className="w-full p-3 border rounded-lg text-base"
+                className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
               >
                 <option value="">— Escolha —</option>
                 {categorias.map((c) => (
@@ -156,7 +156,7 @@ export default function FinanceiroLancamentoManual() {
               <input
                 value={nomeNovaCategoria}
                 onChange={(e) => setNomeNovaCategoria(e.target.value)}
-                className="flex-1 p-3 border rounded-lg"
+                className="flex-1 p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg bg-white transition-colors"
                 placeholder="Nome da categoria"
                 autoFocus
               />
@@ -184,7 +184,7 @@ export default function FinanceiroLancamentoManual() {
           <input
             value={empresa}
             onChange={(e) => setEmpresa(e.target.value)}
-            className="w-full p-3 border rounded-lg text-base"
+            className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
             placeholder="Ex: João da Silva, Energisa, Imobiliária X"
           />
         </div>
@@ -198,7 +198,7 @@ export default function FinanceiroLancamentoManual() {
             <input
               value={valor}
               onChange={(e) => setValor(e.target.value)}
-              className="w-full p-3 border rounded-lg text-base"
+              className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
               placeholder="0,00"
               inputMode="decimal"
             />
@@ -211,7 +211,7 @@ export default function FinanceiroLancamentoManual() {
               type="date"
               value={vencimento}
               onChange={(e) => setVencimento(e.target.value)}
-              className="w-full p-3 border rounded-lg text-base"
+              className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
             />
           </div>
         </div>
@@ -225,7 +225,7 @@ export default function FinanceiroLancamentoManual() {
             <input
               value={chavePix}
               onChange={(e) => setChavePix(e.target.value)}
-              className="w-full p-3 border rounded-lg text-base"
+              className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
               placeholder="CPF, CNPJ, e-mail, celular ou chave aleatória"
             />
           </div>
@@ -239,7 +239,7 @@ export default function FinanceiroLancamentoManual() {
           <input
             value={descricao}
             onChange={(e) => setDescricao(e.target.value)}
-            className="w-full p-3 border rounded-lg text-base"
+            className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
             placeholder="Ex: Conta de luz mai/26, Reembolso almoço cliente"
           />
         </div>
@@ -252,7 +252,7 @@ export default function FinanceiroLancamentoManual() {
           <textarea
             value={observacao}
             onChange={(e) => setObservacao(e.target.value)}
-            className="w-full p-3 border rounded-lg text-base"
+            className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
             rows={2}
           />
         </div>
@@ -275,7 +275,7 @@ export default function FinanceiroLancamentoManual() {
           />
           <button
             onClick={() => anexoInputRef.current?.click()}
-            className="w-full p-3 border border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-100 flex items-center justify-center gap-2"
+            className="w-full p-3 border-2 border-dashed border-slate-400 rounded-lg text-sm text-slate-600 hover:bg-slate-50 bg-white transition-colors flex items-center justify-center gap-2"
           >
             {anexoB64 ? (
               <>✓ Anexo carregado — clique para trocar</>
