@@ -617,6 +617,8 @@ def find_by_barcode(
         .all()
     )
 
+    distinct_skus_in_rows = {(r[0].sku or "").upper() for r in rows}
+
     # Mostra escolha quando há múltiplos itens em listas abertas — pode ser
     # SKUs diferentes vinculados ao mesmo EAN, OU mesmo SKU em sessões/ml_codes
     # diferentes (ex: PDF ML com mesmo SKU em anúncios distintos).
