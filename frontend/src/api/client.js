@@ -241,6 +241,14 @@ export const api = {
     const qs = params.toString()
     return req('GET', `/financeiro/boletos${qs ? `?${qs}` : ''}`)
   },
+  statsBoletos: (filtros = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filtros).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') params.append(k, v)
+    })
+    const qs = params.toString()
+    return req('GET', `/financeiro/boletos/stats${qs ? `?${qs}` : ''}`)
+  },
   detalharBoleto: (id) => req('GET', `/financeiro/boletos/${id}`),
   editarBoleto: (id, data) => req('PATCH', `/financeiro/boletos/${id}`, data),
   pagarBoleto: (id, operatorId) =>

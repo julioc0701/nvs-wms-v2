@@ -265,7 +265,10 @@ def listar_boletos(
     db: DBSession = Depends(get_db),
 ):
     q = db.query(Boleto)
-    if status:
+    if status == "atrasado":
+        # Atrasado = registrado + vencimento já passou
+        q = q.filter(Boleto.status == "registrado").filter(Boleto.vencimento < DateType.today())
+    elif status:
         q = q.filter(Boleto.status == status)
     if vencimento_de:
         q = q.filter(Boleto.vencimento >= DateType.fromisoformat(vencimento_de))
@@ -284,6 +287,66 @@ def listar_boletos(
         "boletos": [_boleto_to_dict(b, db) for b in boletos],
         "total": len(boletos),
         "valor_total": sum(b.valor for b in boletos),
+    }
+
+
+@router.get("/boletos/stats")
+def stats_boletos(
+    vencimento_de: str | None = None,
+    vencimento_ate: str | None = None,
+    pago_de: str | None = None,
+    pago_ate: str | None = None,
+    db: DBSession = Depends(get_db),
+):
+    """Estatísticas pro dashboard do painel.
+
+    - total_a_pagar: status=registrado, respeitando filtros de vencimento
+    - vencidos: status=registrado + vencimento < hoje, IGNORA filtros
+    - pagos: status=pago, respeitando filtros de pago_em
+    """
+    hoje = DateType.today()
+
+    # Total a pagar (respeita filtro de vencimento)
+    q_pagar = db.query(Boleto).filter(Boleto.status == "registrado")
+    if vencimento_de:
+        q_pagar = q_pagar.filter(Boleto.vencimento >= DateType.fromisoformat(vencimento_de))
+    if vencimento_ate:
+        q_pagar = q_pagar.filter(Boleto.vencimento <= DateType.fromisoformat(vencimento_ate))
+    boletos_pagar = q_pagar.all()
+
+    # Vencidos (ignora filtros — sempre todos os registrados vencidos)
+    boletos_vencidos = (
+        db.query(Boleto)
+        .filter(Boleto.status == "registrado")
+        .filter(Boleto.vencimento < hoje)
+        .all()
+    )
+
+    # Pagos (respeita filtro de pago_em)
+    q_pagos = db.query(Boleto).filter(Boleto.status == "pago")
+    if pago_de:
+        de = DateType.fromisoformat(pago_de)
+        q_pagos = q_pagos.filter(Boleto.pago_em >= de)
+    if pago_ate:
+        # `<` no fim do dia seguinte pra incluir o dia inteiro
+        from datetime import timedelta as _td
+        ate = DateType.fromisoformat(pago_ate) + _td(days=1)
+        q_pagos = q_pagos.filter(Boleto.pago_em < ate)
+    boletos_pagos = q_pagos.all()
+
+    return {
+        "total_a_pagar": {
+            "qtd": len(boletos_pagar),
+            "valor": sum(b.valor for b in boletos_pagar),
+        },
+        "vencidos": {
+            "qtd": len(boletos_vencidos),
+            "valor": sum(b.valor for b in boletos_vencidos),
+        },
+        "pagos": {
+            "qtd": len(boletos_pagos),
+            "valor": sum(b.valor for b in boletos_pagos),
+        },
     }
 
 
