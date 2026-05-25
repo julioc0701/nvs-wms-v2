@@ -30,28 +30,72 @@ _REGEX_FORMATADA = re.compile(
 # Padrão sem separadores (47 dígitos consecutivos)
 _REGEX_BRUTA = re.compile(r"\b(\d{47})\b")
 
-# Beneficiário: linha que aparece após "Beneficiário" (com tolerância a acentos/caps)
-_REGEX_BENEFICIARIO = re.compile(
-    r"Benefici[áa]rio\s*[:\n]\s*([^\n]+)",
+# Padrões pra identificar o beneficiário em ordem de confiabilidade.
+# Cada padrão captura o NOME (group 1).
+_PADROES_BENEFICIARIO = [
+    # "Cedente" — comum em boletos. Texto após o rótulo na linha de baixo.
+    # Ex: "Cedente Agencia / Código cedente\nLELLO CONDOMINIOS LTDA CNPJ: ..."
+    re.compile(
+        r"Cedente[^\n]*\n([^\n]+)",
+        re.IGNORECASE,
+    ),
+    # "Beneficiário final" — rotula explicitamente o nome
+    re.compile(
+        r"Benefici[áa]rio\s+final\s+([^\n]+?)(?:\s+CNPJ|\s+CPF|\n)",
+        re.IGNORECASE,
+    ),
+    # "Beneficiário" com `:` ou na linha de baixo, ignorando cabeçalhos de tabela
+    re.compile(
+        r"Benefici[áa]rio\s*[:\n]\s*([^\n]+)",
+        re.IGNORECASE,
+    ),
+]
+
+# Rótulos de campos adjacentes que devem ser removidos do final do nome
+_RUIDO_ADJACENTE = re.compile(
+    r"\s+(CNPJ|CPF|Ag[êe]ncia|Vencimento|N[uúº]\.?\s*Documento|Carteira|"
+    r"Nosso\s*Numero|N[uú]mero|C[oó]digo|Carteira).*$",
     re.IGNORECASE,
 )
 
+# Cabeçalhos de tabela que NÃO são nomes de empresa
+_CABECALHOS = {
+    "carteira",
+    "carteira / nosso numero",
+    "carteira/nosso numero",
+    "agencia",
+    "agência",
+    "vencimento",
+    "carteira nosso numero",
+}
+
+
+def _limpar_nome(nome: str) -> str:
+    """Remove ruído comum (CNPJ, rótulos de campos adjacentes)."""
+    nome = nome.strip()
+    # Remove CNPJ/CPF na mesma linha (formato XX.XXX.XXX/XXXX-XX ou XXX.XXX.XXX-XX)
+    nome = re.sub(r"\s+\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}.*$", "", nome).strip()
+    nome = re.sub(r"\s+\d{3}\.\d{3}\.\d{3}-\d{2}.*$", "", nome).strip()
+    # Remove rótulos colados de campos adjacentes
+    nome = _RUIDO_ADJACENTE.sub("", nome).strip()
+    return nome
+
 
 def _extrair_beneficiario(texto: str) -> str | None:
-    """Tenta localizar o nome do beneficiário no texto do PDF."""
-    m = _REGEX_BENEFICIARIO.search(texto)
-    if not m:
-        return None
-    nome = m.group(1).strip()
-    # Remove ruído comum: rótulos colados, CNPJ na mesma linha
-    # Ex: "BRF S.A. CD JUNDIAI   01.838.723/0001-27"
-    nome = re.sub(r"\s+\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}.*$", "", nome).strip()
-    # Remove rótulos comuns do próximo campo que possam estar concatenados
-    nome = re.sub(r"\s+(Ag[êe]ncia|Vencimento|N[uúº]\.?\s*Documento).*$", "", nome,
-                  flags=re.IGNORECASE).strip()
-    if len(nome) < 3:
-        return None
-    return nome
+    """Tenta localizar o nome do beneficiário usando múltiplos padrões."""
+    for padrao in _PADROES_BENEFICIARIO:
+        for m in padrao.finditer(texto):
+            nome = _limpar_nome(m.group(1))
+            # Descarta cabeçalhos de tabela e nomes muito curtos
+            if len(nome) < 3:
+                continue
+            if nome.lower() in _CABECALHOS:
+                continue
+            # Descarta se for só números (improvável ser nome de empresa)
+            if not any(c.isalpha() for c in nome):
+                continue
+            return nome
+    return None
 
 
 def extrair_linha_digitavel_de_pdf(content: bytes) -> BoletoPdfResult:
