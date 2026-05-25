@@ -42,7 +42,8 @@ warehouse-picker v2/
 │   │   └── financeiro.py          ← Boletos a pagar (scan, lista, pagar)
 │   ├── services/
 │   │   ├── boleto_parser.py       ← Parser FEBRABAN (puro, com testes)
-│   │   └── boleto_storage.py      ← Fotos de boletos em /data/boletos
+│   │   ├── boleto_storage.py      ← Fotos de boletos em /data/boletos
+│   │   └── boleto_vision.py       ← Gemini Vision extrai linha digitável de foto
 │   └── warehouse_v3_local.db      ← Banco LOCAL (seed para produção)
 │
 ├── frontend/
@@ -168,6 +169,7 @@ warehouse-picker v2/
 | Método | Rota | O que faz |
 |---|---|---|
 | POST | `/boletos/scan` | Parseia código (sem salvar), sugere beneficiário, sinaliza duplicata |
+| POST | `/boletos/scan-foto` | Recebe foto base64, IA extrai linha digitável, parseia (Gemini Vision via `GOOGLE_AI_STUDIO_KEY`) |
 | POST | `/boletos` | Salva boleto + cria beneficiário se novo. 409 em duplicata |
 | GET | `/boletos` | Lista com filtros (status, vencimento, beneficiario_id, valor min/max). Retorna `{boletos, total, valor_total}` |
 | GET | `/boletos/{id}` | Detalhe completo |

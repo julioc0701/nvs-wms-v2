@@ -9,6 +9,7 @@ from database import get_db
 from models import Boleto, BoletoBeneficiario
 from services.boleto_parser import parse_boleto, BoletoInvalidoError
 from services.boleto_storage import salvar_foto_base64, caminho_foto, excluir_foto
+from services.boleto_vision import extrair_linha_digitavel, BoletoVisionError
 
 router = APIRouter()
 
@@ -18,6 +19,10 @@ router = APIRouter()
 
 class ScanRequest(BaseModel):
     codigo_ou_linha: str
+
+
+class ScanFotoRequest(BaseModel):
+    foto_base64: str
 
 
 class CriarBoletoRequest(BaseModel):
@@ -76,14 +81,8 @@ def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
-@router.post("/boletos/scan")
-def scan_boleto(body: ScanRequest, db: DBSession = Depends(get_db)):
-    """Parseia o código sem salvar. Retorna dados + sugestão de beneficiário + duplicata."""
-    try:
-        parsed = parse_boleto(body.codigo_ou_linha)
-    except BoletoInvalidoError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
+def _parsed_para_dict(parsed, db: DBSession) -> dict:
+    """Monta a resposta do scan a partir de um BoletoParsed (com sugestão + duplicata)."""
     existente = db.query(Boleto).filter(Boleto.codigo_barras == parsed.codigo_barras).first()
     duplicata = None
     if existente:
@@ -100,9 +99,9 @@ def scan_boleto(body: ScanRequest, db: DBSession = Depends(get_db)):
         .filter(BoletoBeneficiario.campo_livre_prefix == prefix)
         .first()
     )
-    beneficiario_sugerido = None
-    if benef:
-        beneficiario_sugerido = {"id": benef.id, "razao_social": benef.razao_social}
+    beneficiario_sugerido = (
+        {"id": benef.id, "razao_social": benef.razao_social} if benef else None
+    )
 
     return {
         "codigo_barras": parsed.codigo_barras,
@@ -115,6 +114,38 @@ def scan_boleto(body: ScanRequest, db: DBSession = Depends(get_db)):
         "beneficiario_sugerido": beneficiario_sugerido,
         "duplicata": duplicata,
     }
+
+
+@router.post("/boletos/scan")
+def scan_boleto(body: ScanRequest, db: DBSession = Depends(get_db)):
+    """Parseia o código sem salvar. Retorna dados + sugestão de beneficiário + duplicata."""
+    try:
+        parsed = parse_boleto(body.codigo_ou_linha)
+    except BoletoInvalidoError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return _parsed_para_dict(parsed, db)
+
+
+@router.post("/boletos/scan-foto")
+async def scan_boleto_foto(body: ScanFotoRequest, db: DBSession = Depends(get_db)):
+    """Recebe foto base64, extrai linha digitável via Gemini Vision e parseia.
+
+    Retorna o mesmo shape do `/scan` (dados parseados + sugestão de beneficiário
+    + duplicata) para que o frontend possa usar o mesmo fluxo de confirmação.
+    """
+    try:
+        linha = await extrair_linha_digitavel(body.foto_base64)
+    except BoletoVisionError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    try:
+        parsed = parse_boleto(linha)
+    except BoletoInvalidoError as e:
+        raise HTTPException(
+            status_code=422,
+            detail=f"A IA leu '{linha[:20]}...' mas não é um boleto válido: {e}",
+        )
+    return _parsed_para_dict(parsed, db)
 
 
 @router.post("/boletos", status_code=201)

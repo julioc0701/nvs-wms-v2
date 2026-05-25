@@ -1,145 +1,69 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Camera, Keyboard, Loader2, RefreshCw } from 'lucide-react'
 import { api } from '../api/client'
 
 /**
- * Leitura de boleto via zbar-wasm.
- * Lê frames do <video> via requestAnimationFrame, decodifica com ZBar em WASM.
- * ZBar tem a maior taxa de leitura entre engines abertas pra ITF (boleto).
+ * Tela de captura de boleto.
+ *
+ * 2 caminhos:
+ *   1. Tirar foto → câmera nativa do celular/desktop → backend usa Gemini Vision
+ *      para extrair a linha digitável → parser FEBRABAN valida → confirmar.
+ *   2. Digitar código manualmente → máscara incremental → confirmar.
+ *
+ * Sem stream de vídeo, sem ZXing/ZBar. A câmera nativa do dispositivo
+ * faz autofoco e captura uma imagem estática de alta qualidade.
  */
-
-let zbarModule = null
-async function getZbar() {
-  if (!zbarModule) {
-    zbarModule = await import('@undecaf/zbar-wasm')
-  }
-  return zbarModule
-}
-
 export default function FinanceiroScan() {
   const navigate = useNavigate()
-  const videoRef = useRef(null)
-  const canvasRef = useRef(null)
-  const streamRef = useRef(null)
-  const rafRef = useRef(null)
-  const ultimoCodigoRef = useRef(null)
+  // Estados: 'home' (2 botões) | 'preview' (foto tirada) | 'lendo' | 'falhou' | 'manual'
+  const [estado, setEstado] = useState('home')
+  const [fotoB64, setFotoB64] = useState(null)
   const [erro, setErro] = useState(null)
-  const [debug, setDebug] = useState('') // info técnica do último erro
-  const [estado, setEstado] = useState('scanning') // scanning | processando | manual
-  const [cameraAtiva, setCameraAtiva] = useState(false)
-  const [framesProcessados, setFramesProcessados] = useState(0)
+  const fileInputRef = useRef(null)
 
-  useEffect(() => {
-    if (estado !== 'scanning') return
-    let mounted = true
-
-    async function iniciar() {
-      try {
-        // Pede câmera traseira em resolução alta
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        })
-        if (!mounted) {
-          stream.getTracks().forEach((t) => t.stop())
-          return
+  async function comprimirFoto(file) {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          const maxLado = 1600
+          const escala = Math.min(1, maxLado / Math.max(img.width, img.height))
+          canvas.width = img.width * escala
+          canvas.height = img.height * escala
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', 0.85))
         }
-        streamRef.current = stream
-        const video = videoRef.current
-        video.srcObject = stream
-        await video.play()
-        setCameraAtiva(true)
-
-        // Carrega zbar-wasm
-        setDebug('Carregando zbar-wasm…')
-        const zbar = await getZbar()
-        setDebug('zbar-wasm pronto')
-
-        const engine = async (frame) => {
-          const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
-          canvasRef.current.width = frame.videoWidth
-          canvasRef.current.height = frame.videoHeight
-          ctx.drawImage(frame, 0, 0)
-          const imageData = ctx.getImageData(
-            0,
-            0,
-            canvasRef.current.width,
-            canvasRef.current.height
-          )
-          const symbols = await zbar.scanImageData(imageData)
-          if (symbols.length === 0) return null
-          // Prefere ITF (formato do boleto)
-          const itf = symbols.find((s) => s.typeName === 'ZBAR_I25')
-          return (itf || symbols[0]).decode()
-        }
-
-        // Loop de detecção
-        let frames = 0
-        async function tick() {
-          if (!mounted || video.readyState < 2) {
-            if (mounted) rafRef.current = requestAnimationFrame(tick)
-            return
-          }
-          try {
-            const texto = await engine(video)
-            frames++
-            if (frames % 10 === 0) setFramesProcessados(frames)
-            if (texto && texto !== ultimoCodigoRef.current) {
-              ultimoCodigoRef.current = texto
-              await processarLeitura(texto)
-              return // para o loop após detectar
-            }
-          } catch (e) {
-            setDebug(`Erro decode: ${e.message}`)
-          }
-          if (mounted) rafRef.current = requestAnimationFrame(tick)
-        }
-
-        rafRef.current = requestAnimationFrame(tick)
-      } catch (e) {
-        setDebug(`Erro init: ${e.name} — ${e.message}`)
-        setErro(`Câmera indisponível: ${e.message}`)
-        setEstado('manual')
+        img.src = e.target.result
       }
-    }
+      reader.readAsDataURL(file)
+    })
+  }
 
-    async function processarLeitura(texto) {
-      setEstado('processando')
-      setDebug(`Lido: ${texto.substring(0, 20)}…`)
-      try {
-        const dados = await api.scanBoleto(texto)
-        try { navigator.vibrate?.(200) } catch {}
-        pararCamera()
-        sessionStorage.setItem('boletoScanResult', JSON.stringify(dados))
-        sessionStorage.setItem('boletoScanCodigo', texto)
-        navigate('/financeiro/confirmar')
-      } catch (e) {
-        ultimoCodigoRef.current = null
-        setDebug(`API erro: ${e.message}`)
-        setErro(e.message)
-        setEstado('scanning')
-        setTimeout(() => setErro(null), 3500)
-      }
-    }
+  async function onArquivoEscolhido(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const dataUrl = await comprimirFoto(file)
+    setFotoB64(dataUrl)
+    setEstado('preview')
+    e.target.value = '' // permite re-selecionar mesma foto
+  }
 
-    function pararCamera() {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop())
-        streamRef.current = null
-      }
+  async function processarFoto() {
+    setEstado('lendo')
+    setErro(null)
+    try {
+      const dados = await api.scanBoletoFoto(fotoB64)
+      sessionStorage.setItem('boletoScanResult', JSON.stringify(dados))
+      sessionStorage.setItem('boletoScanCodigo', dados.codigo_barras)
+      navigate('/financeiro/confirmar')
+    } catch (e) {
+      setErro(e.message)
+      setEstado('falhou')
     }
-
-    iniciar()
-
-    return () => {
-      mounted = false
-      pararCamera()
-    }
-  }, [estado, navigate])
+  }
 
   async function processarManual(linha) {
     try {
@@ -152,50 +76,132 @@ export default function FinanceiroScan() {
     }
   }
 
+  // ── Renderizações por estado ─────────────────────────────────────────────
+
   if (estado === 'manual') {
-    return <ScanManualFallback erro={erro} onSubmit={processarManual} onVoltar={() => setEstado('scanning')} />
+    return (
+      <ScanManualFallback
+        erro={erro}
+        onSubmit={processarManual}
+        onVoltar={() => { setErro(null); setEstado('home') }}
+      />
+    )
   }
 
-  return (
-    <div className="fixed inset-0 bg-black z-50 flex flex-col">
-      <div className="flex items-center justify-between p-4 text-white">
-        <button onClick={() => navigate('/sessions')} className="text-sm">← Voltar</button>
-        <span className="text-sm">
-          {cameraAtiva ? 'Aponte para o código de barras' : 'Iniciando câmera…'}
-        </span>
-        <button onClick={() => setEstado('manual')} className="text-sm underline">Digitar</button>
-      </div>
-      <div className="relative flex-1 flex items-center justify-center">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
-        <canvas ref={canvasRef} className="hidden" />
-        {/* Mira do scanner */}
-        <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-32 border-2 border-cyan-400 rounded-lg pointer-events-none">
-          {cameraAtiva && estado === 'scanning' && (
-            <div className="absolute inset-x-0 top-1/2 h-0.5 bg-cyan-400 shadow-[0_0_8px_2px_rgba(34,211,238,0.8)] animate-pulse" />
-          )}
+  if (estado === 'lendo') {
+    return (
+      <TelaCheia>
+        <Loader2 size={48} className="animate-spin text-cyan-400 mb-4" />
+        <h2 className="text-xl text-white mb-2">Lendo boleto…</h2>
+        <p className="text-white/60 text-sm">A IA está extraindo os dados da foto</p>
+      </TelaCheia>
+    )
+  }
+
+  if (estado === 'preview') {
+    return (
+      <TelaCheia>
+        <h2 className="text-lg text-white mb-3">Boleto fotografado</h2>
+        <img
+          src={fotoB64}
+          alt="Boleto"
+          className="max-w-md w-full max-h-[60vh] object-contain border border-slate-700 rounded mb-4"
+        />
+        <div className="flex gap-3 w-full max-w-md">
+          <button
+            onClick={() => { setFotoB64(null); setEstado('home') }}
+            className="flex-1 py-3 border-2 border-slate-600 text-slate-300 rounded-xl font-semibold"
+          >
+            Tirar outra
+          </button>
+          <button
+            onClick={processarFoto}
+            className="flex-1 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold"
+          >
+            Continuar
+          </button>
         </div>
-        {cameraAtiva && estado === 'scanning' && (
-          <div className="absolute bottom-24 inset-x-0 text-center text-white/80 text-xs px-6">
-            Mantenha o código de barras dentro do retângulo, parado, com boa iluminação.
-            <div className="mt-1 text-white/50 text-[10px] font-mono">
-              zbar-wasm · {framesProcessados} frames processados
-            </div>
-            {debug && (
-              <div className="mt-1 text-yellow-300/80 text-[10px] font-mono break-all">
-                {debug}
-              </div>
-            )}
-          </div>
-        )}
-        {estado === 'processando' && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white">
-            Processando…
-          </div>
-        )}
+      </TelaCheia>
+    )
+  }
+
+  if (estado === 'falhou') {
+    return (
+      <TelaCheia>
+        <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mb-4">
+          <span className="text-3xl">⚠</span>
+        </div>
+        <h2 className="text-xl text-white mb-2">Não foi possível ler</h2>
+        <p className="text-red-300 text-sm text-center max-w-md mb-6 px-4">
+          {erro || 'Tente uma foto mais nítida e bem iluminada.'}
+        </p>
+        <div className="flex flex-col gap-3 w-full max-w-md">
+          <button
+            onClick={() => { setErro(null); setFotoB64(null); setEstado('home') }}
+            className="py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+          >
+            <RefreshCw size={20} /> Tirar nova foto
+          </button>
+          <button
+            onClick={() => { setErro(null); setEstado('manual') }}
+            className="py-3 border-2 border-slate-600 text-slate-300 rounded-xl font-semibold flex items-center justify-center gap-2"
+          >
+            <Keyboard size={20} /> Digitar código manualmente
+          </button>
+        </div>
+      </TelaCheia>
+    )
+  }
+
+  // estado === 'home'
+  return (
+    <TelaCheia>
+      <button
+        onClick={() => navigate('/sessions')}
+        className="absolute top-4 left-4 text-sm text-slate-400"
+      >
+        ← Voltar
+      </button>
+
+      <h1 className="text-2xl font-bold text-white mb-2">Registrar boleto</h1>
+      <p className="text-slate-400 text-sm mb-8 text-center px-4">
+        Tire uma foto do boleto ou digite o código
+      </p>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={onArquivoEscolhido}
+        className="hidden"
+      />
+
+      <div className="flex flex-col gap-4 w-full max-w-sm px-4">
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white rounded-2xl p-6 shadow-lg shadow-cyan-900/30 transition-all flex flex-col items-center gap-3"
+        >
+          <Camera size={48} />
+          <span className="text-lg font-bold">Tirar foto do boleto</span>
+        </button>
+
+        <button
+          onClick={() => setEstado('manual')}
+          className="border-2 border-slate-600 hover:bg-slate-800 active:scale-95 text-slate-200 rounded-2xl p-6 transition-all flex flex-col items-center gap-3"
+        >
+          <Keyboard size={48} />
+          <span className="text-lg font-semibold">Digitar código manualmente</span>
+        </button>
       </div>
-      {erro && (
-        <div className="bg-red-600 text-white text-sm p-3 text-center">{erro}</div>
-      )}
+    </TelaCheia>
+  )
+}
+
+function TelaCheia({ children }) {
+  return (
+    <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-4 overflow-auto">
+      {children}
     </div>
   )
 }
@@ -223,8 +229,8 @@ function ScanManualFallback({ erro, onSubmit, onVoltar }) {
   const ok = digitos.length === 44 || digitos.length === 47
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-900 text-white">
-      <h2 className="text-lg mb-3 text-center">Digite ou cole a linha digitável</h2>
+    <TelaCheia>
+      <h2 className="text-lg mb-3 text-center text-white">Digite ou cole a linha digitável</h2>
       <textarea
         value={valor}
         onChange={(e) => setValor(formatarLinhaDigitavel(e.target.value))}
@@ -239,15 +245,17 @@ function ScanManualFallback({ erro, onSubmit, onVoltar }) {
       </div>
       {erro && <div className="mt-2 text-red-400 text-sm max-w-md text-center">{erro}</div>}
       <div className="flex gap-2 mt-4">
-        <button onClick={onVoltar} className="px-4 py-2 border border-slate-700 rounded">Câmera</button>
+        <button onClick={onVoltar} className="px-4 py-2 border border-slate-700 text-slate-300 rounded">
+          Voltar
+        </button>
         <button
           onClick={() => onSubmit(valor)}
           disabled={!ok}
-          className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 rounded"
+          className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded"
         >
           Continuar
         </button>
       </div>
-    </div>
+    </TelaCheia>
   )
 }
