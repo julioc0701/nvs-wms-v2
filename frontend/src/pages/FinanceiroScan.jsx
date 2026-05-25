@@ -286,7 +286,7 @@ function TelaCheia({ children, claro = false }) {
         claro
           ? {
               background:
-                'linear-gradient(180deg, #ffffff 0%, #e0f2fe 60%, #bae6fd 100%)',
+                'linear-gradient(135deg, #ffffff 0%, #bae6fd 35%, #38bdf8 100%)',
             }
           : undefined
       }
