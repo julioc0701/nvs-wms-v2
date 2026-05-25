@@ -3,34 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 
 /**
- * Estratégia híbrida de leitura de boleto:
- *   1. Tenta BarcodeDetector nativo (Chrome Android/Desktop, Edge) — mais rápido
- *   2. Fallback para zbar-wasm (Safari iOS, browsers antigos) — robusto pra ITF
- *
- * Lê frames do <video> via requestAnimationFrame (~30fps) e decodifica.
- * BarcodeDetector chama a engine do sistema (sub-millisegundo).
- * zbar-wasm roda em WASM (50-100ms por frame em mobile decente).
+ * Leitura de boleto via zbar-wasm.
+ * Lê frames do <video> via requestAnimationFrame, decodifica com ZBar em WASM.
+ * ZBar tem a maior taxa de leitura entre engines abertas pra ITF (boleto).
  */
 
-// Lazy import do zbar-wasm — só carrega se BarcodeDetector não estiver disponível
 let zbarModule = null
 async function getZbar() {
   if (!zbarModule) {
     zbarModule = await import('@undecaf/zbar-wasm')
   }
   return zbarModule
-}
-
-// Detecta se BarcodeDetector nativo está disponível e suporta ITF
-async function criarDetectorNativo() {
-  if (typeof window.BarcodeDetector === 'undefined') return null
-  try {
-    const formats = await window.BarcodeDetector.getSupportedFormats()
-    if (!formats.includes('itf')) return null
-    return new window.BarcodeDetector({ formats: ['itf', 'code_128'] })
-  } catch {
-    return null
-  }
 }
 
 export default function FinanceiroScan() {
@@ -41,9 +24,10 @@ export default function FinanceiroScan() {
   const rafRef = useRef(null)
   const ultimoCodigoRef = useRef(null)
   const [erro, setErro] = useState(null)
+  const [debug, setDebug] = useState('') // info técnica do último erro
   const [estado, setEstado] = useState('scanning') // scanning | processando | manual
   const [cameraAtiva, setCameraAtiva] = useState(false)
-  const [engineUsada, setEngineUsada] = useState('') // 'nativo' | 'zbar'
+  const [framesProcessados, setFramesProcessados] = useState(0)
 
   useEffect(() => {
     if (estado !== 'scanning') return
@@ -69,33 +53,31 @@ export default function FinanceiroScan() {
         await video.play()
         setCameraAtiva(true)
 
-        // Detecta qual engine usar
-        const detectorNativo = await criarDetectorNativo()
-        let engine
-        if (detectorNativo) {
-          engine = async (frame) => {
-            const results = await detectorNativo.detect(frame)
-            return results.length > 0 ? results[0].rawValue : null
-          }
-          setEngineUsada('nativo')
-        } else {
-          const zbar = await getZbar()
-          engine = async (frame) => {
-            const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
-            canvasRef.current.width = frame.videoWidth
-            canvasRef.current.height = frame.videoHeight
-            ctx.drawImage(frame, 0, 0)
-            const imageData = ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height)
-            const symbols = await zbar.scanImageData(imageData)
-            if (symbols.length === 0) return null
-            // Prefere símbolos do tipo ITF (boleto bancário)
-            const itf = symbols.find((s) => s.typeName === 'ZBAR_I25')
-            return (itf || symbols[0]).decode()
-          }
-          setEngineUsada('zbar')
+        // Carrega zbar-wasm
+        setDebug('Carregando zbar-wasm…')
+        const zbar = await getZbar()
+        setDebug('zbar-wasm pronto')
+
+        const engine = async (frame) => {
+          const ctx = canvasRef.current.getContext('2d', { willReadFrequently: true })
+          canvasRef.current.width = frame.videoWidth
+          canvasRef.current.height = frame.videoHeight
+          ctx.drawImage(frame, 0, 0)
+          const imageData = ctx.getImageData(
+            0,
+            0,
+            canvasRef.current.width,
+            canvasRef.current.height
+          )
+          const symbols = await zbar.scanImageData(imageData)
+          if (symbols.length === 0) return null
+          // Prefere ITF (formato do boleto)
+          const itf = symbols.find((s) => s.typeName === 'ZBAR_I25')
+          return (itf || symbols[0]).decode()
         }
 
         // Loop de detecção
+        let frames = 0
         async function tick() {
           if (!mounted || video.readyState < 2) {
             if (mounted) rafRef.current = requestAnimationFrame(tick)
@@ -103,19 +85,22 @@ export default function FinanceiroScan() {
           }
           try {
             const texto = await engine(video)
+            frames++
+            if (frames % 10 === 0) setFramesProcessados(frames)
             if (texto && texto !== ultimoCodigoRef.current) {
               ultimoCodigoRef.current = texto
               await processarLeitura(texto)
               return // para o loop após detectar
             }
-          } catch {
-            // engines podem falhar em frames específicos — ignora e continua
+          } catch (e) {
+            setDebug(`Erro decode: ${e.message}`)
           }
           if (mounted) rafRef.current = requestAnimationFrame(tick)
         }
 
         rafRef.current = requestAnimationFrame(tick)
       } catch (e) {
+        setDebug(`Erro init: ${e.name} — ${e.message}`)
         setErro(`Câmera indisponível: ${e.message}`)
         setEstado('manual')
       }
@@ -123,6 +108,7 @@ export default function FinanceiroScan() {
 
     async function processarLeitura(texto) {
       setEstado('processando')
+      setDebug(`Lido: ${texto.substring(0, 20)}…`)
       try {
         const dados = await api.scanBoleto(texto)
         try { navigator.vibrate?.(200) } catch {}
@@ -132,9 +118,10 @@ export default function FinanceiroScan() {
         navigate('/financeiro/confirmar')
       } catch (e) {
         ultimoCodigoRef.current = null
+        setDebug(`API erro: ${e.message}`)
         setErro(e.message)
         setEstado('scanning')
-        setTimeout(() => setErro(null), 2500)
+        setTimeout(() => setErro(null), 3500)
       }
     }
 
@@ -190,9 +177,12 @@ export default function FinanceiroScan() {
         {cameraAtiva && estado === 'scanning' && (
           <div className="absolute bottom-24 inset-x-0 text-center text-white/80 text-xs px-6">
             Mantenha o código de barras dentro do retângulo, parado, com boa iluminação.
-            {engineUsada && (
-              <div className="mt-1 text-white/40 text-[10px]">
-                engine: {engineUsada === 'nativo' ? 'BarcodeDetector (nativo)' : 'zbar-wasm'}
+            <div className="mt-1 text-white/50 text-[10px] font-mono">
+              zbar-wasm · {framesProcessados} frames processados
+            </div>
+            {debug && (
+              <div className="mt-1 text-yellow-300/80 text-[10px] font-mono break-all">
+                {debug}
               </div>
             )}
           </div>
