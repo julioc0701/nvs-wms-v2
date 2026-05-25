@@ -35,7 +35,7 @@ def _detectar_provider() -> tuple[str, str, str, str]:
     if override == "groq" and groq_key:
         return ("groq", groq_key,
                 "https://api.groq.com/openai/v1",
-                os.getenv("BOLETO_VISION_MODEL", "llama-3.2-90b-vision-preview"))
+                os.getenv("BOLETO_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"))
     if override == "openrouter" and openrouter_key:
         return ("openrouter", openrouter_key,
                 "https://openrouter.ai/api/v1",
@@ -49,7 +49,7 @@ def _detectar_provider() -> tuple[str, str, str, str]:
     if groq_key:
         return ("groq", groq_key,
                 "https://api.groq.com/openai/v1",
-                os.getenv("BOLETO_VISION_MODEL", "llama-3.2-90b-vision-preview"))
+                os.getenv("BOLETO_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"))
     if openrouter_key:
         return ("openrouter", openrouter_key,
                 "https://openrouter.ai/api/v1",
