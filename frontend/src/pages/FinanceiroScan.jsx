@@ -172,10 +172,10 @@ export default function FinanceiroScan() {
 
   // estado === 'home'
   return (
-    <TelaCheia>
+    <TelaCheia claro>
       <button
         onClick={() => navigate('/financeiro')}
-        className="absolute top-4 left-4 text-sm text-slate-400 flex items-center gap-1.5"
+        className="absolute top-4 left-4 text-sm text-slate-600 flex items-center gap-1.5"
       >
         ← Voltar
       </button>
@@ -200,87 +200,38 @@ export default function FinanceiroScan() {
         className="hidden"
       />
 
-      <div className="w-full max-w-md px-4 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Novo lançamento</h1>
-          <p className="text-sm text-slate-400">Como você quer registrar?</p>
+      <div className="w-full max-w-md px-2">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-slate-900 mb-1">Novo lançamento</h1>
+          <p className="text-sm text-slate-500">Como você quer registrar?</p>
         </div>
 
-        {/* Card primário — PDF (recomendado, só desktop) ou Foto (mobile) */}
-        {!isMobile ? (
-          <button
+        <div className="grid grid-cols-2 gap-3">
+          <OpcaoCard
+            icon={<FileText size={36} strokeWidth={1.5} />}
+            titulo="PDF do boleto"
+            subtitulo="Mais rápido"
             onClick={() => pdfInputRef.current?.click()}
-            className="w-full bg-gradient-to-br from-cyan-500/15 to-cyan-700/10 hover:from-cyan-500/25 hover:to-cyan-700/20 active:scale-[0.98] border border-cyan-500/40 rounded-2xl p-5 transition-all flex items-center gap-4 text-left"
-          >
-            <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
-              <FileText size={26} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-bold text-base">Anexar PDF do boleto</div>
-              <div className="text-cyan-200/70 text-xs mt-0.5">Mais rápido e preciso</div>
-            </div>
-            <ChevronRight size={20} className="text-cyan-300/70 shrink-0" />
-          </button>
-        ) : (
-          <button
+            destaque={!isMobile}
+          />
+          <OpcaoCard
+            icon={<Camera size={36} strokeWidth={1.5} />}
+            titulo="Foto do boleto"
+            subtitulo="A IA preenche"
             onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-gradient-to-br from-cyan-500/15 to-cyan-700/10 hover:from-cyan-500/25 hover:to-cyan-700/20 active:scale-[0.98] border border-cyan-500/40 rounded-2xl p-5 transition-all flex items-center gap-4 text-left"
-          >
-            <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center text-cyan-300 shrink-0">
-              <Camera size={26} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-bold text-base">Tirar foto do boleto</div>
-              <div className="text-cyan-200/70 text-xs mt-0.5">A IA lê e preenche os dados</div>
-            </div>
-            <ChevronRight size={20} className="text-cyan-300/70 shrink-0" />
-          </button>
-        )}
-
-        {/* Divisor */}
-        <div className="flex items-center gap-3 pt-2">
-          <div className="flex-1 h-px bg-slate-700/50" />
-          <span className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
-            Outras opções
-          </span>
-          <div className="flex-1 h-px bg-slate-700/50" />
-        </div>
-
-        {/* Lista de outras opções */}
-        <div className="bg-slate-800/30 rounded-2xl border border-slate-700/50 overflow-hidden">
-          {/* Foto (no desktop, já que PDF é primário; no mobile esse é primário) */}
-          {!isMobile && (
-            <OpcaoItem
-              icon={<Camera size={22} />}
-              titulo="Foto do boleto"
-              subtitulo="A IA lê e preenche os dados"
-              onClick={() => fileInputRef.current?.click()}
-            />
-          )}
-
-          {/* PDF no mobile vira opção secundária (raramente usado em celular) */}
-          {isMobile && (
-            <OpcaoItem
-              icon={<FileText size={22} />}
-              titulo="Anexar PDF do boleto"
-              subtitulo="Leitura direta do arquivo"
-              onClick={() => pdfInputRef.current?.click()}
-            />
-          )}
-
-          <OpcaoItem
-            icon={<Keyboard size={22} />}
-            titulo="Digitar código manualmente"
-            subtitulo="Linha digitável de 47 dígitos"
+            destaque={isMobile}
+          />
+          <OpcaoCard
+            icon={<Keyboard size={36} strokeWidth={1.5} />}
+            titulo="Digitar código"
+            subtitulo="47 dígitos"
             onClick={() => setEstado('manual')}
           />
-
-          <OpcaoItem
-            icon={<PenLine size={22} />}
+          <OpcaoCard
+            icon={<PenLine size={36} strokeWidth={1.5} />}
             titulo="Lançamento manual"
-            subtitulo="Despesa, PIX, fornecedor, etc."
+            subtitulo="Despesa, PIX…"
             onClick={() => navigate('/financeiro/lancamento-manual')}
-            ultimo
           />
         </div>
       </div>
@@ -288,30 +239,48 @@ export default function FinanceiroScan() {
   )
 }
 
-function OpcaoItem({ icon, titulo, subtitulo, onClick, ultimo }) {
+function OpcaoCard({ icon, titulo, subtitulo, onClick, destaque }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-3 px-4 py-3.5 hover:bg-slate-700/30 active:bg-slate-700/50 transition-colors text-left',
-        !ultimo && 'border-b border-slate-700/40'
+        'aspect-square rounded-2xl border transition-all p-4 flex flex-col items-center justify-center gap-2 text-center',
+        'hover:shadow-md active:scale-[0.97]',
+        destaque
+          ? 'bg-cyan-100 border-cyan-300 hover:bg-cyan-200 ring-1 ring-cyan-200'
+          : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
       )}
     >
-      <div className="w-9 h-9 rounded-lg bg-slate-700/40 flex items-center justify-center text-slate-300 shrink-0">
+      <div className={cn(
+        'shrink-0',
+        destaque ? 'text-cyan-700' : 'text-blue-700'
+      )}>
         {icon}
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-slate-100 font-semibold text-sm">{titulo}</div>
-        <div className="text-slate-400 text-xs mt-0.5 line-clamp-1">{subtitulo}</div>
+      <div>
+        <div className={cn(
+          'font-bold text-sm leading-tight',
+          destaque ? 'text-cyan-900' : 'text-blue-900'
+        )}>
+          {titulo}
+        </div>
+        <div className={cn(
+          'text-[11px] mt-0.5',
+          destaque ? 'text-cyan-700/80' : 'text-blue-600/80'
+        )}>
+          {subtitulo}
+        </div>
       </div>
-      <ChevronRight size={18} className="text-slate-500 shrink-0" />
     </button>
   )
 }
 
-function TelaCheia({ children }) {
+function TelaCheia({ children, claro = false }) {
   return (
-    <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-4 overflow-auto">
+    <div className={cn(
+      'fixed inset-0 z-50 flex flex-col items-center justify-center p-4 overflow-auto',
+      claro ? 'bg-slate-50' : 'bg-slate-900'
+    )}>
       {children}
     </div>
   )
