@@ -117,15 +117,22 @@ export default function FinanceiroLancamentoManual() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="sticky top-0 bg-white border-b z-10 px-4 py-3 flex items-center gap-3">
+    <div
+      className="min-h-screen"
+      style={{
+        background:
+          'linear-gradient(135deg, #ffffff 0%, #60a5fa 35%, #1e3a8a 100%)',
+      }}
+    >
+      <div className="sticky top-0 bg-white/85 backdrop-blur border-b border-slate-200 z-10 px-4 py-3 flex items-center gap-3">
         <button onClick={() => navigate('/financeiro/scan')} className="p-1 -ml-1">
           <ArrowLeft size={22} />
         </button>
         <h1 className="text-base font-bold flex-1">Novo lançamento manual</h1>
       </div>
 
-      <div className="p-4 max-w-md mx-auto space-y-4">
+      <div className="p-4 max-w-md mx-auto">
+        <div className="bg-white rounded-2xl shadow-xl shadow-blue-900/10 p-5 space-y-4">
         {/* Categoria */}
         <div>
           <label className="text-sm font-semibold text-slate-700 mb-1 block">
@@ -299,6 +306,7 @@ export default function FinanceiroLancamentoManual() {
         >
           {salvando ? 'Salvando…' : 'Salvar lançamento'}
         </button>
+        </div>
       </div>
     </div>
   )
