@@ -245,28 +245,28 @@ function OpcaoCard({ icon, titulo, subtitulo, onClick, destaque }) {
       onClick={onClick}
       className={cn(
         'aspect-square rounded-2xl border transition-all p-4 flex flex-col items-center justify-center gap-2 text-center',
-        'hover:shadow-md active:scale-[0.97]',
+        'hover:shadow-lg active:scale-[0.97]',
         destaque
-          ? 'bg-cyan-100 border-cyan-300 hover:bg-cyan-200 ring-1 ring-cyan-200'
-          : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
+          ? 'bg-gradient-to-br from-cyan-500 to-blue-600 border-cyan-400 text-white shadow-lg shadow-cyan-500/30'
+          : 'bg-white border-blue-200 hover:bg-blue-50 shadow-sm'
       )}
     >
       <div className={cn(
         'shrink-0',
-        destaque ? 'text-cyan-700' : 'text-blue-700'
+        destaque ? 'text-white' : 'text-blue-700'
       )}>
         {icon}
       </div>
       <div>
         <div className={cn(
           'font-bold text-sm leading-tight',
-          destaque ? 'text-cyan-900' : 'text-blue-900'
+          destaque ? 'text-white' : 'text-slate-900'
         )}>
           {titulo}
         </div>
         <div className={cn(
           'text-[11px] mt-0.5',
-          destaque ? 'text-cyan-700/80' : 'text-blue-600/80'
+          destaque ? 'text-cyan-50/90' : 'text-slate-500'
         )}>
           {subtitulo}
         </div>
@@ -277,10 +277,20 @@ function OpcaoCard({ icon, titulo, subtitulo, onClick, destaque }) {
 
 function TelaCheia({ children, claro = false }) {
   return (
-    <div className={cn(
-      'fixed inset-0 z-50 flex flex-col items-center justify-center p-4 overflow-auto',
-      claro ? 'bg-slate-50' : 'bg-slate-900'
-    )}>
+    <div
+      className={cn(
+        'fixed inset-0 z-50 flex flex-col items-center justify-center p-4 overflow-auto',
+        !claro && 'bg-slate-900'
+      )}
+      style={
+        claro
+          ? {
+              background:
+                'linear-gradient(180deg, #ffffff 0%, #e0f2fe 60%, #bae6fd 100%)',
+            }
+          : undefined
+      }
+    >
       {children}
     </div>
   )
