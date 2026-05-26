@@ -34,22 +34,39 @@ export default function FinanceiroMLResumo() {
 
   return (
     <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">Resumo Financeiro Mercado Livre</h1>
-      <FiltrosBar onBuscar={mutation.mutate} loading={mutation.isPending} />
+      <h1 className="text-xl font-bold">Análise Financeira — Mercado Livre</h1>
+
+      {/* CARDS sempre visíveis no topo (zeros se nada buscado) */}
+      <KPICards cards={resultado?.cards} />
+
+      {/* Erro de busca */}
       {mutation.isError && (
         <div className="border border-red-300 bg-red-50 p-3 rounded text-red-700 text-sm">
           Erro: {String(mutation.error)}
         </div>
       )}
+
+      {/* FILTROS + GRÁFICO lado a lado */}
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <FiltrosBar onBuscar={mutation.mutate} loading={mutation.isPending} />
+        </div>
+        <div>
+          <PizzaChart pizza={resultado?.pizza} />
+        </div>
+      </div>
+
+      {/* AÇÕES + TABELA — só aparecem após primeira busca */}
       {resultado && (
         <>
-          <div className="grid lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2"><KPICards cards={resultado.cards} /></div>
-            <PizzaChart pizza={resultado.pizza} />
-          </div>
           <div className="flex gap-2">
-            <button onClick={() => exportar('excel')} className="px-3 py-1.5 text-sm border rounded">Exportar Excel</button>
-            <button onClick={() => exportar('csv')} className="px-3 py-1.5 text-sm border rounded">Exportar CSV</button>
+            <button onClick={() => exportar('excel')} className="px-3 py-1.5 text-sm border rounded hover:bg-slate-50">📊 Exportar Excel</button>
+            <button onClick={() => exportar('csv')} className="px-3 py-1.5 text-sm border rounded hover:bg-slate-50">📄 Exportar CSV</button>
+            {resultado.sync_report && (
+              <div className="ml-auto text-xs text-slate-500 self-center">
+                Sync: {resultado.sync_report.dias_sincronizados} dia(s) atualizados · {resultado.sync_report.total_orders} pedidos
+              </div>
+            )}
           </div>
           <TabelaVendas
             data={resultado.tabela}
@@ -58,6 +75,13 @@ export default function FinanceiroMLResumo() {
             onPageSizeChange={onPageSize}
           />
         </>
+      )}
+
+      {/* Estado vazio inicial */}
+      {!resultado && !mutation.isPending && (
+        <div className="text-center text-slate-400 text-sm py-8 border-2 border-dashed rounded-lg">
+          Selecione um período e clique <strong>Buscar</strong> pra carregar os dados.
+        </div>
       )}
     </div>
   )

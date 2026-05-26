@@ -1,61 +1,220 @@
+import { DollarSign, MinusCircle, Tag, Truck, Equal, Package, Receipt, Footprints } from 'lucide-react'
 import { Tooltip } from './Tooltip'
 
 const fmt = (n) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n ?? 0)
-const fmtPct = (n) => `${(n ?? 0).toFixed(2).replace('.', ',')}%`
+const fmtPct = (n) => `${(Number(n) || 0).toFixed(2).replace('.', ',')}%`
 const fmtInt = (n) => new Intl.NumberFormat('pt-BR').format(n ?? 0)
 
-function Card({ label, value, sub, tooltip, color = 'gray' }) {
-  const bg = {
-    green: 'bg-emerald-50 border-emerald-200',
-    red: 'bg-red-50 border-red-200',
-    yellow: 'bg-yellow-50 border-yellow-200',
-    blue: 'bg-blue-50 border-blue-200',
-    gray: 'bg-gray-50 border-gray-200',
-  }[color]
+const EMPTY = {
+  vendas_aprovadas: 0, faturamento_ml: 0, vendas_canceladas: 0,
+  custo_imposto_total: 0, custo_total: 0, imposto_total: 0,
+  tarifa_venda: 0,
+  frete_total: 0, frete_comprador_total: 0, frete_vendedor_total: 0,
+  mc_total: 0, mc_pct_global: 0,
+  ticket_medio: 0, ticket_mc: 0,
+  devolucoes_parciais_valor: 0,
+  qtd_vendas_aprovadas: 0, qtd_total_vendas: 0, qtd_vendas_canceladas: 0,
+  unidades_aprovadas: 0,
+  breakdown_logistico: {},
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Card grande (linha 1)
+// ─────────────────────────────────────────────────────────────────────────────
+function BigCard({ icon: Icon, accent, label, value, tooltip, right, children }) {
+  const accents = {
+    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+    red:    'bg-orange-50 border-orange-200 text-orange-700',
+    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
+    blue:   'bg-blue-50 border-blue-200 text-blue-700',
+    green:  'bg-emerald-50 border-emerald-200 text-emerald-700',
+  }
   return (
-    <Tooltip content={tooltip}>
-      <div className={`border rounded-lg p-3 ${bg}`}>
-        <div className="text-xs text-gray-600">{label}</div>
-        <div className="text-xl font-semibold">{value}</div>
-        {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
+    <div className={`relative overflow-hidden border-2 rounded-lg p-3 flex items-stretch min-h-[110px] ${accents[accent] || accents.purple}`}>
+      <div className="opacity-30 mr-3 flex items-start pt-1">
+        <Icon size={36} strokeWidth={2.2} />
       </div>
-    </Tooltip>
+      <div className="flex-1 flex flex-col justify-between">
+        <div>
+          <div className="flex items-center gap-1 text-xs font-medium opacity-80">
+            {label}
+            {tooltip && (
+              <Tooltip content={tooltip}>
+                <span className="cursor-help text-[10px] rounded-full border border-current w-3.5 h-3.5 inline-flex items-center justify-center opacity-60">?</span>
+              </Tooltip>
+            )}
+          </div>
+          <div className="text-2xl font-bold tracking-tight mt-0.5 text-slate-900">{value}</div>
+          {children}
+        </div>
+      </div>
+      {right && (
+        <div className="text-right text-[11px] text-slate-700 ml-2 self-start space-y-1 leading-tight">
+          {right}
+        </div>
+      )}
+    </div>
   )
 }
 
-export function KPICards({ cards }) {
-  if (!cards) return null
+// ─────────────────────────────────────────────────────────────────────────────
+// Card pequeno (linha 2 — branco, neutro)
+// ─────────────────────────────────────────────────────────────────────────────
+function SmallCard({ icon: Icon, label, value, sub, tooltip, right }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-      <Card label="Vendas Aprovadas" value={fmt(cards.vendas_aprovadas)}
-            sub={`Faturamento ML ${fmt(cards.faturamento_ml)} · Canceladas ${fmt(cards.vendas_canceladas)}`}
-            tooltip="Considera valor do produto + frete pago pelo comprador." />
-      <Card label="Custo & Imposto" value={fmt(cards.custo_imposto_total)} color="red"
-            sub={`Custo ${fmt(cards.custo_total)} · Imposto ${fmt(cards.imposto_total)}`}
-            tooltip="Valores vinculados aos SKUs cadastrados em Cadastro SKU." />
-      <Card label="Tarifa de Venda" value={fmt(cards.tarifa_venda)} color="yellow"
-            tooltip="Tarifa ML descontada de eventual refund parcial." />
-      <Card label="Frete Total" value={fmt(cards.frete_total)} color="blue"
-            sub={`Comprador ${fmt(cards.frete_comprador_total)} · Vendedor ${fmt(cards.frete_vendedor_total)}`}
-            tooltip="Soma dos fretes em vendas aprovadas." />
-      <Card label="Margem de Contribuição" value={fmt(cards.mc_total)} color="green"
-            sub={`(${fmtPct(cards.mc_pct_global)})`}
-            tooltip="Vendas aprovadas menos custo, imposto, tarifa, frete vendedor e devolução parcial." />
+    <div className="relative overflow-hidden bg-white border border-slate-200 rounded-lg p-3 min-h-[95px] flex items-stretch">
+      <div className="opacity-25 mr-3 flex items-start text-slate-400">
+        <Icon size={32} strokeWidth={2} />
+      </div>
+      <div className="flex-1 flex flex-col">
+        <div className="flex items-center gap-1 text-xs font-medium text-slate-600">
+          {label}
+          {tooltip && (
+            <Tooltip content={tooltip}>
+              <span className="cursor-help text-[10px] rounded-full border border-slate-400 w-3.5 h-3.5 inline-flex items-center justify-center text-slate-500">?</span>
+            </Tooltip>
+          )}
+        </div>
+        {value && <div className="text-lg font-bold text-slate-900 mt-0.5">{value}</div>}
+        {sub && <div className="text-[11px] text-slate-500 mt-0.5">{sub}</div>}
+      </div>
+      {right && (
+        <div className="text-right text-[11px] text-slate-600 ml-2 self-start leading-tight space-y-0.5">
+          {right}
+        </div>
+      )}
+    </div>
+  )
+}
 
-      <Card label="Places/Coleta" value={fmt(cards.breakdown_logistico?.places_coleta || 0)} />
-      <Card label="Flex" value={fmt(cards.breakdown_logistico?.flex || 0)} />
-      <Card label="Full" value={fmt(cards.breakdown_logistico?.full || 0)} />
-      <Card label="ME1" value={fmt(cards.breakdown_logistico?.me1 || 0)} />
-      <Card label="Outros" value={fmt(cards.breakdown_logistico?.outros || 0)} />
+// ─────────────────────────────────────────────────────────────────────────────
+// KPICards principal
+// ─────────────────────────────────────────────────────────────────────────────
+export function KPICards({ cards }) {
+  const c = { ...EMPTY, ...(cards || {}) }
+  const bl = c.breakdown_logistico || {}
 
-      <Card label="Qtd Vendas Aprovadas" value={fmtInt(cards.qtd_vendas_aprovadas)}
-            sub={`${fmtInt(cards.unidades_aprovadas)} unidades`} />
-      <Card label="Qtd Total Vendas" value={`${fmtInt(cards.qtd_total_vendas)}`}
-            sub={`canceladas: ${fmtInt(cards.qtd_vendas_canceladas)}`} />
-      <Card label="Ticket Médio" value={fmt(cards.ticket_medio)} />
-      <Card label="Ticket Médio MC" value={fmt(cards.ticket_mc)} sub={fmtPct(cards.mc_pct_global)} />
-      <Card label="Devoluções Parciais" value={fmt(cards.devolucoes_parciais_valor)} />
+  return (
+    <div className="space-y-3">
+      {/* Linha 1 — 5 cards coloridos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <BigCard
+          icon={DollarSign}
+          accent="purple"
+          label="Vendas Aprovadas"
+          tooltip='"Vendas Aprovadas" considera o valor do produto + frete pago pelo comprador.'
+          value={fmt(c.vendas_aprovadas)}
+          right={
+            <>
+              <div><span className="opacity-60">Faturamento ML</span><br/><span className="font-semibold text-slate-800">{fmt(c.faturamento_ml)}</span></div>
+              <div><span className="opacity-60">Vendas Canceladas</span><br/><span className="font-semibold text-slate-800">{fmt(c.vendas_canceladas)}</span></div>
+            </>
+          }
+        />
+
+        <BigCard
+          icon={MinusCircle}
+          accent="red"
+          label="Custo & Imposto"
+          tooltip="Valores vinculados aos SKUs cadastrados em Cadastro Custo SKU."
+          value={fmt(c.custo_imposto_total)}
+          right={
+            <>
+              <div><span className="opacity-60">Custo</span><br/><span className="font-semibold text-slate-800">{fmt(c.custo_total)}</span></div>
+              <div><span className="opacity-60">Imposto</span><br/><span className="font-semibold text-slate-800">{fmt(c.imposto_total)}</span></div>
+            </>
+          }
+        />
+
+        <BigCard
+          icon={Tag}
+          accent="yellow"
+          label="Tarifa de Venda"
+          tooltip="Tarifa cobrada pelo Mercado Livre, descontada de devoluções parciais."
+          value={fmt(c.tarifa_venda)}
+        />
+
+        <BigCard
+          icon={MinusCircle}
+          accent="blue"
+          label="Frete Total"
+          tooltip="Soma dos fretes em VENDAS APROVADAS."
+          value={fmt(c.frete_total)}
+          right={
+            <>
+              <div><span className="opacity-60">Frete Comprador</span><br/><span className="font-semibold text-slate-800">{fmt(c.frete_comprador_total)}</span></div>
+              <div><span className="opacity-60">Frete Vendedor</span><br/><span className="font-semibold text-slate-800">{fmt(c.frete_vendedor_total)}</span></div>
+            </>
+          }
+        />
+
+        <BigCard
+          icon={Equal}
+          accent="green"
+          label="Margem de Contribuição"
+          tooltip="Vendas aprovadas − custo & imposto − tarifa − frete vendedor − devolução parcial."
+          value={fmt(c.mc_total)}
+        >
+          <div className="text-sm font-semibold text-emerald-700 mt-0.5">({fmtPct(c.mc_pct_global)})</div>
+        </BigCard>
+      </div>
+
+      {/* Linha 2 — 5 cards brancos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <SmallCard
+          icon={Truck}
+          label="Por Tipo de Frete"
+          right={
+            <>
+              <div><span className="opacity-60">Places/Coleta</span> <span className="font-semibold">{fmt(bl.places_coleta || 0)}</span></div>
+              <div><span className="opacity-60">Flex</span> <span className="font-semibold">{fmt(bl.flex || 0)}</span></div>
+              <div><span className="opacity-60">Full</span> <span className="font-semibold">{fmt(bl.full || 0)}</span></div>
+              <div><span className="opacity-60">ME1</span> <span className="font-semibold">{fmt(bl.me1 || 0)}</span></div>
+              <div><span className="opacity-60">Outros</span> <span className="font-semibold">{fmt(bl.outros || 0)}</span></div>
+              <div className="border-t border-slate-200 pt-0.5 mt-0.5"><span className="opacity-60">Total</span> <span className="font-semibold">{fmt(c.vendas_aprovadas)}</span></div>
+            </>
+          }
+        />
+
+        <SmallCard
+          icon={Package}
+          label="Qtd Vendas Aprovadas"
+          tooltip="Quantidade de vendas e somatória de unidades."
+          value={fmtInt(c.qtd_vendas_aprovadas)}
+          sub={`(${fmtInt(c.unidades_aprovadas)} unidades)`}
+          right={
+            <>
+              <div className="opacity-60">Qtd Total Vendas</div>
+              <div className="font-semibold text-slate-800">{fmtInt(c.qtd_total_vendas)}</div>
+              <div className="opacity-60 mt-1">Qtd Vendas Canceladas</div>
+              <div className="font-semibold text-slate-800">{fmtInt(c.qtd_vendas_canceladas)}</div>
+            </>
+          }
+        />
+
+        <SmallCard
+          icon={Receipt}
+          label="Ticket Médio por Venda Aprovada"
+          tooltip='"Vendas Aprovadas" ÷ "Qtd Vendas Aprovadas".'
+          value={fmt(c.ticket_medio)}
+        />
+
+        <SmallCard
+          icon={Receipt}
+          label="Ticket Médio da Margem das Vendas Aprovadas"
+          tooltip='"Margem de Contribuição" ÷ "Qtd Vendas Aprovadas".'
+          value={fmt(c.ticket_mc)}
+          sub={`(${fmtPct(c.mc_pct_global)})`}
+        />
+
+        <SmallCard
+          icon={Footprints}
+          label="Devoluções Parciais"
+          tooltip="Soma do valor de pedidos com refund parcial."
+          value={fmt(c.devolucoes_parciais_valor)}
+          sub="(0 vendas)"
+        />
+      </div>
     </div>
   )
 }
