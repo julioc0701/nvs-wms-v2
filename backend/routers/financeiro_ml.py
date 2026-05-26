@@ -175,6 +175,46 @@ def _json_safe(value):
     return value
 
 
+from fastapi.responses import StreamingResponse
+import io
+import csv
+from openpyxl import Workbook
+
+
+@router.post("/export")
+async def export_resumo(params: FilterParams, formato: Literal["excel", "csv"] = "excel",
+                         operator_id: int = Depends(require_master)):
+    """Exporta a tabela do resumo (sem paginação) no formato pedido."""
+    full = await get_resumo(FilterParams(**{**params.model_dump(), "page": 1, "page_size": 100000}),
+                             operator_id=operator_id)
+    rows = full["tabela"]
+
+    if formato == "csv":
+        buf = io.StringIO()
+        if rows:
+            writer = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+        return StreamingResponse(io.BytesIO(buf.getvalue().encode("utf-8")),
+                                 media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=resumo.csv"})
+
+    # Excel
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumo"
+    if rows:
+        ws.append(list(rows[0].keys()))
+        for r in rows:
+            ws.append([r.get(k) for k in rows[0].keys()])
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return StreamingResponse(bio,
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=resumo.xlsx"})
+
+
 @router.get("/health")
 async def health():
     """Verifica que o módulo está vivo e que ml_tokens tem token."""
