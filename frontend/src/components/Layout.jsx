@@ -4,7 +4,7 @@ import novaesLogo from '../assets/logo-novaes-v3.png'
 import {
   Home, PackageSearch, Users, AlertCircle, LogOut, Database,
   LayoutDashboard, ListTodo, Wrench, Settings as SettingsIcon, CheckCircle2, ClipboardList, CalendarCheck,
-  Pin, PinOff, Wallet
+  Pin, PinOff, Wallet, BarChart2, Tag
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 
@@ -73,6 +73,8 @@ export default function Layout() {
         { label: 'ERP Olist', path: '/olist-orders', icon: Database },
         { label: 'Base', path: '/master-data', icon: Database },
         { label: 'Financeiro', path: '/financeiro', icon: Wallet },
+        { label: 'Resumo Financeiro ML', path: '/financeiro-ml/resumo', icon: BarChart2 },
+        { label: 'Cadastro Custo SKU', path: '/financeiro-ml/skus', icon: Tag },
         { label: 'Operadores', path: '/operators', icon: Users },
       ]
     : [
