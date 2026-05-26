@@ -116,12 +116,16 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
     )
 
     from database import SessionLocal
+    from sqlalchemy import func
     with SessionLocal() as session:
         date_from = datetime.combine(params.data_inicio, time.min)
         date_to = datetime.combine(params.data_fim, time.max)
 
+        # MT considera a venda como "do dia" quando date_closed (pagamento) cai no dia.
+        # Pra status pre-payment (sem date_closed), cai em date_created.
+        data_ref = func.coalesce(MLOrderCache.date_closed, MLOrderCache.date_created)
         q = session.query(MLOrderCache).filter(
-            and_(MLOrderCache.date_created >= date_from, MLOrderCache.date_created <= date_to)
+            and_(data_ref >= date_from, data_ref <= date_to)
         )
         if params.status == "aprovado":
             q = q.filter(MLOrderCache.status == "paid")

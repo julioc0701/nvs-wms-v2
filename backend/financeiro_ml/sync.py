@@ -1,5 +1,23 @@
 """Sincronização de cache ML por dia. Política de freshness."""
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+# Timezone fixo da operação Antigra. MT mostra tudo nesse fuso.
+# ML retorna `date_created` no offset original do pedido (varia: -04:00, -03:00, etc).
+# Armazenamos SEMPRE convertido pra BRT naive — alinha com a UI e com filtros SQL date().
+BRT = timezone(timedelta(hours=-3))
+
+
+def _to_brt_naive(iso_str: str | None) -> datetime | None:
+    """Converte ISO datetime (qualquer fuso) → datetime naive em BRT (-03:00).
+
+    Necessário porque ML pode retornar `date_created` em -04:00 (vendas que aparecem
+    no dia anterior se armazenadas sem conversão).
+    """
+    if not iso_str:
+        return None
+    s = iso_str.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(s)
+    return dt.astimezone(BRT).replace(tzinfo=None)
 
 
 def _date_range(start: date, end: date) -> list[date]:
@@ -53,11 +71,19 @@ from financeiro_ml.client import build_default_client
 
 
 async def ensure_period_synced(date_from: date, date_to: date) -> dict:
-    """Orquestra sync por dia. Retorna {dias_sincronizados, dias_falhos, total_orders}."""
+    """Orquestra sync por dia. Retorna {dias_sincronizados, dias_falhos, total_orders}.
+
+    IMPORTANTE: estende a janela 1 dia pra trás. Justificativa: MT (e nossa query) filtra
+    venda por `date_closed`. Pedidos criados ontem mas pagos hoje aparecem no filtro de "hoje",
+    mas ML/orders/search filtra por `date_created`. Precisamos puxar o dia anterior também
+    pra ter esses pedidos cacheados antes da agregação.
+    """
     import logging
     trace = logging.getLogger("financeiro_ml.trace")
 
-    days = _date_range(date_from, date_to)
+    # Estende 1 dia pra trás pra cobrir pedidos created=ontem, closed=hoje
+    sync_from = date_from - timedelta(days=1)
+    days = _date_range(sync_from, date_to)
 
     with SessionLocal() as session:
         statuses_rows = session.query(MLDaySyncStatus).filter(
@@ -211,9 +237,8 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
         if existing is None:
             row = MLOrderCache(
                 order_id=order_id,
-                date_created=datetime.fromisoformat(detail["date_created"].replace("Z", "+00:00")),
-                date_closed=(datetime.fromisoformat(detail["date_closed"].replace("Z", "+00:00"))
-                              if detail.get("date_closed") else None),
+                date_created=_to_brt_naive(detail["date_created"]),
+                date_closed=_to_brt_naive(detail.get("date_closed")),
                 status=detail["status"],
                 status_detail=detail.get("status_detail"),
                 produto_total=produto_total,
