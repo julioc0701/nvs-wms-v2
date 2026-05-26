@@ -77,6 +77,31 @@ class MLClient:
                 resp.raise_for_status()
             return resp.json()
 
+    async def get_order(self, order_id: int) -> dict:
+        return await self._get(f"/orders/{order_id}")
+
+    async def search_orders(self, *, date_from: datetime, date_to: datetime,
+                             offset: int = 0, limit: int = 50) -> dict:
+        from models import MLTokens
+        session = self._session_factory()
+        try:
+            user_id = session.query(MLTokens).first().user_id
+        finally:
+            session.close()
+        return await self._get("/orders/search", params={
+            "seller": user_id,
+            "order.date_created.from": date_from.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+            "order.date_created.to": date_to.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+            "offset": offset,
+            "limit": limit,
+        })
+
+    async def get_shipment(self, shipment_id: int) -> dict:
+        return await self._get(f"/shipments/{shipment_id}")
+
+    async def get_item(self, item_id: str) -> dict:
+        return await self._get(f"/items/{item_id}")
+
 
 def build_default_client() -> MLClient:
     from database import SessionLocal

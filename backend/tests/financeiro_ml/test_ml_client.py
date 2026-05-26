@@ -65,3 +65,39 @@ async def test_get_retries_on_429():
 
     assert result["status"] == "paid"
     assert route.call_count == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_search_orders_passes_filters():
+    respx.get("https://api.mercadolibre.com/orders/search").mock(
+        return_value=httpx.Response(200, json={"results": [{"id": 1}], "paging": {"total": 1}})
+    )
+    fake_session = MagicMock()
+    fake_session.query.return_value.first.return_value = MagicMock(
+        access_token="ok", refresh_token="r", user_id=221832146,
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    )
+    client = MLClient(session_factory=lambda: fake_session, client_id="x", client_secret="y")
+    result = await client.search_orders(
+        date_from=datetime(2026, 5, 1),
+        date_to=datetime(2026, 5, 2),
+        offset=0, limit=50,
+    )
+    assert result["paging"]["total"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_order_returns_payload():
+    respx.get("https://api.mercadolibre.com/orders/2000016614536174").mock(
+        return_value=httpx.Response(200, json={"id": 2000016614536174, "status": "paid"})
+    )
+    fake_session = MagicMock()
+    fake_session.query.return_value.first.return_value = MagicMock(
+        access_token="ok", refresh_token="r", user_id=1,
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    )
+    client = MLClient(session_factory=lambda: fake_session, client_id="x", client_secret="y")
+    result = await client.get_order(2000016614536174)
+    assert result["id"] == 2000016614536174
