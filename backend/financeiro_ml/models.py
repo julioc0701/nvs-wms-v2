@@ -43,6 +43,7 @@ class MLOrderCache(Base):
     tarifa_bruta: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     tarifa_refund: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     refund_amount_partial: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    cupom_seller: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     modalidade_anuncio: Mapped[str | None] = mapped_column(String(30), nullable=True)
     logistic_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     shipping_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)

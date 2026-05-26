@@ -237,6 +237,7 @@ def _row_to_dict_order(r) -> dict:
         "tarifa_bruta": Decimal(str(r.tarifa_bruta)),
         "tarifa_refund": Decimal(str(r.tarifa_refund)),
         "refund_amount_partial": Decimal(str(r.refund_amount_partial)),
+        "cupom_seller": Decimal(str(r.cupom_seller)) if r.cupom_seller is not None else Decimal("0"),
         "logistic_type": r.logistic_type,
         "shipping_mode": r.shipping_mode,
         "modalidade_anuncio": r.modalidade_anuncio,

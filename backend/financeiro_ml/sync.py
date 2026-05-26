@@ -225,6 +225,16 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     is_total_cancel = detail.get("status") == "cancelled"
     refund_partial = Decimal("0") if is_total_cancel else refund_total
 
+    # Cupom seller (de campanha ML) — só quando tag `order_has_discount` está presente,
+    # pra evitar call desnecessária aos ~70% de orders sem cupom.
+    cupom_seller = Decimal("0")
+    if "order_has_discount" in (detail.get("tags") or []):
+        disc = await client.get_order_discounts(order_id)
+        for det in (disc.get("details") or []):
+            if det.get("type") == "coupon":
+                for it in (det.get("items") or []):
+                    cupom_seller += Decimal(str((it.get("amounts") or {}).get("seller") or 0))
+
     logistic_type = shipment.get("logistic_type")
     shipping_mode = shipment.get("mode")
 
@@ -251,6 +261,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
                 tarifa_bruta=tarifa_bruta,
                 tarifa_refund=Decimal("0"),  # TODO refinar quando endpoint billing disponível
                 refund_amount_partial=refund_partial,
+                cupom_seller=cupom_seller,
                 modalidade_anuncio=modalidade,
                 logistic_type=logistic_type,
                 shipping_mode=shipping_mode,

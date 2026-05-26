@@ -102,6 +102,20 @@ class MLClient:
     async def get_item(self, item_id: str) -> dict:
         return await self._get(f"/items/{item_id}")
 
+    async def get_order_discounts(self, order_id: int) -> dict:
+        """GET /orders/{id}/discounts — cupons e ofertas aplicadas.
+
+        Retorna {details: [{type, items: [{amounts: {seller, total}}], supplier}]}.
+        - type='coupon': cupom de campanha ML. Reduz o faturamento líquido do seller.
+        - type='discount' + supplier.funding_mode='seller': offer promocional do
+          seller (preço promocional já está em unit_price; não duplicar).
+        Pedidos sem desconto retornam 404 — retornamos shape vazio.
+        """
+        try:
+            return await self._get(f"/orders/{order_id}/discounts")
+        except Exception:
+            return {"details": []}
+
 
 def build_default_client() -> MLClient:
     from database import SessionLocal
