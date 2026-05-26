@@ -360,3 +360,27 @@ São perguntas que só conseguimos responder quando o módulo já estiver puxand
 - Esse arquivo é **referência viva**. Quando partirmos pra design (`docs/superpowers/specs/`), referenciamos esse estudo.
 - Quando algo for confirmado/refinado, atualiza aqui.
 - Quando começar a construir, esse doc fica como histórico de "o que MT fazia".
+
+---
+
+## 14. Estrutura modular do código (decisão pós-implementação)
+
+Todo código relacionado vive em 2 pastas isoladas dentro do projeto NVS-WMS:
+
+**Backend:** `backend/financeiro_ml/`
+- `__init__.py`
+- `models.py`          — 5 classes SQLAlchemy (MLTokens, SkuFinanceiro, MLOrderCache, MLOrderItemCache, MLDaySyncStatus)
+- `client.py`          — MLClient async (OAuth refresh + retry)
+- `sync.py`            — ensure_period_synced (cache por dia)
+- `aggregator.py`      — função pura aggregate() com fórmulas
+- `sku_service.py`     — CRUD do cadastro de custo/imposto
+- `router.py`          — endpoints /api/financeiro-ml/*
+- `tests/`             — 25 testes (pytest)
+
+**Frontend:** `frontend/src/financeiro-ml/`
+- `api.js`              — wrappers fetch
+- `pages/Resumo.jsx`    — página Análise Financeira
+- `pages/Skus.jsx`      — página Cadastro Custo SKU
+- `components/`         — KPICards, PizzaChart, FiltrosBar, TabelaVendas, Tooltip
+
+**Razão**: facilita encontrar, modificar, ou remover o módulo no futuro sem caçar arquivos espalhados pelo repo. Mantém a integração total com NVS (mesma DB, mesmo deploy, mesmo frontend build).

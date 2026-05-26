@@ -50,12 +50,12 @@ Esses itens ficam pra fase 2+ (spec separada).
 ┌─────────────────────────────────────────────────────────────────┐
 │                  FastAPI Backend (porta 8001)                   │
 │                                                                 │
-│  routers/financeiro_ml.py    ← endpoints REST                   │
-│  services/                                                      │
-│    ml_client.py              ← httpx async + OAuth refresh      │
-│    ml_sync.py                ← orquestra cache/fetch por dia    │
-│    ml_aggregator.py          ← calcula cards e pizza            │
-│    sku_financeiro_service.py ← CRUD do cadastro custo/imposto   │
+│  financeiro_ml/router.py     ← endpoints REST                   │
+│  financeiro_ml/                                                 │
+│    client.py                 ← httpx async + OAuth refresh      │
+│    sync.py                   ← orquestra cache/fetch por dia    │
+│    aggregator.py             ← calcula cards e pizza            │
+│    sku_service.py            ← CRUD do cadastro custo/imposto   │
 └─────────────────────────────────┬───────────────────────────────┘
                                   │
                                   ▼
@@ -177,7 +177,7 @@ Tabela separada porque uma order pode ter N itens (qty > 1 ou múltiplos produto
 
 ---
 
-## 5. Cliente ML async (`services/ml_client.py`)
+## 5. Cliente ML async (`backend/financeiro_ml/client.py`)
 
 Substitui o padrão `requests` síncrono do `Devoluçao/app.py` por `httpx` async, mantendo a mesma estratégia de refresh token.
 
@@ -226,7 +226,7 @@ class MLClient:
 
 ---
 
-## 6. Serviço de sync (`services/ml_sync.py`)
+## 6. Serviço de sync (`backend/financeiro_ml/sync.py`)
 
 Orquestra o fluxo do botão "Buscar". Função única exposta:
 
@@ -262,7 +262,7 @@ async def ensure_period_synced(date_from: date, date_to: date) -> SyncReport:
 
 ---
 
-## 7. Serviço de agregação (`services/ml_aggregator.py`)
+## 7. Serviço de agregação (`backend/financeiro_ml/aggregator.py`)
 
 Função pura. Recebe lista de orders (já cacheada) + filtros + cadastro `sku_financeiro` → devolve dict pronto pro frontend.
 
@@ -306,7 +306,7 @@ class ResumoFinanceiroResponse:
 
 ---
 
-## 8. API REST (`routers/financeiro_ml.py`)
+## 8. API REST (`backend/financeiro_ml/router.py`)
 
 Prefix `/api/financeiro-ml`. Todas as rotas exigem usuário **Master** (mesmo middleware que `financeiro` boletos).
 
@@ -346,21 +346,21 @@ Prefix `/api/financeiro-ml`. Todas as rotas exigem usuário **Master** (mesmo mi
 ### 9.1 Rotas e arquivos
 
 ```
-frontend/src/pages/
-  FinanceiroMLResumo.jsx       ← painel principal (espelho do MT)
-  FinanceiroMLSkus.jsx         ← cadastro custo/imposto
-
-frontend/src/components/financeiro-ml/
-  KPICards.jsx                 ← 13 cards
-  PizzaChart.jsx               ← donut Recharts
-  FiltrosBar.jsx               ← filtros + botão Buscar
-  TabelaVendas.jsx             ← TanStack Table
-  SkuRow.jsx, SkuEditModal.jsx, SkuImportExcelDialog.jsx
+frontend/src/financeiro-ml/
+  api.js                       ← wrappers fetch
+  pages/Resumo.jsx             ← painel principal (espelho do MT)
+  pages/Skus.jsx               ← cadastro custo/imposto
+  components/
+    KPICards.jsx               ← 13 cards
+    PizzaChart.jsx             ← donut Recharts
+    FiltrosBar.jsx             ← filtros + botão Buscar
+    TabelaVendas.jsx           ← TanStack Table
+    SkuRow.jsx, SkuEditModal.jsx, SkuImportExcelDialog.jsx
 ```
 
 Rotas adicionadas em `App.jsx`:
-- `/financeiro-ml/resumo` → `FinanceiroMLResumo`
-- `/financeiro-ml/skus` → `FinanceiroMLSkus`
+- `/financeiro-ml/resumo` → `Resumo`
+- `/financeiro-ml/skus` → `Skus`
 
 Menu lateral ganha nova entrada "Financeiro ML" (visível só pro Master).
 
@@ -393,7 +393,7 @@ Menu lateral ganha nova entrada "Financeiro ML" (visível só pro Master).
 
 ### 10.1 Backend
 
-Pasta `backend/tests/financeiro_ml/`:
+Pasta `backend/financeiro_ml/tests/`:
 
 - `test_aggregator.py` — fixtures de orders com casos exemplo (Full c/ frete comprador, Flex c/ frete vendedor, ME1, cancelada, devolução parcial). Cobre todas as fórmulas validadas no ESTUDO §3.
 - `test_ml_client.py` — usa `respx` (mock httpx) pra simular respostas ML. Testa refresh token, retry em 429/5xx, sucesso.

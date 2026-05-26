@@ -4,7 +4,7 @@
 
 **Goal:** Replicar dentro do NVS-WMS o painel "Resumo Financeiro" do Mercado Turbo (Mercado Livre), eliminando dependência do SaaS pago.
 
-**Architecture:** Módulo FastAPI isolado (`routers/financeiro_ml.py` + 4 services) com cliente Mercado Livre `httpx` async, cache local SQLite com política de freshness por dia, agregador pure-function. Frontend React com TanStack Query + Table + Recharts.
+**Architecture:** Módulo FastAPI isolado (`backend/financeiro_ml/` — router + 4 modules) com cliente Mercado Livre `httpx` async, cache local SQLite com política de freshness por dia, agregador pure-function. Frontend React com TanStack Query + Table + Recharts.
 
 **Tech Stack:** Python 3.11 · FastAPI 0.115 · SQLAlchemy 2.0 · httpx 0.27 · tenacity (novo) · openpyxl · Pydantic. Frontend: React 18 · Vite · Tailwind · TanStack Query/Table v5 · Recharts · Radix Tooltip (todos novos no projeto).
 
@@ -16,39 +16,39 @@
 ## Estrutura de Arquivos
 
 ### Backend (a criar)
-- `backend/services/ml_client.py` — Cliente Mercado Livre async (httpx + OAuth refresh + retry).
-- `backend/services/ml_sync.py` — Orquestra sync por dia, política de freshness.
-- `backend/services/ml_aggregator.py` — Função pura: orders+items+skus → KPIs+pizza+tabela.
-- `backend/services/sku_financeiro_service.py` — CRUD do cadastro custo/imposto + import Excel.
-- `backend/routers/financeiro_ml.py` — Rotas REST `/api/financeiro-ml/*`.
-- `backend/tests/financeiro_ml/__init__.py`
-- `backend/tests/financeiro_ml/test_aggregator.py`
-- `backend/tests/financeiro_ml/test_ml_client.py`
-- `backend/tests/financeiro_ml/test_ml_sync.py`
-- `backend/tests/financeiro_ml/test_sku_financeiro.py`
-- `backend/tests/financeiro_ml/test_routers.py`
-- `backend/tests/financeiro_ml/fixtures/ml_order_paid_full.json` (fixture de pedido real)
-- `backend/tests/financeiro_ml/fixtures/ml_order_cancelled.json`
-- `backend/tests/financeiro_ml/fixtures/ml_order_partial_refund.json`
+- `backend/financeiro_ml/client.py` — Cliente Mercado Livre async (httpx + OAuth refresh + retry).
+- `backend/financeiro_ml/sync.py` — Orquestra sync por dia, política de freshness.
+- `backend/financeiro_ml/aggregator.py` — Função pura: orders+items+skus → KPIs+pizza+tabela.
+- `backend/financeiro_ml/sku_service.py` — CRUD do cadastro custo/imposto + import Excel.
+- `backend/financeiro_ml/router.py` — Rotas REST `/api/financeiro-ml/*`.
+- `backend/financeiro_ml/tests/__init__.py`
+- `backend/financeiro_ml/tests/test_aggregator.py`
+- `backend/financeiro_ml/tests/test_ml_client.py`
+- `backend/financeiro_ml/tests/test_ml_sync.py`
+- `backend/financeiro_ml/tests/test_sku_financeiro.py`
+- `backend/financeiro_ml/tests/test_routers.py`
+- `backend/financeiro_ml/tests/fixtures/ml_order_paid_full.json` (fixture de pedido real)
+- `backend/financeiro_ml/tests/fixtures/ml_order_cancelled.json`
+- `backend/financeiro_ml/tests/fixtures/ml_order_partial_refund.json`
 
 ### Backend (a modificar)
 - `backend/requirements.txt` — adicionar `tenacity==9.0.0` e `respx==0.22.0` (dev).
-- `backend/models.py` — adicionar 5 classes: `MLTokens`, `SkuFinanceiro`, `MLOrderCache`, `MLOrderItemCache`, `MLDaySyncStatus`.
+- `backend/financeiro_ml/models.py` — 5 classes: `MLTokens`, `SkuFinanceiro`, `MLOrderCache`, `MLOrderItemCache`, `MLDaySyncStatus`.
 - `backend/database.py` — `init_db()` cria as tabelas novas; migração inline pro seed inicial de `ml_tokens` a partir de env vars.
 - `backend/main.py` — `app.include_router(financeiro_ml.router, prefix="/api/financeiro-ml", tags=["financeiro-ml"])`.
 
 ### Frontend (a criar)
 - `frontend/src/lib/queryClient.js` — instância única do `QueryClient`.
-- `frontend/src/api/financeiroML.js` — wrappers `fetch` por endpoint.
-- `frontend/src/pages/FinanceiroMLResumo.jsx`
-- `frontend/src/pages/FinanceiroMLSkus.jsx`
-- `frontend/src/components/financeiro-ml/KPICards.jsx`
-- `frontend/src/components/financeiro-ml/PizzaChart.jsx`
-- `frontend/src/components/financeiro-ml/FiltrosBar.jsx`
-- `frontend/src/components/financeiro-ml/TabelaVendas.jsx`
-- `frontend/src/components/financeiro-ml/SkuRow.jsx`
-- `frontend/src/components/financeiro-ml/SkuImportDialog.jsx`
-- `frontend/src/components/financeiro-ml/Tooltip.jsx` — wrapper do Radix.
+- `frontend/src/financeiro-ml/api.js` — wrappers `fetch` por endpoint.
+- `frontend/src/financeiro-ml/pages/Resumo.jsx`
+- `frontend/src/financeiro-ml/pages/Skus.jsx`
+- `frontend/src/financeiro-ml/components/KPICards.jsx`
+- `frontend/src/financeiro-ml/components/PizzaChart.jsx`
+- `frontend/src/financeiro-ml/components/FiltrosBar.jsx`
+- `frontend/src/financeiro-ml/components/TabelaVendas.jsx`
+- `frontend/src/financeiro-ml/components/SkuRow.jsx`
+- `frontend/src/financeiro-ml/components/SkuImportDialog.jsx`
+- `frontend/src/financeiro-ml/components/Tooltip.jsx` — wrapper do Radix.
 
 ### Frontend (a modificar)
 - `frontend/package.json` — adicionar `recharts ^2.13.0`, `@tanstack/react-query ^5.59.0`, `@tanstack/react-table ^8.20.0`, `@radix-ui/react-tooltip ^1.1.2`.
@@ -105,11 +105,11 @@ git commit -m "chore(financeiro-ml): add tenacity and respx for ML client"
 ## Task 2: Criar models SQLAlchemy
 
 **Files:**
-- Modify: `backend/models.py` (apêndice no fim)
+- Create: `backend/financeiro_ml/models.py`
 
-- [ ] **Step 1: Adicionar imports no topo do arquivo (se faltar)**
+- [ ] **Step 1: Adicionar imports no topo do arquivo**
 
-Garantir que `models.py` tem na seção de imports:
+Garantir que `financeiro_ml/models.py` tem na seção de imports:
 
 ```python
 from sqlalchemy import Numeric, Date
@@ -194,7 +194,7 @@ class MLDaySyncStatus(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 ```
 
-(`Text` já é importado em `models.py` — verificar; se não, adicionar `Text` ao import de `sqlalchemy`.)
+(`Text` deve ser importado em `financeiro_ml/models.py` — adicionar `Text` ao import de `sqlalchemy` se faltar.)
 
 - [ ] **Step 3: Restartar app local pra `Base.metadata.create_all` rodar**
 
@@ -209,7 +209,7 @@ Expected: lista inclui `ml_day_sync_status`, `ml_order_items_cache`, `ml_orders_
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/models.py
+git add backend/financeiro_ml/models.py
 git commit -m "feat(financeiro-ml): add 5 models for ML cache and SKU financeiro"
 ```
 
@@ -282,17 +282,17 @@ git commit -m "feat(financeiro-ml): seed ml_tokens from env on first init"
 ## Task 4: ML Client — estrutura básica e refresh token
 
 **Files:**
-- Create: `backend/services/ml_client.py`
-- Create: `backend/tests/financeiro_ml/__init__.py` (arquivo vazio)
-- Create: `backend/tests/financeiro_ml/test_ml_client.py`
+- Create: `backend/financeiro_ml/client.py`
+- Create: `backend/financeiro_ml/tests/__init__.py` (arquivo vazio)
+- Create: `backend/financeiro_ml/tests/test_ml_client.py`
 
 - [ ] **Step 1: Criar diretório de tests e arquivo vazio init**
 
-Run: `mkdir -p backend/tests/financeiro_ml && touch backend/tests/financeiro_ml/__init__.py`
+Run: `mkdir -p backend/financeiro_ml/tests && touch backend/financeiro_ml/tests/__init__.py`
 
 - [ ] **Step 2: Escrever teste de refresh token (que vai falhar)**
 
-Criar `backend/tests/financeiro_ml/test_ml_client.py`:
+Criar `backend/financeiro_ml/tests/test_ml_client.py`:
 
 ```python
 import pytest
@@ -301,7 +301,7 @@ import respx
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from services.ml_client import MLClient
+from financeiro_ml.client import MLClient
 
 
 @pytest.mark.asyncio
@@ -342,10 +342,10 @@ async def test_refresh_token_updates_db():
 
 - [ ] **Step 3: Rodar teste — deve falhar com ImportError**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py -v`
-Expected: ImportError "services.ml_client" não existe.
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py -v`
+Expected: ImportError "financeiro_ml.client" não existe.
 
-- [ ] **Step 4: Criar `services/ml_client.py`**
+- [ ] **Step 4: Criar `financeiro_ml/client.py`**
 
 Criar arquivo:
 
@@ -420,13 +420,13 @@ def build_default_client() -> MLClient:
 
 - [ ] **Step 5: Rodar teste novamente — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py::test_refresh_token_updates_db -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py::test_refresh_token_updates_db -v`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/services/ml_client.py backend/tests/financeiro_ml/__init__.py backend/tests/financeiro_ml/test_ml_client.py
+git add backend/financeiro_ml/client.py backend/financeiro_ml/tests/__init__.py backend/financeiro_ml/tests/test_ml_client.py
 git commit -m "feat(financeiro-ml): ML client skeleton with token refresh"
 ```
 
@@ -435,12 +435,12 @@ git commit -m "feat(financeiro-ml): ML client skeleton with token refresh"
 ## Task 5: ML Client — método GET genérico com retry
 
 **Files:**
-- Modify: `backend/services/ml_client.py`
-- Modify: `backend/tests/financeiro_ml/test_ml_client.py`
+- Modify: `backend/financeiro_ml/client.py`
+- Modify: `backend/financeiro_ml/tests/test_ml_client.py`
 
 - [ ] **Step 1: Escrever teste de retry em 429**
 
-Adicionar ao `test_ml_client.py`:
+Adicionar ao `financeiro_ml/tests/test_ml_client.py`:
 
 ```python
 @pytest.mark.asyncio
@@ -469,10 +469,10 @@ async def test_get_retries_on_429():
 
 - [ ] **Step 2: Rodar — deve falhar (método `_get` não existe)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py::test_get_retries_on_429 -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py::test_get_retries_on_429 -v`
 Expected: AttributeError ou falha clara.
 
-- [ ] **Step 3: Adicionar método `_get` em `ml_client.py`**
+- [ ] **Step 3: Adicionar método `_get` em `financeiro_ml/client.py`**
 
 Adicionar dentro da classe `MLClient`:
 
@@ -501,13 +501,13 @@ Adicionar dentro da classe `MLClient`:
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py::test_get_retries_on_429 -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py::test_get_retries_on_429 -v`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/ml_client.py backend/tests/financeiro_ml/test_ml_client.py
+git add backend/financeiro_ml/client.py backend/financeiro_ml/tests/test_ml_client.py
 git commit -m "feat(financeiro-ml): ML client _get with retry on 429/5xx"
 ```
 
@@ -516,12 +516,12 @@ git commit -m "feat(financeiro-ml): ML client _get with retry on 429/5xx"
 ## Task 6: ML Client — endpoints públicos
 
 **Files:**
-- Modify: `backend/services/ml_client.py`
-- Modify: `backend/tests/financeiro_ml/test_ml_client.py`
+- Modify: `backend/financeiro_ml/client.py`
+- Modify: `backend/financeiro_ml/tests/test_ml_client.py`
 
 - [ ] **Step 1: Escrever teste dos 4 endpoints públicos**
 
-Adicionar ao `test_ml_client.py`:
+Adicionar ao `financeiro_ml/tests/test_ml_client.py`:
 
 ```python
 @pytest.mark.asyncio
@@ -562,10 +562,10 @@ async def test_get_order_returns_payload():
 
 - [ ] **Step 2: Rodar — deve falhar (métodos não existem)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py -v -k "search_orders or get_order_returns"`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py -v -k "search_orders or get_order_returns"`
 Expected: AttributeError.
 
-- [ ] **Step 3: Implementar 4 métodos públicos em `ml_client.py`**
+- [ ] **Step 3: Implementar 4 métodos públicos em `financeiro_ml/client.py`**
 
 Adicionar dentro da classe `MLClient`:
 
@@ -598,13 +598,13 @@ Adicionar dentro da classe `MLClient`:
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_client.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_client.py -v`
 Expected: 4 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/ml_client.py backend/tests/financeiro_ml/test_ml_client.py
+git add backend/financeiro_ml/client.py backend/financeiro_ml/tests/test_ml_client.py
 git commit -m "feat(financeiro-ml): ML client public endpoints (search/get order/shipment/item)"
 ```
 
@@ -613,16 +613,16 @@ git commit -m "feat(financeiro-ml): ML client public endpoints (search/get order
 ## Task 7: Aggregator — fórmula MC por linha
 
 **Files:**
-- Create: `backend/services/ml_aggregator.py`
-- Create: `backend/tests/financeiro_ml/test_aggregator.py`
+- Create: `backend/financeiro_ml/aggregator.py`
+- Create: `backend/financeiro_ml/tests/test_aggregator.py`
 
 - [ ] **Step 1: Escrever teste com a linha de validação do estudo**
 
-Criar `backend/tests/financeiro_ml/test_aggregator.py`:
+Criar `backend/financeiro_ml/tests/test_aggregator.py`:
 
 ```python
 from decimal import Decimal
-from services.ml_aggregator import compute_line_mc
+from financeiro_ml.aggregator import compute_line_mc
 
 
 def test_mc_line_full_modality_subtracts_buyer_freight():
@@ -666,10 +666,10 @@ def test_mc_line_me1_keeps_buyer_freight():
 
 - [ ] **Step 2: Rodar — deve falhar (módulo não existe)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_aggregator.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_aggregator.py -v`
 Expected: ImportError.
 
-- [ ] **Step 3: Criar `services/ml_aggregator.py`**
+- [ ] **Step 3: Criar `financeiro_ml/aggregator.py`**
 
 ```python
 """Agregador puro. Sem I/O. Recebe dados, devolve KPIs e tabela.
@@ -733,13 +733,13 @@ def _logistic_bucket(logistic_type: str | None, shipping_mode: str | None) -> st
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_aggregator.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_aggregator.py -v`
 Expected: 2 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/ml_aggregator.py backend/tests/financeiro_ml/test_aggregator.py
+git add backend/financeiro_ml/aggregator.py backend/financeiro_ml/tests/test_aggregator.py
 git commit -m "feat(financeiro-ml): aggregator with MC per-line formula (validated against MT screenshot)"
 ```
 
@@ -748,16 +748,16 @@ git commit -m "feat(financeiro-ml): aggregator with MC per-line formula (validat
 ## Task 8: Aggregator — agregação global (cards + pizza + tabela)
 
 **Files:**
-- Modify: `backend/services/ml_aggregator.py`
-- Modify: `backend/tests/financeiro_ml/test_aggregator.py`
+- Modify: `backend/financeiro_ml/aggregator.py`
+- Modify: `backend/financeiro_ml/tests/test_aggregator.py`
 
 - [ ] **Step 1: Escrever teste do agregador global com 2 linhas**
 
-Adicionar ao `test_aggregator.py`:
+Adicionar ao `financeiro_ml/tests/test_aggregator.py`:
 
 ```python
 from datetime import datetime
-from services.ml_aggregator import aggregate
+from financeiro_ml.aggregator import aggregate
 
 
 def test_aggregate_two_orders_one_approved_one_cancelled():
@@ -800,10 +800,10 @@ def test_aggregate_two_orders_one_approved_one_cancelled():
 
 - [ ] **Step 2: Rodar — deve falhar (`aggregate` não existe)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_aggregator.py::test_aggregate_two_orders_one_approved_one_cancelled -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_aggregator.py::test_aggregate_two_orders_one_approved_one_cancelled -v`
 Expected: ImportError.
 
-- [ ] **Step 3: Implementar `aggregate()` em `ml_aggregator.py`**
+- [ ] **Step 3: Implementar `aggregate()` em `financeiro_ml/aggregator.py`**
 
 Adicionar ao final do arquivo:
 
@@ -961,13 +961,13 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_aggregator.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_aggregator.py -v`
 Expected: 3 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/ml_aggregator.py backend/tests/financeiro_ml/test_aggregator.py
+git add backend/financeiro_ml/aggregator.py backend/financeiro_ml/tests/test_aggregator.py
 git commit -m "feat(financeiro-ml): aggregator with global KPIs and pizza"
 ```
 
@@ -976,19 +976,19 @@ git commit -m "feat(financeiro-ml): aggregator with global KPIs and pizza"
 ## Task 9: SKU Financeiro service — CRUD
 
 **Files:**
-- Create: `backend/services/sku_financeiro_service.py`
-- Create: `backend/tests/financeiro_ml/test_sku_financeiro.py`
+- Create: `backend/financeiro_ml/sku_service.py`
+- Create: `backend/financeiro_ml/tests/test_sku_financeiro.py`
 
 - [ ] **Step 1: Escrever testes do CRUD**
 
-Criar `backend/tests/financeiro_ml/test_sku_financeiro.py`:
+Criar `backend/financeiro_ml/tests/test_sku_financeiro.py`:
 
 ```python
 import pytest
 from decimal import Decimal
 from database import SessionLocal, init_db
 from models import SkuFinanceiro, Operator
-from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku
+from financeiro_ml.sku_service import upsert_sku, list_skus, delete_sku
 
 
 @pytest.fixture(autouse=True)
@@ -1038,12 +1038,12 @@ def test_delete_sku():
 
 - [ ] **Step 2: Rodar — deve falhar (módulo não existe)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_sku_financeiro.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_sku_financeiro.py -v`
 Expected: ImportError.
 
 - [ ] **Step 3: Implementar service**
 
-Criar `backend/services/sku_financeiro_service.py`:
+Criar `backend/financeiro_ml/sku_service.py`:
 
 ```python
 """CRUD da tabela sku_financeiro + import Excel."""
@@ -1096,13 +1096,13 @@ def delete_sku(sku: str) -> bool:
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_sku_financeiro.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_sku_financeiro.py -v`
 Expected: 4 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/sku_financeiro_service.py backend/tests/financeiro_ml/test_sku_financeiro.py
+git add backend/financeiro_ml/sku_service.py backend/financeiro_ml/tests/test_sku_financeiro.py
 git commit -m "feat(financeiro-ml): sku_financeiro CRUD service"
 ```
 
@@ -1111,17 +1111,17 @@ git commit -m "feat(financeiro-ml): sku_financeiro CRUD service"
 ## Task 10: SKU Financeiro service — import Excel
 
 **Files:**
-- Modify: `backend/services/sku_financeiro_service.py`
-- Modify: `backend/tests/financeiro_ml/test_sku_financeiro.py`
+- Modify: `backend/financeiro_ml/sku_service.py`
+- Modify: `backend/financeiro_ml/tests/test_sku_financeiro.py`
 
 - [ ] **Step 1: Escrever teste do import**
 
-Adicionar ao `test_sku_financeiro.py`:
+Adicionar ao `financeiro_ml/tests/test_sku_financeiro.py`:
 
 ```python
 import io
 from openpyxl import Workbook
-from services.sku_financeiro_service import import_excel
+from financeiro_ml.sku_service import import_excel
 
 
 def test_import_excel_creates_and_updates():
@@ -1149,12 +1149,12 @@ def test_import_excel_creates_and_updates():
 
 - [ ] **Step 2: Rodar — deve falhar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_sku_financeiro.py::test_import_excel_creates_and_updates -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_sku_financeiro.py::test_import_excel_creates_and_updates -v`
 Expected: ImportError.
 
 - [ ] **Step 3: Implementar `import_excel`**
 
-Adicionar ao final de `services/sku_financeiro_service.py`:
+Adicionar ao final de `financeiro_ml/sku_service.py`:
 
 ```python
 from openpyxl import load_workbook
@@ -1206,13 +1206,13 @@ def import_excel(file: BinaryIO, *, updated_by_id: int) -> dict:
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_sku_financeiro.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_sku_financeiro.py -v`
 Expected: 5 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/sku_financeiro_service.py backend/tests/financeiro_ml/test_sku_financeiro.py
+git add backend/financeiro_ml/sku_service.py backend/financeiro_ml/tests/test_sku_financeiro.py
 git commit -m "feat(financeiro-ml): excel import for sku_financeiro"
 ```
 
@@ -1221,19 +1221,19 @@ git commit -m "feat(financeiro-ml): excel import for sku_financeiro"
 ## Task 11: Sync service — política de freshness
 
 **Files:**
-- Create: `backend/services/ml_sync.py`
-- Create: `backend/tests/financeiro_ml/test_ml_sync.py`
+- Create: `backend/financeiro_ml/sync.py`
+- Create: `backend/financeiro_ml/tests/test_ml_sync.py`
 
 - [ ] **Step 1: Escrever teste da função `_days_needing_sync`**
 
-Criar `backend/tests/financeiro_ml/test_ml_sync.py`:
+Criar `backend/financeiro_ml/tests/test_ml_sync.py`:
 
 ```python
 import pytest
 from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock
 
-from services.ml_sync import _days_needing_sync, _date_range
+from financeiro_ml.sync import _days_needing_sync, _date_range
 
 
 def test_date_range_inclusive():
@@ -1284,10 +1284,10 @@ def test_missing_day_needs_sync():
 
 - [ ] **Step 2: Rodar — deve falhar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_sync.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_sync.py -v`
 Expected: ImportError.
 
-- [ ] **Step 3: Criar `services/ml_sync.py`**
+- [ ] **Step 3: Criar `financeiro_ml/sync.py`**
 
 ```python
 """Sincronização de cache ML por dia. Política de freshness."""
@@ -1334,13 +1334,13 @@ def _days_needing_sync(days: list[date], statuses: dict[date, object]) -> list[d
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_ml_sync.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_ml_sync.py -v`
 Expected: 7 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/services/ml_sync.py backend/tests/financeiro_ml/test_ml_sync.py
+git add backend/financeiro_ml/sync.py backend/financeiro_ml/tests/test_ml_sync.py
 git commit -m "feat(financeiro-ml): sync service freshness policy"
 ```
 
@@ -1349,7 +1349,7 @@ git commit -m "feat(financeiro-ml): sync service freshness policy"
 ## Task 12: Sync service — função orquestradora `ensure_period_synced`
 
 **Files:**
-- Modify: `backend/services/ml_sync.py`
+- Modify: `backend/financeiro_ml/sync.py`
 
 > Por simplicidade, esta tarefa NÃO escreve testes unitários do orquestrador
 > (mocking de async + DB + ML é pesado). O teste real fica em smoke manual (Task 23).
@@ -1367,7 +1367,7 @@ from decimal import Decimal
 
 from database import SessionLocal
 from models import MLDaySyncStatus, MLOrderCache, MLOrderItemCache
-from services.ml_client import build_default_client
+from financeiro_ml.client import build_default_client
 
 
 async def ensure_period_synced(date_from: date, date_to: date) -> dict:
@@ -1475,7 +1475,7 @@ async def _save_order(client, search_result: dict) -> None:
     shipping_mode = shipment.get("mode")
 
     # Bucket pra breakdown logístico
-    from services.ml_aggregator import _logistic_bucket
+    from financeiro_ml.aggregator import _logistic_bucket
     bucket = _logistic_bucket(logistic_type, shipping_mode)
 
     # Modalidade do anúncio (precisa do listing_type_id) — pega do primeiro item
@@ -1534,13 +1534,13 @@ async def _save_order(client, search_result: dict) -> None:
 
 - [ ] **Step 2: Rodar testes existentes pra garantir que nada quebrou**
 
-Run: `cd backend && pytest tests/financeiro_ml/ -v`
+Run: `cd backend && pytest financeiro_ml/tests/ -v`
 Expected: todos os 21+ testes PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add backend/services/ml_sync.py
+git add backend/financeiro_ml/sync.py
 git commit -m "feat(financeiro-ml): ensure_period_synced orchestrator with parallel sync"
 ```
 
@@ -1549,11 +1549,11 @@ git commit -m "feat(financeiro-ml): ensure_period_synced orchestrator with paral
 ## Task 13: Router REST — schemas Pydantic
 
 **Files:**
-- Create: `backend/routers/financeiro_ml.py` (apenas schemas + estrutura inicial)
+- Create: `backend/financeiro_ml/router.py` (apenas schemas + estrutura inicial)
 
 - [ ] **Step 1: Criar router com schemas Pydantic e rota /health**
 
-Criar `backend/routers/financeiro_ml.py`:
+Criar `backend/financeiro_ml/router.py`:
 
 ```python
 """Rotas REST do Resumo Financeiro Mercado Livre.
@@ -1611,7 +1611,7 @@ async def health():
 Editar `backend/main.py`. Adicionar no bloco de imports (junto dos outros routers):
 
 ```python
-from routers import financeiro_ml
+from financeiro_ml import router as financeiro_ml
 ```
 
 E no bloco de `app.include_router(...)`:
@@ -1631,7 +1631,7 @@ Parar o uvicorn antes de seguir.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add backend/routers/financeiro_ml.py backend/main.py
+git add backend/financeiro_ml/router.py backend/main.py
 git commit -m "feat(financeiro-ml): router skeleton with health endpoint"
 ```
 
@@ -1640,12 +1640,12 @@ git commit -m "feat(financeiro-ml): router skeleton with health endpoint"
 ## Task 14: Router — cadastro SKU (CRUD + import)
 
 **Files:**
-- Modify: `backend/routers/financeiro_ml.py`
-- Create: `backend/tests/financeiro_ml/test_routers.py`
+- Modify: `backend/financeiro_ml/router.py`
+- Create: `backend/financeiro_ml/tests/test_routers.py`
 
 - [ ] **Step 1: Escrever testes do CRUD via TestClient**
 
-Criar `backend/tests/financeiro_ml/test_routers.py`:
+Criar `backend/financeiro_ml/tests/test_routers.py`:
 
 ```python
 import pytest
@@ -1698,16 +1698,16 @@ def test_delete_sku(client):
 
 - [ ] **Step 2: Rodar — deve falhar (rotas não existem)**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_routers.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_routers.py -v`
 Expected: 404 ou erro.
 
-- [ ] **Step 3: Adicionar rotas SKU em `routers/financeiro_ml.py`**
+- [ ] **Step 3: Adicionar rotas SKU em `financeiro_ml/router.py`**
 
 Adicionar ao final do arquivo:
 
 ```python
 from fastapi import UploadFile, File
-from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku, import_excel
+from financeiro_ml.sku_service import upsert_sku, list_skus, delete_sku, import_excel
 
 # TODO: substituir por dependência real de auth Master quando integrar com auth do projeto
 def require_master() -> int:
@@ -1752,13 +1752,13 @@ async def import_skus_excel(file: UploadFile = File(...), operator_id: int = Dep
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_routers.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_routers.py -v`
 Expected: 3 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/routers/financeiro_ml.py backend/tests/financeiro_ml/test_routers.py
+git add backend/financeiro_ml/router.py backend/financeiro_ml/tests/test_routers.py
 git commit -m "feat(financeiro-ml): SKU CRUD endpoints + excel import"
 ```
 
@@ -1767,12 +1767,12 @@ git commit -m "feat(financeiro-ml): SKU CRUD endpoints + excel import"
 ## Task 15: Router — endpoint /resumo
 
 **Files:**
-- Modify: `backend/routers/financeiro_ml.py`
-- Modify: `backend/tests/financeiro_ml/test_routers.py`
+- Modify: `backend/financeiro_ml/router.py`
+- Modify: `backend/financeiro_ml/tests/test_routers.py`
 
 - [ ] **Step 1: Escrever teste do endpoint (com sync mockado)**
 
-Adicionar ao `test_routers.py`:
+Adicionar ao `financeiro_ml/tests/test_routers.py`:
 
 ```python
 from unittest.mock import patch, AsyncMock
@@ -1782,7 +1782,7 @@ from datetime import date
 def test_resumo_returns_cards(client):
     async def fake_sync(*a, **k):
         return {"dias_sincronizados": 0, "dias_falhos": 0, "total_orders": 0}
-    with patch("routers.financeiro_ml.ensure_period_synced", new=AsyncMock(side_effect=fake_sync)):
+    with patch("financeiro_ml.router.ensure_period_synced", new=AsyncMock(side_effect=fake_sync)):
         r = client.post("/api/financeiro-ml/resumo", json={
             "data_inicio": str(date.today()),
             "data_fim": str(date.today()),
@@ -1796,17 +1796,17 @@ def test_resumo_returns_cards(client):
 
 - [ ] **Step 2: Rodar — deve falhar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_routers.py::test_resumo_returns_cards -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_routers.py::test_resumo_returns_cards -v`
 Expected: 404 ou erro.
 
-- [ ] **Step 3: Adicionar endpoint /resumo em `routers/financeiro_ml.py`**
+- [ ] **Step 3: Adicionar endpoint /resumo em `financeiro_ml/router.py`**
 
 Adicionar:
 
 ```python
 from datetime import datetime, time
-from services.ml_sync import ensure_period_synced
-from services.ml_aggregator import aggregate
+from financeiro_ml.sync import ensure_period_synced
+from financeiro_ml.aggregator import aggregate
 from models import MLOrderCache, MLOrderItemCache, SkuFinanceiro
 from sqlalchemy import and_
 
@@ -1908,13 +1908,13 @@ def _json_safe(value):
 
 - [ ] **Step 4: Rodar — deve passar**
 
-Run: `cd backend && pytest tests/financeiro_ml/test_routers.py -v`
+Run: `cd backend && pytest financeiro_ml/tests/test_routers.py -v`
 Expected: 4 testes PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/routers/financeiro_ml.py backend/tests/financeiro_ml/test_routers.py
+git add backend/financeiro_ml/router.py backend/financeiro_ml/tests/test_routers.py
 git commit -m "feat(financeiro-ml): /resumo endpoint with aggregation and pagination"
 ```
 
@@ -1923,7 +1923,7 @@ git commit -m "feat(financeiro-ml): /resumo endpoint with aggregation and pagina
 ## Task 16: Router — export Excel/CSV
 
 **Files:**
-- Modify: `backend/routers/financeiro_ml.py`
+- Modify: `backend/financeiro_ml/router.py`
 
 - [ ] **Step 1: Implementar `/export`**
 
@@ -1972,13 +1972,13 @@ async def export_resumo(params: FilterParams, formato: Literal["excel", "csv"] =
 
 - [ ] **Step 2: Rodar testes pra garantir nada quebrou**
 
-Run: `cd backend && pytest tests/financeiro_ml/ -v`
+Run: `cd backend && pytest financeiro_ml/tests/ -v`
 Expected: todos PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add backend/routers/financeiro_ml.py
+git add backend/financeiro_ml/router.py
 git commit -m "feat(financeiro-ml): export endpoint (excel/csv)"
 ```
 
@@ -2069,11 +2069,11 @@ git commit -m "feat(financeiro-ml): setup TanStack QueryClient at root"
 ## Task 19: API client frontend
 
 **Files:**
-- Create: `frontend/src/api/financeiroML.js`
+- Create: `frontend/src/financeiro-ml/api.js`
 
 - [ ] **Step 1: Criar wrappers**
 
-Criar `frontend/src/api/financeiroML.js`:
+Criar `frontend/src/financeiro-ml/api.js`:
 
 ```javascript
 const BASE = '/api/financeiro-ml'
@@ -2128,7 +2128,7 @@ export const financeiroMLApi = {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/api/financeiroML.js
+git add frontend/src/financeiro-ml/api.js
 git commit -m "feat(financeiro-ml): frontend api client wrappers"
 ```
 
@@ -2137,11 +2137,11 @@ git commit -m "feat(financeiro-ml): frontend api client wrappers"
 ## Task 20: Component Tooltip (wrapper Radix)
 
 **Files:**
-- Create: `frontend/src/components/financeiro-ml/Tooltip.jsx`
+- Create: `frontend/src/financeiro-ml/components/Tooltip.jsx`
 
 - [ ] **Step 1: Criar wrapper**
 
-Criar `frontend/src/components/financeiro-ml/Tooltip.jsx`:
+Criar `frontend/src/financeiro-ml/components/Tooltip.jsx`:
 
 ```jsx
 import * as RT from '@radix-ui/react-tooltip'
@@ -2167,7 +2167,7 @@ export function Tooltip({ content, children }) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/financeiro-ml/Tooltip.jsx
+git add frontend/src/financeiro-ml/components/Tooltip.jsx
 git commit -m "feat(financeiro-ml): Tooltip wrapper using Radix"
 ```
 
@@ -2176,11 +2176,11 @@ git commit -m "feat(financeiro-ml): Tooltip wrapper using Radix"
 ## Task 21: Component KPICards
 
 **Files:**
-- Create: `frontend/src/components/financeiro-ml/KPICards.jsx`
+- Create: `frontend/src/financeiro-ml/components/KPICards.jsx`
 
 - [ ] **Step 1: Criar componente**
 
-Criar `frontend/src/components/financeiro-ml/KPICards.jsx`:
+Criar `frontend/src/financeiro-ml/components/KPICards.jsx`:
 
 ```jsx
 import { Tooltip } from './Tooltip'
@@ -2249,7 +2249,7 @@ export function KPICards({ cards }) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/financeiro-ml/KPICards.jsx
+git add frontend/src/financeiro-ml/components/KPICards.jsx
 git commit -m "feat(financeiro-ml): KPICards component with 15 cards"
 ```
 
@@ -2258,11 +2258,11 @@ git commit -m "feat(financeiro-ml): KPICards component with 15 cards"
 ## Task 22: Component PizzaChart
 
 **Files:**
-- Create: `frontend/src/components/financeiro-ml/PizzaChart.jsx`
+- Create: `frontend/src/financeiro-ml/components/PizzaChart.jsx`
 
 - [ ] **Step 1: Criar componente**
 
-Criar `frontend/src/components/financeiro-ml/PizzaChart.jsx`:
+Criar `frontend/src/financeiro-ml/components/PizzaChart.jsx`:
 
 ```jsx
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
@@ -2305,7 +2305,7 @@ export function PizzaChart({ pizza }) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/financeiro-ml/PizzaChart.jsx
+git add frontend/src/financeiro-ml/components/PizzaChart.jsx
 git commit -m "feat(financeiro-ml): PizzaChart donut with 5 slices"
 ```
 
@@ -2314,11 +2314,11 @@ git commit -m "feat(financeiro-ml): PizzaChart donut with 5 slices"
 ## Task 23: Component FiltrosBar
 
 **Files:**
-- Create: `frontend/src/components/financeiro-ml/FiltrosBar.jsx`
+- Create: `frontend/src/financeiro-ml/components/FiltrosBar.jsx`
 
 - [ ] **Step 1: Criar componente**
 
-Criar `frontend/src/components/financeiro-ml/FiltrosBar.jsx`:
+Criar `frontend/src/financeiro-ml/components/FiltrosBar.jsx`:
 
 ```jsx
 import { useState } from 'react'
@@ -2426,7 +2426,7 @@ export function FiltrosBar({ onBuscar, loading }) {
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/financeiro-ml/FiltrosBar.jsx
+git add frontend/src/financeiro-ml/components/FiltrosBar.jsx
 git commit -m "feat(financeiro-ml): FiltrosBar component"
 ```
 
@@ -2435,11 +2435,11 @@ git commit -m "feat(financeiro-ml): FiltrosBar component"
 ## Task 24: Component TabelaVendas
 
 **Files:**
-- Create: `frontend/src/components/financeiro-ml/TabelaVendas.jsx`
+- Create: `frontend/src/financeiro-ml/components/TabelaVendas.jsx`
 
 - [ ] **Step 1: Criar componente**
 
-Criar `frontend/src/components/financeiro-ml/TabelaVendas.jsx`:
+Criar `frontend/src/financeiro-ml/components/TabelaVendas.jsx`:
 
 ```jsx
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table'
@@ -2533,32 +2533,32 @@ export function TabelaVendas({ data, pagination, onPageChange, onPageSizeChange 
 - [ ] **Step 2: Commit**
 
 ```bash
-git add frontend/src/components/financeiro-ml/TabelaVendas.jsx
+git add frontend/src/financeiro-ml/components/TabelaVendas.jsx
 git commit -m "feat(financeiro-ml): TabelaVendas with TanStack Table"
 ```
 
 ---
 
-## Task 25: Página FinanceiroMLResumo
+## Task 25: Página Resumo
 
 **Files:**
-- Create: `frontend/src/pages/FinanceiroMLResumo.jsx`
+- Create: `frontend/src/financeiro-ml/pages/Resumo.jsx`
 - Modify: `frontend/src/App.jsx`
 
 - [ ] **Step 1: Criar página**
 
-Criar `frontend/src/pages/FinanceiroMLResumo.jsx`:
+Criar `frontend/src/financeiro-ml/pages/Resumo.jsx`:
 
 ```jsx
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { financeiroMLApi } from '../api/financeiroML'
-import { FiltrosBar } from '../components/financeiro-ml/FiltrosBar'
-import { KPICards } from '../components/financeiro-ml/KPICards'
-import { PizzaChart } from '../components/financeiro-ml/PizzaChart'
-import { TabelaVendas } from '../components/financeiro-ml/TabelaVendas'
+import { financeiroMLApi } from '../api'
+import { FiltrosBar } from '../components/FiltrosBar'
+import { KPICards } from '../components/KPICards'
+import { PizzaChart } from '../components/PizzaChart'
+import { TabelaVendas } from '../components/TabelaVendas'
 
-export default function FinanceiroMLResumo() {
+export default function Resumo() {
   const [resultado, setResultado] = useState(null)
   const [filtrosAtuais, setFiltrosAtuais] = useState(null)
 
@@ -2621,10 +2621,10 @@ export default function FinanceiroMLResumo() {
 Em `frontend/src/App.jsx`, adicionar import e rota (ajustar à estrutura existente do roteamento):
 
 ```jsx
-import FinanceiroMLResumo from './pages/FinanceiroMLResumo'
+import Resumo from './financeiro-ml/pages/Resumo'
 
 // dentro do <Routes>:
-<Route path="/financeiro-ml/resumo" element={<FinanceiroMLResumo />} />
+<Route path="/financeiro-ml/resumo" element={<Resumo />} />
 ```
 
 - [ ] **Step 3: Validar build**
@@ -2635,7 +2635,7 @@ Expected: sucesso.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/pages/FinanceiroMLResumo.jsx frontend/src/App.jsx
+git add frontend/src/financeiro-ml/pages/Resumo.jsx frontend/src/App.jsx
 git commit -m "feat(financeiro-ml): main Resumo page"
 ```
 
@@ -2644,19 +2644,19 @@ git commit -m "feat(financeiro-ml): main Resumo page"
 ## Task 26: Página cadastro SKU
 
 **Files:**
-- Create: `frontend/src/pages/FinanceiroMLSkus.jsx`
+- Create: `frontend/src/financeiro-ml/pages/Skus.jsx`
 - Modify: `frontend/src/App.jsx`
 
 - [ ] **Step 1: Criar página**
 
-Criar `frontend/src/pages/FinanceiroMLSkus.jsx`:
+Criar `frontend/src/financeiro-ml/pages/Skus.jsx`:
 
 ```jsx
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { financeiroMLApi } from '../api/financeiroML'
+import { financeiroMLApi } from '../api'
 
-export default function FinanceiroMLSkus() {
+export default function Skus() {
   const [q, setQ] = useState('')
   const [novoSku, setNovoSku] = useState('')
   const qc = useQueryClient()
@@ -2766,10 +2766,10 @@ function SkuRow({ row, onSave, onDelete }) {
 Em `frontend/src/App.jsx`:
 
 ```jsx
-import FinanceiroMLSkus from './pages/FinanceiroMLSkus'
+import Skus from './financeiro-ml/pages/Skus'
 
 // dentro do <Routes>:
-<Route path="/financeiro-ml/skus" element={<FinanceiroMLSkus />} />
+<Route path="/financeiro-ml/skus" element={<Skus />} />
 ```
 
 - [ ] **Step 3: Validar build**
@@ -2780,7 +2780,7 @@ Expected: sucesso.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/pages/FinanceiroMLSkus.jsx frontend/src/App.jsx
+git add frontend/src/financeiro-ml/pages/Skus.jsx frontend/src/App.jsx
 git commit -m "feat(financeiro-ml): SKU registration page"
 ```
 
@@ -2829,7 +2829,7 @@ git commit -m "feat(financeiro-ml): add sidebar entries (Master-only)"
 ## Task 28: Smoke test manual + ajuste de mapeamentos ML
 
 **Files:**
-- Modify (conforme descobertas): `backend/services/ml_aggregator.py` (mapeamento `_logistic_bucket`), `backend/services/ml_sync.py` (campos exatos), `Mercado Turbo/ESTUDO_RESUMO_FINANCEIRO.md` (atualizar com descobertas)
+- Modify (conforme descobertas): `backend/financeiro_ml/aggregator.py` (mapeamento `_logistic_bucket`), `backend/financeiro_ml/sync.py` (campos exatos), `Mercado Turbo/ESTUDO_RESUMO_FINANCEIRO.md` (atualizar com descobertas)
 
 > Essa task fecha os 4 pontos 🟡 do estudo (§13 da spec). Só executar após Tasks 1-27 concluídas.
 
@@ -2901,7 +2901,7 @@ Marcar/desmarcar o checkbox, refazer Buscar, observar mudança no card de MC. Do
 - [ ] **Step 10: Commit dos ajustes finais**
 
 ```bash
-git add backend/services/ml_sync.py backend/services/ml_aggregator.py "Mercado Turbo/ESTUDO_RESUMO_FINANCEIRO.md"
+git add backend/financeiro_ml/sync.py backend/financeiro_ml/aggregator.py "Mercado Turbo/ESTUDO_RESUMO_FINANCEIRO.md"
 git commit -m "fix(financeiro-ml): refine ML field mappings after live smoke test"
 ```
 
