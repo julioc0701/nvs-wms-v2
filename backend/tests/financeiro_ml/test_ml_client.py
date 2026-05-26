@@ -41,3 +41,27 @@ async def test_refresh_token_updates_db():
     # Tabela foi atualizada
     assert fake_token_row.access_token == "novo_access_xyz"
     assert fake_token_row.refresh_token == "novo_refresh_abc"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_retries_on_429():
+    """Em 429 (rate limit), faz 2 retries com backoff e na 3ª passa."""
+
+    route = respx.get("https://api.mercadolibre.com/orders/123").mock(side_effect=[
+        httpx.Response(429),
+        httpx.Response(429),
+        httpx.Response(200, json={"id": 123, "status": "paid"}),
+    ])
+
+    fake_session = MagicMock()
+    fake_session.query.return_value.first.return_value = MagicMock(
+        access_token="ok", refresh_token="r", user_id=1,
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    )
+
+    client = MLClient(session_factory=lambda: fake_session, client_id="x", client_secret="y")
+    result = await client._get("/orders/123")
+
+    assert result["status"] == "paid"
+    assert route.call_count == 3

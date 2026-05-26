@@ -56,6 +56,27 @@ class MLClient:
         finally:
             session.close()
 
+    @retry(
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
+        wait=wait_exponential(multiplier=1, min=1, max=8),
+        stop=stop_after_attempt(3),
+        reraise=True,
+    )
+    async def _get(self, path: str, params: dict | None = None) -> dict:
+        token = await self._ensure_fresh_token()
+        async with httpx.AsyncClient(timeout=self._timeout) as http:
+            resp = await http.get(
+                f"{ML_BASE}{path}",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            # 429 e 5xx → retry; 4xx (exceto 429) → erro permanente
+            if resp.status_code == 429 or resp.status_code >= 500:
+                resp.raise_for_status()
+            elif resp.status_code >= 400:
+                resp.raise_for_status()
+            return resp.json()
+
 
 def build_default_client() -> MLClient:
     from database import SessionLocal
