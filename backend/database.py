@@ -140,11 +140,12 @@ def get_db():
 
 def init_db():
     from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan, Boleto, BoletoBeneficiario, LancamentoCategoria  # noqa
+    import financeiro_ml.models  # noqa — registers ML tables with Base.metadata
     Base.metadata.create_all(bind=engine)
 
     # Seed inicial de ml_tokens a partir do .env (rodada uma vez só)
     import os
-    from models import MLTokens
+    from financeiro_ml.models import MLTokens
     from datetime import datetime, timedelta
     with SessionLocal() as session:
         existing = session.query(MLTokens).first()

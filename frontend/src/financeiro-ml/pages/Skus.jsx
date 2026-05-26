@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { financeiroMLApi } from '../api/financeiroML'
+import { financeiroMLApi } from '../api'
 
 export default function FinanceiroMLSkus() {
   const [q, setQ] = useState('')

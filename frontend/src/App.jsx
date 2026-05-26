@@ -21,8 +21,8 @@ import FinanceiroConfirmar from './pages/FinanceiroConfirmar'
 import FinanceiroPainel from './pages/FinanceiroPainel'
 import FinanceiroBoletoDetalhe from './pages/FinanceiroBoletoDetalhe'
 import FinanceiroLancamentoManual from './pages/FinanceiroLancamentoManual'
-import FinanceiroMLResumo from './pages/FinanceiroMLResumo'
-import FinanceiroMLSkus from './pages/FinanceiroMLSkus'
+import FinanceiroMLResumo from './financeiro-ml/pages/Resumo'
+import FinanceiroMLSkus from './financeiro-ml/pages/Skus'
 
 function AppRoutes() {
   const location = useLocation()

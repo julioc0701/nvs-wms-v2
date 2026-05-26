@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { financeiroMLApi } from '../api/financeiroML'
-import { FiltrosBar } from '../components/financeiro-ml/FiltrosBar'
-import { KPICards } from '../components/financeiro-ml/KPICards'
-import { PizzaChart } from '../components/financeiro-ml/PizzaChart'
-import { TabelaVendas } from '../components/financeiro-ml/TabelaVendas'
+import { financeiroMLApi } from '../api'
+import { FiltrosBar } from '../components/FiltrosBar'
+import { KPICards } from '../components/KPICards'
+import { PizzaChart } from '../components/PizzaChart'
+import { TabelaVendas } from '../components/TabelaVendas'
 
 export default function FinanceiroMLResumo() {
   const [resultado, setResultado] = useState(null)

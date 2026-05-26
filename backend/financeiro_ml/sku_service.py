@@ -6,7 +6,7 @@ from typing import BinaryIO
 from openpyxl import load_workbook
 
 from database import SessionLocal
-from models import SkuFinanceiro
+from financeiro_ml.models import SkuFinanceiro
 
 
 def upsert_sku(sku: str, *, custo_unit: Decimal, imposto_pct: Decimal, updated_by_id: int) -> None:

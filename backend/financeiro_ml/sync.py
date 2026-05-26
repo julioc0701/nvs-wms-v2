@@ -48,8 +48,8 @@ import os
 from decimal import Decimal
 
 from database import SessionLocal
-from models import MLDaySyncStatus, MLOrderCache, MLOrderItemCache
-from services.ml_client import build_default_client
+from financeiro_ml.models import MLDaySyncStatus, MLOrderCache, MLOrderItemCache
+from financeiro_ml.client import build_default_client
 
 
 async def ensure_period_synced(date_from: date, date_to: date) -> dict:
@@ -199,7 +199,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     shipping_mode = shipment.get("mode")
 
     # Bucket pra breakdown logístico
-    from services.ml_aggregator import _logistic_bucket
+    from financeiro_ml.aggregator import _logistic_bucket
     bucket = _logistic_bucket(logistic_type, shipping_mode)
 
     # Modalidade do anúncio (listing_type_id) — já vem no search response

@@ -4,7 +4,7 @@ import respx
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from services.ml_client import MLClient
+from financeiro_ml.client import MLClient
 
 
 @pytest.mark.asyncio

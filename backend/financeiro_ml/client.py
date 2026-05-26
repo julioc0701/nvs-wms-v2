@@ -23,7 +23,7 @@ class MLClient:
         self._timeout = timeout
 
     async def _ensure_fresh_token(self) -> str:
-        from models import MLTokens
+        from financeiro_ml.models import MLTokens
         session = self._session_factory()
         try:
             token_row = session.query(MLTokens).first()
@@ -82,7 +82,7 @@ class MLClient:
 
     async def search_orders(self, *, date_from: datetime, date_to: datetime,
                              offset: int = 0, limit: int = 50) -> dict:
-        from models import MLTokens
+        from financeiro_ml.models import MLTokens
         session = self._session_factory()
         try:
             user_id = session.query(MLTokens).first().user_id

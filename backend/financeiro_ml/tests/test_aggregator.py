@@ -1,6 +1,6 @@
 from decimal import Decimal
 from datetime import datetime
-from services.ml_aggregator import compute_line_mc, aggregate
+from financeiro_ml.aggregator import compute_line_mc, aggregate
 
 
 def test_mc_line_full_modality_subtracts_buyer_freight():

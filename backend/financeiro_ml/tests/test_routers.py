@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from main import app
 from database import SessionLocal, init_db
-from models import SkuFinanceiro, Operator
+from models import Operator
+from financeiro_ml.models import SkuFinanceiro
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +54,7 @@ from datetime import date
 def test_resumo_returns_cards(client):
     async def fake_sync(*a, **k):
         return {"dias_sincronizados": 0, "dias_falhos": 0, "total_orders": 0}
-    with patch("routers.financeiro_ml.ensure_period_synced", new=AsyncMock(side_effect=fake_sync)):
+    with patch("financeiro_ml.router.ensure_period_synced", new=AsyncMock(side_effect=fake_sync)):
         r = client.post("/api/financeiro-ml/resumo", json={
             "data_inicio": str(date.today()),
             "data_fim": str(date.today()),

@@ -44,7 +44,7 @@ class SkuPayload(BaseModel):
 
 
 from fastapi import UploadFile, File
-from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku, import_excel
+from financeiro_ml.sku_service import upsert_sku, list_skus, delete_sku, import_excel
 
 
 # TODO: substituir por dependência real de auth Master quando integrar com auth do projeto
@@ -91,9 +91,9 @@ async def import_skus_excel(file: UploadFile = File(...), operator_id: int = Dep
 
 
 from datetime import datetime, time
-from services.ml_sync import ensure_period_synced
-from services.ml_aggregator import aggregate
-from models import MLOrderCache, MLOrderItemCache, SkuFinanceiro
+from financeiro_ml.sync import ensure_period_synced
+from financeiro_ml.aggregator import aggregate
+from financeiro_ml.models import MLOrderCache, MLOrderItemCache, SkuFinanceiro
 from sqlalchemy import and_
 
 
@@ -307,7 +307,7 @@ async def export_resumo(params: FilterParams, formato: Literal["excel", "csv"] =
 async def health():
     """Verifica que o módulo está vivo e que ml_tokens tem token."""
     from database import SessionLocal
-    from models import MLTokens
+    from financeiro_ml.models import MLTokens
     with SessionLocal() as session:
         token = session.query(MLTokens).first()
         return {

@@ -3,8 +3,9 @@ import pytest
 from decimal import Decimal
 from openpyxl import Workbook
 from database import SessionLocal, init_db
-from models import SkuFinanceiro, Operator
-from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku, import_excel
+from models import Operator
+from financeiro_ml.models import SkuFinanceiro
+from financeiro_ml.sku_service import upsert_sku, list_skus, delete_sku, import_excel
 
 
 @pytest.fixture(autouse=True)

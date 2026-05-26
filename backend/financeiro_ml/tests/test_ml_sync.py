@@ -2,7 +2,7 @@ import pytest
 from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock
 
-from services.ml_sync import _days_needing_sync, _date_range
+from financeiro_ml.sync import _days_needing_sync, _date_range
 
 
 def test_date_range_inclusive():
