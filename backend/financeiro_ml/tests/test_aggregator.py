@@ -73,9 +73,10 @@ def test_aggregate_two_orders_one_approved_one_cancelled():
     }
     result = aggregate(orders, items, sku_financeiro)
     cards = result["cards"]
-    assert cards["vendas_aprovadas"] == Decimal("45.98")     # só order 1
-    assert cards["vendas_canceladas"] == Decimal("100.00")
-    assert cards["faturamento_ml"] == Decimal("145.98")
+    # Cards globais MT NÃO incluem frete_comprador. Order 1 só conta valor produto.
+    assert cards["vendas_aprovadas"] == Decimal("26.99")     # só order 1, sem frete_comp
+    assert cards["vendas_canceladas"] == Decimal("100.00")   # order 2, sem frete
+    assert cards["faturamento_ml"] == Decimal("126.99")      # 26.99 + 100.00
     assert cards["qtd_vendas_aprovadas"] == 1
     assert cards["qtd_vendas_canceladas"] == 1
 

@@ -152,8 +152,15 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
                 "mc_pct": line_mc["mc_pct"],
             })
 
+        # Diferença sutil descoberta na 2ª rodada de validação contra MT card:
+        # Coluna "Faturamento ML" no Excel (por linha) = produto + frete_comprador - cupom.
+        # Card global "Vendas Aprovadas" do MT = Σ (produto - cupom_seller). Não inclui frete.
+        # Replicamos os 2 valores: line_mc preserva o da linha; cards usam essa nova fórmula.
+        cupom_share = order.get("cupom_seller") or Decimal("0")
+        vendas_linha_card = order["produto_total"] - cupom_share
+
         if is_aprovada:
-            sum_aprovadas += line_mc["vendas_aprovadas_linha"]
+            sum_aprovadas += vendas_linha_card
             sum_custo += custo_order
             sum_imposto += imposto_order
             sum_tarifa += tarifa_liquida
@@ -163,9 +170,9 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
             sum_mc += line_mc["mc"]
             qtd_aprovadas += 1
             units_aprovadas += unidades
-            buckets[order.get("breakdown_bucket", "outros")] += line_mc["vendas_aprovadas_linha"]
+            buckets[order.get("breakdown_bucket", "outros")] += vendas_linha_card
         elif is_cancelada:
-            sum_canceladas += line_mc["vendas_aprovadas_linha"]
+            sum_canceladas += vendas_linha_card
             qtd_canceladas += 1
             units_canceladas += unidades
 
