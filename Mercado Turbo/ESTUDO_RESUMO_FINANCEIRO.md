@@ -384,3 +384,49 @@ Todo código relacionado vive em 2 pastas isoladas dentro do projeto NVS-WMS:
 - `components/`         — KPICards, PizzaChart, FiltrosBar, TabelaVendas, Tooltip
 
 **Razão**: facilita encontrar, modificar, ou remover o módulo no futuro sem caçar arquivos espalhados pelo repo. Mantém a integração total com NVS (mesma DB, mesmo deploy, mesmo frontend build).
+
+---
+
+## 15. Validação contra Excel do MT (2026-05-26)
+
+Rodada de "golden test" contra exports reais do Mercado Turbo (filtro: hoje, conta NOVAESMOTOPEÇAS, todos status).
+
+### 15.1 Bugs descobertos e fixes aplicados
+
+| # | Bug | Causa | Fix |
+|---|---|---|---|
+| 1 | `frete_vendedor` 25% errado | Usávamos `shipping_option.list_cost` (frete cheio). MT usa `list_cost − cost` (subsídio absorvido pelo seller). | `frete_vendedor = max(0, list_cost − cost)`. Validado em 7 IDs aleatórios. |
+| 2 | `faturamento_ml` 33% errado | Pedidos com cupom ML (`tag: order_has_discount`) tinham desconto invisível em `/orders/{id}`. | Novo endpoint `/orders/{id}/discounts`. Subtrai `Σ details[type=coupon].items[*].amounts.seller`. Nova coluna `cupom_seller`. |
+| 3a | Flex sem `frete_comprador` (5 casos) | Mercado Pontos: ML banca 100% do frete via desconto loyal. `shipping_option.cost = 0`. MT mostra o valor que comprador "viu" no checkout (`receiver.save`). | Novo endpoint `/shipments/{id}/costs`. Quando `shipping_option.cost = 0` E `senders[0].cost = 0` E há discount `type='loyal'`: usar `receiver.save`. |
+| 3b | Pack rateado (2 casos) | Carrinho com múltiplos pedidos compartilha 1 shipment. ML cobra 1 frete; MT divide pelo número de pedidos do pack. | Persistir `shipment_id` no cache. Aggregator agrupa por shipment, divide frete pelo `count(orders)` do grupo. |
+| 4a | Timezone (22 casos faltantes) | ML retorna `date_created` em fuso `-04:00` (não BRT). Vendas das primeiras horas BRT caíam no dia anterior. | `_to_brt_naive()` converte tudo pra `-03:00` antes de salvar. |
+| 4b | 7 vendas criadas em D-1 mas pagas em D | MT filtra venda do dia por `date_closed` (data efetiva de pagamento), não `date_created`. | Router usa `COALESCE(date_closed, date_created)` no filtro de período. Sync estende janela 1 dia atrás pra cobrir esses casos. |
+| 5 | Falso positivo loyal em Full c/ frete grátis | Meu primeiro fix do 3a aplicava `receiver.save` sempre que havia loyal discount. Mas em casos de Full c/ frete grátis (acima de R$79), seller paga (`senders[0].cost > 0`), e MT mostra `fc = 0`. | Adicionar guarda `senders[0].cost == 0` antes de usar `receiver.save`. |
+
+### 15.2 Resultado da rodada de validação
+
+| Comparação | Cobertura |
+|---|---|
+| Excel MT (749 pedidos hoje) ∩ Cache NVS | **749/749** (100%) |
+| Faltantes no NVS | 0 |
+| Extras no NVS | 3 (vendas posteriores ao export) |
+
+Comparação campo a campo nas 749 cruzadas:
+
+| Campo | Iguais | Divergentes | % |
+|---|---|---|---|
+| `valor_unit` | 749 | 0 | **100%** |
+| `qtd` | 749 | 0 | **100%** |
+| `tarifa` | 749 | 0 | **100%** |
+| `frete_vendedor` | 749 | 0 | **100%** |
+| `frete_comprador` | 747 | 2 | 99,7% |
+| `faturamento_ml` | 747 | 2 | 99,7% |
+
+### 15.3 Edge case aberto
+
+**2 pedidos Flex** com delta R$ 0,89 cada (R$ 1,78 total — 0,006% do faturamento):
+- IDs: `2000016621686890`, `2000016621473370`
+- Ambos: `logistic_type=self_service`, `shipping_option.cost=0`, `senders[0].cost=8.01`, `senders[0].save=0.89` (mandatory discount), `receiver.save=8.9` (ratio rate=1)
+- MT mostra `frete_comprador = 0,89` (= `senders[0].save`)
+- Hipótese inicial "fc = sender.save quando há mandatory" quebrou 547 outros pedidos quando testada universalmente. Padrão exato ainda não isolado.
+- Próxima rodada de dias (com mais amostras desse formato) deve permitir encontrar o invariante.
