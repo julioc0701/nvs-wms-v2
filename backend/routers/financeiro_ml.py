@@ -103,6 +103,31 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         elif params.status == "cancelado":
             q = q.filter(MLOrderCache.status == "cancelled")
 
+        # mlb: filtra por item_id LIKE
+        if params.mlb:
+            matching_order_ids = session.query(MLOrderItemCache.order_id).filter(
+                MLOrderItemCache.item_id.like(f"%{params.mlb}%")
+            ).distinct().subquery()
+            q = q.filter(MLOrderCache.order_id.in_(matching_order_ids))
+
+        # modalidade: gold_special/gold_pro/free
+        modalidade_map = {"premium": "gold_special", "classico": "gold_pro", "gratis": "free"}
+        if params.modalidade != "todos":
+            q = q.filter(MLOrderCache.modalidade_anuncio == modalidade_map[params.modalidade])
+
+        # tipo_frete: breakdown_bucket ou shipping_mode
+        tipo_frete_map = {
+            "me1": ("shipping_mode", "me1"),
+            "me2": ("shipping_mode", "me2"),
+            "sem_me": ("shipping_mode", "not_specified"),
+            "full": ("breakdown_bucket", "full"),
+            "flex": ("breakdown_bucket", "flex"),
+            "outro": ("breakdown_bucket", "outros"),
+        }
+        if params.tipo_frete != "todos":
+            field_name, value = tipo_frete_map[params.tipo_frete]
+            q = q.filter(getattr(MLOrderCache, field_name) == value)
+
         orders = [_row_to_dict_order(r) for r in q.all()]
         order_ids = [o["order_id"] for o in orders]
 
@@ -117,7 +142,28 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
             for r in skus_rows
         }
 
-    result = aggregate(orders, items, sku_financeiro)
+    # custo_imposto: filtra itens pós-fetch baseado em cadastro SKU
+    if params.custo_imposto != "todos":
+        def _is_missing_cost(item):
+            sku = (item.get("seller_sku") or "").strip()
+            if not sku or sku not in sku_financeiro:
+                return True  # sem cadastro → custo=0 e imposto=0
+            fin = sku_financeiro[sku]
+            sem_custo = Decimal(str(fin["custo_unit"])) == 0
+            sem_imp = Decimal(str(fin["imposto_pct"])) == 0
+            if params.custo_imposto == "sem_custo":
+                return sem_custo
+            if params.custo_imposto == "sem_imposto":
+                return sem_imp
+            if params.custo_imposto == "sem_custo_imposto":
+                return sem_custo and sem_imp
+            return False
+        items = [it for it in items if _is_missing_cost(it)]
+        eligible_order_ids = {it["order_id"] for it in items}
+        orders = [o for o in orders if o["order_id"] in eligible_order_ids]
+
+    result = aggregate(orders, items, sku_financeiro,
+                       considerar_frete_comprador=params.considerar_frete_comprador)
 
     # Paginação da tabela
     total = len(result["tabela"])

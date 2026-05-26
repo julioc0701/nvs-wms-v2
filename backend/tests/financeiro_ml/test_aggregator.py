@@ -78,3 +78,38 @@ def test_aggregate_two_orders_one_approved_one_cancelled():
     assert cards["faturamento_ml"] == Decimal("145.98")
     assert cards["qtd_vendas_aprovadas"] == 1
     assert cards["qtd_vendas_canceladas"] == 1
+
+
+def test_aggregate_with_considerar_frete_comprador():
+    """Quando considerar_frete_comprador=True, MC global usa vendas_aprovadas como base sempre.
+
+    Order 1 usa logistic_type=fulfillment (bucket full → não-ME1).
+    Sem flag: base = produto_total = 26.99 → MC = 6.31.
+    Com flag: base = vendas_aprovadas_linha = 45.98 → MC = 25.30.
+    """
+    orders = [
+        {
+            "order_id": 1, "status": "paid", "date_created": datetime(2026, 5, 26),
+            "produto_total": Decimal("26.99"), "frete_comprador": Decimal("18.99"),
+            "frete_vendedor": Decimal("6.55"), "tarifa_bruta": Decimal("3.24"),
+            "tarifa_refund": Decimal("0"), "refund_amount_partial": Decimal("0"),
+            "logistic_type": "fulfillment", "shipping_mode": "me2",
+            "modalidade_anuncio": "gold_pro", "breakdown_bucket": "full",
+        },
+    ]
+    items = [
+        {"order_id": 1, "seller_sku": "577", "quantity": 1, "unit_price": Decimal("26.99"),
+         "item_id": "MLB1", "title": "Retrovisor 577"},
+    ]
+    sku_financeiro = {
+        "577": {"custo_unit": Decimal("8.46"), "imposto_pct": Decimal("9.00")},
+    }
+
+    result_sem = aggregate(orders, items, sku_financeiro, considerar_frete_comprador=False)
+    result_com = aggregate(orders, items, sku_financeiro, considerar_frete_comprador=True)
+
+    # Sem flag: base = produto_total → MC menor (frete_comprador subtraído)
+    # Com flag: base = vendas_aprovadas_linha → MC maior (frete_comprador não subtraído)
+    assert result_com["cards"]["mc_total"] > result_sem["cards"]["mc_total"]
+    # Com flag: MC = (26.99+18.99) - 8.46 - (26.99*0.09) - 3.24 - 6.55 = 25.30
+    assert result_com["cards"]["mc_total"] == Decimal("25.30")

@@ -15,14 +15,16 @@ def _q(value: Decimal) -> Decimal:
 def compute_line_mc(*, produto_total: Decimal, frete_comprador: Decimal,
                      frete_vendedor: Decimal, custo: Decimal, imposto: Decimal,
                      tarifa_liquida: Decimal, refund_parcial: Decimal,
-                     logistic_type: str | None, shipping_mode: str | None) -> dict:
+                     logistic_type: str | None, shipping_mode: str | None,
+                     considerar_frete_comprador: bool = False) -> dict:
     """Calcula MC e MC% pra uma linha de venda.
 
     Regra: frete_comprador é subtraído da base salvo quando modalidade é ME1
     ou "Outro (a combinar)" — nestes casos o vendedor absorve o frete.
+    Se considerar_frete_comprador=True, sempre usa vendas_aprovadas_linha como base.
     """
     bucket = _logistic_bucket(logistic_type, shipping_mode)
-    keeps_buyer_freight = bucket in ME1_OR_OUTROS_BUCKETS
+    keeps_buyer_freight = considerar_frete_comprador or bucket in ME1_OR_OUTROS_BUCKETS
 
     vendas_aprovadas_linha = produto_total + frete_comprador  # = Faturamento ML linha
 
@@ -44,7 +46,8 @@ def compute_line_mc(*, produto_total: Decimal, frete_comprador: Decimal,
 from collections import defaultdict
 
 
-def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, dict]) -> dict:
+def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, dict], *,
+              considerar_frete_comprador: bool = False) -> dict:
     """Agrega lista de orders + itens + cadastro SKU em KPIs prontos.
 
     Retorna: {cards, pizza, tabela}.
@@ -106,6 +109,7 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
             refund_parcial=order["refund_amount_partial"],
             logistic_type=order.get("logistic_type"),
             shipping_mode=order.get("shipping_mode"),
+            considerar_frete_comprador=considerar_frete_comprador,
         )
 
         # Para tabela: 1 linha por item (igual MT)
