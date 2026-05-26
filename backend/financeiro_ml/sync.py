@@ -211,8 +211,12 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
         produto_total += Decimal(str(it["unit_price"])) * Decimal(it["quantity"])
         tarifa_bruta += Decimal(str(it.get("sale_fee", 0))) * Decimal(it["quantity"])
 
-    frete_comprador = Decimal(str((shipment.get("shipping_option") or {}).get("cost", 0) or 0))
-    frete_vendedor = Decimal(str((shipment.get("shipping_option") or {}).get("list_cost", 0) or 0))
+    # MT calcula frete_vendedor = list_cost − cost (subsídio absorvido pelo seller),
+    # não o list_cost cheio. Validado contra 7 ordens aleatórias (universal).
+    so = shipment.get("shipping_option") or {}
+    frete_comprador = Decimal(str(so.get("cost", 0) or 0))
+    list_cost = Decimal(str(so.get("list_cost", 0) or 0))
+    frete_vendedor = max(Decimal("0"), list_cost - frete_comprador)
 
     refund_total = Decimal("0")
     for refund in (detail.get("payments") or []):
