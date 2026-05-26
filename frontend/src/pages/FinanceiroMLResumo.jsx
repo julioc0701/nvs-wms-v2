@@ -11,7 +11,19 @@ export default function FinanceiroMLResumo() {
   const [filtrosAtuais, setFiltrosAtuais] = useState(null)
 
   const mutation = useMutation({
-    mutationFn: (filtros) => financeiroMLApi.getResumo(filtros),
+    mutationFn: async (filtros) => {
+      console.log('[BUSCAR] frontend.start', filtros)
+      const t0 = performance.now()
+      try {
+        const data = await financeiroMLApi.getResumo(filtros)
+        console.log(`[BUSCAR] frontend.success ms=${Math.round(performance.now() - t0)}`,
+          { cards: data.cards, sync_report: data.sync_report, tabela_linhas: data.tabela?.length })
+        return data
+      } catch (err) {
+        console.error(`[BUSCAR] frontend.error ms=${Math.round(performance.now() - t0)}`, err)
+        throw err
+      }
+    },
     onSuccess: (data, filtros) => {
       setResultado(data)
       setFiltrosAtuais(filtros)

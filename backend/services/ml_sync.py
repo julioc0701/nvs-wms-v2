@@ -54,6 +54,9 @@ from services.ml_client import build_default_client
 
 async def ensure_period_synced(date_from: date, date_to: date) -> dict:
     """Orquestra sync por dia. Retorna {dias_sincronizados, dias_falhos, total_orders}."""
+    import logging
+    trace = logging.getLogger("financeiro_ml.trace")
+
     days = _date_range(date_from, date_to)
 
     with SessionLocal() as session:
@@ -63,7 +66,14 @@ async def ensure_period_synced(date_from: date, date_to: date) -> dict:
         statuses = {s.day: s for s in statuses_rows}
 
     needed = _days_needing_sync(days, statuses)
+    trace.info(
+        f"sync.check periodo=[{date_from}..{date_to}] dias_total={len(days)} "
+        f"dias_cacheados={len(statuses)} dias_a_sincronizar={len(needed)} "
+        f"detalhe_needed={[str(d) for d in needed]}"
+    )
+
     if not needed:
+        trace.info("sync.cache_hit (todos os dias estao fresh)")
         return {"dias_sincronizados": 0, "dias_falhos": 0, "total_orders": 0}
 
     max_parallel = int(os.getenv("ML_SYNC_MAX_DAYS_PARALLEL", "5"))
@@ -83,9 +93,13 @@ async def ensure_period_synced(date_from: date, date_to: date) -> dict:
 
 async def _sync_single_day(client, d: date) -> dict:
     """Sincroniza um dia: busca orders, detalha cada um, insere no cache."""
+    import logging, time as time_module
+    trace = logging.getLogger("financeiro_ml.trace")
+
     inicio = datetime(d.year, d.month, d.day, 0, 0, 0)
     fim = datetime(d.year, d.month, d.day, 23, 59, 59)
     orders_count = 0
+    t_day = time_module.perf_counter()
     try:
         offset = 0
         while True:
@@ -101,7 +115,12 @@ async def _sync_single_day(client, d: date) -> dict:
                 async with order_sem:
                     return await _save_order(client, o)
 
+            t_page = time_module.perf_counter()
             await asyncio.gather(*[_bounded(o) for o in results], return_exceptions=True)
+            trace.info(
+                f"sync.day[{d}] page offset={offset} fetched={len(results)} "
+                f"ms_page={(time_module.perf_counter()-t_page)*1000:.0f}"
+            )
             orders_count += len(results)
             if len(results) < 50:
                 break
@@ -119,6 +138,10 @@ async def _sync_single_day(client, d: date) -> dict:
                 st.status = "ok"
                 st.error_message = None
             session.commit()
+        trace.info(
+            f"sync.day[{d}] DONE orders_total={orders_count} "
+            f"ms_total={(time_module.perf_counter()-t_day)*1000:.0f}"
+        )
         return {"status": "ok", "orders_count": orders_count}
     except Exception as e:
         with SessionLocal() as session:

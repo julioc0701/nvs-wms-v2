@@ -1,6 +1,8 @@
 """Rotas REST do Resumo Financeiro Mercado Livre.
 Permissão: somente Master.
 """
+import logging
+import time as time_module
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -9,6 +11,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 router = APIRouter()
+
+# Logger dedicado: aparece como [BUSCAR] no stderr/uvicorn
+trace = logging.getLogger("financeiro_ml.trace")
+trace.setLevel(logging.INFO)
+if not trace.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("[BUSCAR] %(message)s"))
+    trace.addHandler(_h)
+    trace.propagate = False
 
 
 # ============ Schemas ============
@@ -88,7 +99,21 @@ from sqlalchemy import and_
 
 @router.post("/resumo")
 async def get_resumo(params: FilterParams, operator_id: int = Depends(require_master)):
+    t0 = time_module.perf_counter()
+    trace.info(
+        f"START data_inicio={params.data_inicio} data_fim={params.data_fim} "
+        f"status={params.status} modalidade={params.modalidade} tipo_frete={params.tipo_frete} "
+        f"custo_imposto={params.custo_imposto} sku={params.sku!r} mlb={params.mlb!r} "
+        f"frete_comprador={params.considerar_frete_comprador} page={params.page}x{params.page_size}"
+    )
+
+    t1 = time_module.perf_counter()
     sync_report = await ensure_period_synced(params.data_inicio, params.data_fim)
+    trace.info(
+        f"sync.done dias_sincronizados={sync_report['dias_sincronizados']} "
+        f"dias_falhos={sync_report['dias_falhos']} novos_orders={sync_report['total_orders']} "
+        f"ms={(time_module.perf_counter()-t1)*1000:.0f}"
+    )
 
     from database import SessionLocal
     with SessionLocal() as session:
@@ -128,19 +153,25 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
             field_name, value = tipo_frete_map[params.tipo_frete]
             q = q.filter(getattr(MLOrderCache, field_name) == value)
 
+        tq0 = time_module.perf_counter()
         orders = [_row_to_dict_order(r) for r in q.all()]
+        trace.info(f"query.orders count={len(orders)} ms={(time_module.perf_counter()-tq0)*1000:.0f}")
         order_ids = [o["order_id"] for o in orders]
 
+        tq1 = time_module.perf_counter()
         items_q = session.query(MLOrderItemCache).filter(MLOrderItemCache.order_id.in_(order_ids))
         if params.sku:
             items_q = items_q.filter(MLOrderItemCache.seller_sku == params.sku)
         items = [_row_to_dict_item(r) for r in items_q.all()]
+        trace.info(f"query.items count={len(items)} ms={(time_module.perf_counter()-tq1)*1000:.0f}")
 
+        tq2 = time_module.perf_counter()
         skus_rows = session.query(SkuFinanceiro).all()
         sku_financeiro = {
             r.sku: {"custo_unit": Decimal(str(r.custo_unit)), "imposto_pct": Decimal(str(r.imposto_pct))}
             for r in skus_rows
         }
+        trace.info(f"query.skus count={len(sku_financeiro)} ms={(time_module.perf_counter()-tq2)*1000:.0f}")
 
     # custo_imposto: filtra itens pós-fetch baseado em cadastro SKU
     if params.custo_imposto != "todos":
@@ -162,8 +193,13 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         eligible_order_ids = {it["order_id"] for it in items}
         orders = [o for o in orders if o["order_id"] in eligible_order_ids]
 
+    tagg = time_module.perf_counter()
     result = aggregate(orders, items, sku_financeiro,
                        considerar_frete_comprador=params.considerar_frete_comprador)
+    trace.info(
+        f"aggregate orders={len(orders)} items={len(items)} "
+        f"linhas_tabela={len(result['tabela'])} ms={(time_module.perf_counter()-tagg)*1000:.0f}"
+    )
 
     # Paginação da tabela
     total = len(result["tabela"])
@@ -177,7 +213,13 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         "total_pages": (total + params.page_size - 1) // params.page_size,
     }
     result["sync_report"] = sync_report
-    return _json_safe(result)
+    payload = _json_safe(result)
+    trace.info(
+        f"END vendas_aprovadas={result['cards']['vendas_aprovadas']} "
+        f"mc={result['cards']['mc_total']} ({result['cards']['mc_pct_global']}%) "
+        f"total_ms={(time_module.perf_counter()-t0)*1000:.0f}"
+    )
+    return payload
 
 
 def _row_to_dict_order(r) -> dict:
