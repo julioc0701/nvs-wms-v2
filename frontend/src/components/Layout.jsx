@@ -177,9 +177,11 @@ export default function Layout() {
             const Icon = item.icon
             const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && !isMarketplaceActive)
             // Se for Supervisão Full e houver um marketplace ativo, mantemos o pai ativo
-            const isParentActive = item.path === '/supervisor' && isMarketplaceActive
+            const isParentActive = (item.path === '/supervisor' && isMarketplaceActive)
+              || (item.path === '/financeiro' && isFinanceiroActive)
             const showInlineSubMenu = (item.path === '/supervisor' && isMarketplaceActive)
               || (item.path === '/separacao' && isSeparacaoActive)
+              || (item.path === '/financeiro' && isFinanceiroActive)
 
             return (
               <div key={item.path} className="flex flex-col gap-1.5">
