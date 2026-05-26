@@ -578,7 +578,7 @@ class MLDaySyncStatus(Base):
     __tablename__ = "ml_day_sync_status"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    day: Mapped[datetime] = mapped_column(Date, nullable=False, unique=True)
+    day: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     orders_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
