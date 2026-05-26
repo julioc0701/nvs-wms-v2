@@ -62,15 +62,45 @@ find_python() {
   return 1
 }
 
-if lsof -iTCP:"$FASTAPI_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "[ERRO] A porta $FASTAPI_PORT ja esta em uso."
-  exit 1
-fi
+free_port() {
+  local port="$1"
+  local label="$2"
+  local pids
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
 
-if lsof -iTCP:"$VITE_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-  echo "[ERRO] A porta $VITE_PORT ja esta em uso."
-  exit 1
-fi
+  if [[ -z "$pids" ]]; then
+    return 0
+  fi
+
+  echo "[INFO] Porta $port ($label) em uso por PID(s): $pids. Derrubando..."
+  echo "$pids" | xargs kill -TERM 2>/dev/null || true
+
+  # Espera ate 5s pra terminar limpo
+  local i
+  for i in 1 2 3 4 5; do
+    sleep 1
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -z "$pids" ]]; then
+      echo "[INFO] Porta $port liberada."
+      return 0
+    fi
+  done
+
+  echo "[INFO] Processo nao saiu com SIGTERM. Forcando SIGKILL..."
+  echo "$pids" | xargs kill -KILL 2>/dev/null || true
+  sleep 1
+
+  pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+  if [[ -n "$pids" ]]; then
+    echo "[ERRO] Nao consegui liberar a porta $port. PID(s) restante(s): $pids"
+    return 1
+  fi
+  echo "[INFO] Porta $port liberada (apos SIGKILL)."
+  return 0
+}
+
+free_port "$FASTAPI_PORT" "backend" || exit 1
+free_port "$VITE_PORT"   "frontend" || exit 1
 
 PYTHON_BIN="$(find_python || true)"
 if [[ -z "$PYTHON_BIN" ]]; then
