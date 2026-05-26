@@ -1,8 +1,10 @@
+import io
 import pytest
 from decimal import Decimal
+from openpyxl import Workbook
 from database import SessionLocal, init_db
 from models import SkuFinanceiro, Operator
-from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku
+from services.sku_financeiro_service import upsert_sku, list_skus, delete_sku, import_excel
 
 
 @pytest.fixture(autouse=True)
@@ -48,3 +50,26 @@ def test_delete_sku():
     delete_sku("SKU_DEL")
     with SessionLocal() as s:
         assert s.query(SkuFinanceiro).filter_by(sku="SKU_DEL").first() is None
+
+
+def test_import_excel_creates_and_updates():
+    # Prepara um xlsx fake com colunas sku, custo_unit, imposto_pct
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["sku", "custo_unit", "imposto_pct"])
+    ws.append(["IMP_A", 12.5, 8.0])
+    ws.append(["IMP_B", 20.0, 9.5])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    result = import_excel(buf, updated_by_id=1)
+    assert result["created"] == 2
+    assert result["updated"] == 0
+    assert result["errors"] == []
+
+    # Reimport mesma planilha
+    buf.seek(0)
+    result2 = import_excel(buf, updated_by_id=1)
+    assert result2["created"] == 0
+    assert result2["updated"] == 2
