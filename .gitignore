@@ -49,3 +49,5 @@ Thumbs.db
 
 # Runtime PID/log dir do start.sh
 .run/
+
+.superpowers/
