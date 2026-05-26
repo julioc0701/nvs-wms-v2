@@ -218,19 +218,23 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     list_cost = Decimal(str(so.get("list_cost", 0) or 0))
     frete_vendedor = max(Decimal("0"), list_cost - frete_comprador)
 
-    # Bug 3a: Mercado Pontos puro (ML banca 100% do frete via loyal subsidy).
-    # Quando shipping_option.cost=0 E senders[0].cost=0 (seller também não paga),
-    # ML expõe o valor que comprador "viu" no checkout em receiver.save.
-    # IMPORTANTE: quando senders[0].cost > 0 (seller paga frete — caso Full frete
-    # grátis acima de R$79), receiver.save NÃO se aplica; MT mostra fc=0 nesse caso.
+    # Bug 3a / 3c: ajustes de frete_comprador via /shipments/{id}/costs
+    # Distinção pelo tipo de desconto em receiver.discounts:
+    #  - 'loyal' + sender.cost=0 (ML banca 100% Mercado Pontos)  → fc = receiver.save
+    #  - 'ratio' + sender.cost>0 + sender.save>0 (ratio compartilhado: ML banca o
+    #    ratio do comprador, seller absorve um mandatory pequeno)               → fc = sender.save
+    # Em Full c/ frete grátis (sender paga, sem ratio nem loyal): fc fica 0.
     if frete_comprador == 0 and shipment_id:
         costs = await client.get_shipment_costs(shipment_id)
         receiver = costs.get("receiver") or {}
         sender = (costs.get("senders") or [{}])[0]
         sender_cost = Decimal(str(sender.get("cost") or 0))
-        has_loyal = any((d.get("type") == "loyal") for d in (receiver.get("discounts") or []))
-        if has_loyal and sender_cost == 0:
+        sender_save = Decimal(str(sender.get("save") or 0))
+        disc_types = {d.get("type") for d in (receiver.get("discounts") or [])}
+        if "loyal" in disc_types and sender_cost == 0:
             frete_comprador = Decimal(str(receiver.get("save") or 0))
+        elif "ratio" in disc_types and sender_cost > 0 and sender_save > 0:
+            frete_comprador = sender_save
 
     refund_total = Decimal("0")
     for refund in (detail.get("payments") or []):
