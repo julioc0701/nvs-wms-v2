@@ -44,3 +44,22 @@ def test_delete_sku(client):
     assert r.status_code == 200
     r2 = client.delete("/api/financeiro-ml/skus/X")
     assert r2.status_code == 404
+
+
+from unittest.mock import patch, AsyncMock
+from datetime import date
+
+
+def test_resumo_returns_cards(client):
+    async def fake_sync(*a, **k):
+        return {"dias_sincronizados": 0, "dias_falhos": 0, "total_orders": 0}
+    with patch("routers.financeiro_ml.ensure_period_synced", new=AsyncMock(side_effect=fake_sync)):
+        r = client.post("/api/financeiro-ml/resumo", json={
+            "data_inicio": str(date.today()),
+            "data_fim": str(date.today()),
+        })
+    assert r.status_code == 200
+    body = r.json()
+    assert "cards" in body
+    assert "pizza" in body
+    assert "tabela" in body
