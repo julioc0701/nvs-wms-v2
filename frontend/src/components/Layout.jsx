@@ -64,6 +64,7 @@ export default function Layout() {
   const isSeparacaoActive = pathParts[1] === 'separacao'
   const isMarketplaceActive = pathParts[1] === 'supervisor' && (pathParts[2] === 'ml' || pathParts[2] === 'shopee')
   const activeMarketplace = isMarketplaceActive ? pathParts[2] : null
+  const isFinanceiroActive = pathParts[1] === 'financeiro' || pathParts[1] === 'financeiro-ml'
 
   const navItems = isMaster
     ? [
@@ -73,8 +74,6 @@ export default function Layout() {
         { label: 'ERP Olist', path: '/olist-orders', icon: Database },
         { label: 'Base', path: '/master-data', icon: Database },
         { label: 'Financeiro', path: '/financeiro', icon: Wallet },
-        { label: 'Resumo Financeiro ML', path: '/financeiro-ml/resumo', icon: BarChart2 },
-        { label: 'Cadastro Custo SKU', path: '/financeiro-ml/skus', icon: Tag },
         { label: 'Operadores', path: '/operators', icon: Users },
       ]
     : [
@@ -97,6 +96,10 @@ export default function Layout() {
   ] : isSeparacaoActive ? [
     { label: 'Notas (Tiny)',   path: '/separacao', icon: ClipboardList },
     { label: 'Listas Geradas', path: '/separacao/listas', icon: ListTodo, newTab: true },
+  ] : isFinanceiroActive && isMaster ? [
+    { label: 'Pagamentos',          path: '/financeiro',             icon: Wallet },
+    { label: 'Análise Financeira',  path: '/financeiro-ml/resumo',   icon: BarChart2 },
+    { label: 'Cadastro Custo SKU',  path: '/financeiro-ml/skus',     icon: Tag },
   ] : []
 
   const handleNav = (item) => {
