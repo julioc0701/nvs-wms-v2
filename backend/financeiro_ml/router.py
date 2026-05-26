@@ -240,6 +240,7 @@ def _row_to_dict_order(r) -> dict:
         "cupom_seller": Decimal(str(r.cupom_seller)) if r.cupom_seller is not None else Decimal("0"),
         "logistic_type": r.logistic_type,
         "shipping_mode": r.shipping_mode,
+        "shipment_id": r.shipment_id,
         "modalidade_anuncio": r.modalidade_anuncio,
         "breakdown_bucket": r.breakdown_bucket,
     }

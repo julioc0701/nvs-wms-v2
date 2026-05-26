@@ -99,6 +99,18 @@ class MLClient:
     async def get_shipment(self, shipment_id: int) -> dict:
         return await self._get(f"/shipments/{shipment_id}")
 
+    async def get_shipment_costs(self, shipment_id: int) -> dict:
+        """GET /shipments/{id}/costs — detalhamento de custos do frete.
+
+        Expõe `gross_amount`, `receiver.cost/save/discounts`, `senders[].cost`.
+        Usado pra capturar subsídio Mercado Pontos (loyal) em vendas Flex,
+        onde shipping_option.cost = 0 mas o comprador "viu" outro valor.
+        """
+        try:
+            return await self._get(f"/shipments/{shipment_id}/costs")
+        except Exception:
+            return {}
+
     async def get_item(self, item_id: str) -> dict:
         return await self._get(f"/items/{item_id}")
 

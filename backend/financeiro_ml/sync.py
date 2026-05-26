@@ -218,6 +218,15 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     list_cost = Decimal(str(so.get("list_cost", 0) or 0))
     frete_vendedor = max(Decimal("0"), list_cost - frete_comprador)
 
+    # Bug 3a: quando cost=0 (típico Flex c/ Mercado Pontos), ML expõe o valor que o
+    # comprador "viu" em /shipments/{id}/costs. Receiver.save contém o subsídio loyal.
+    if frete_comprador == 0 and shipment_id:
+        costs = await client.get_shipment_costs(shipment_id)
+        receiver = costs.get("receiver") or {}
+        has_loyal = any((d.get("type") == "loyal") for d in (receiver.get("discounts") or []))
+        if has_loyal:
+            frete_comprador = Decimal(str(receiver.get("save") or 0))
+
     refund_total = Decimal("0")
     for refund in (detail.get("payments") or []):
         refund_total += Decimal(str(refund.get("transaction_amount_refunded", 0) or 0))
@@ -265,6 +274,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
                 modalidade_anuncio=modalidade,
                 logistic_type=logistic_type,
                 shipping_mode=shipping_mode,
+                shipment_id=shipment_id,
                 breakdown_bucket=bucket,
                 raw_json=json.dumps(detail),
                 synced_at=datetime.utcnow(),

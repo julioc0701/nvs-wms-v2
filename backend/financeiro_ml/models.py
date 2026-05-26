@@ -47,6 +47,7 @@ class MLOrderCache(Base):
     modalidade_anuncio: Mapped[str | None] = mapped_column(String(30), nullable=True)
     logistic_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     shipping_mode: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    shipment_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     breakdown_bucket: Mapped[str | None] = mapped_column(String(20), nullable=True)
     raw_json: Mapped[str] = mapped_column(Text, nullable=False)
     synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

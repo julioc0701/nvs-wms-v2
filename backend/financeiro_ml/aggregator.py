@@ -60,6 +60,15 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
     for it in items:
         items_by_order[it["order_id"]].append(it)
 
+    # Bug 3b: pack rateado — quando vários orders compartilham o mesmo shipment_id,
+    # ML cobra 1 frete só e MT divide entre os orders. Contamos quantos orders por
+    # shipment_id pra aplicar o rateio.
+    orders_per_shipment: dict[int, int] = defaultdict(int)
+    for o in orders:
+        sid = o.get("shipment_id")
+        if sid:
+            orders_per_shipment[sid] += 1
+
     tabela_linhas = []
     sum_aprovadas = Decimal("0")
     sum_canceladas = Decimal("0")
@@ -103,10 +112,16 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
 
         tarifa_liquida = order["tarifa_bruta"] - order["tarifa_refund"]
 
+        # Bug 3b: rateio de pack — divide frete pelo n_orders que compartilham shipment
+        sid = order.get("shipment_id")
+        share = orders_per_shipment.get(sid, 1) if sid else 1
+        fc_share = order["frete_comprador"] / Decimal(share) if share > 1 else order["frete_comprador"]
+        fv_share = order["frete_vendedor"] / Decimal(share) if share > 1 else order["frete_vendedor"]
+
         line_mc = compute_line_mc(
             produto_total=order["produto_total"],
-            frete_comprador=order["frete_comprador"],
-            frete_vendedor=order["frete_vendedor"],
+            frete_comprador=fc_share,
+            frete_vendedor=fv_share,
             custo=custo_order,
             imposto=imposto_order,
             tarifa_liquida=tarifa_liquida,
@@ -142,8 +157,8 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
             sum_custo += custo_order
             sum_imposto += imposto_order
             sum_tarifa += tarifa_liquida
-            sum_frete_comprador += order["frete_comprador"]
-            sum_frete_vendedor += order["frete_vendedor"]
+            sum_frete_comprador += fc_share
+            sum_frete_vendedor += fv_share
             sum_refund_partial += order["refund_amount_partial"]
             sum_mc += line_mc["mc"]
             qtd_aprovadas += 1
