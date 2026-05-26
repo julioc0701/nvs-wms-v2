@@ -10,11 +10,20 @@ def test_date_range_inclusive():
     assert days == [date(2026, 5, 1), date(2026, 5, 2), date(2026, 5, 3)]
 
 
-def test_today_always_needs_sync():
+def test_today_stale_5min_needs_sync():
+    """Hoje: cache de 5 minutos. Re-sync se passou desse limite."""
     today = date.today()
-    statuses = {today: MagicMock(last_synced_at=datetime.utcnow() - timedelta(minutes=1), status="ok")}
+    statuses = {today: MagicMock(last_synced_at=datetime.utcnow() - timedelta(minutes=6), status="ok")}
     result = _days_needing_sync([today], statuses)
     assert result == [today]
+
+
+def test_today_fresh_under_5min_skipped():
+    """Hoje cacheado há menos de 5 minutos: skip (cache hit)."""
+    today = date.today()
+    statuses = {today: MagicMock(last_synced_at=datetime.utcnow() - timedelta(minutes=2), status="ok")}
+    result = _days_needing_sync([today], statuses)
+    assert result == []
 
 
 def test_old_day_not_needed_if_ok():

@@ -13,7 +13,7 @@ def _days_needing_sync(days: list[date], statuses: dict[date, object]) -> list[d
     """Aplica política de freshness e retorna apenas os dias que precisam re-sync.
 
     Regras:
-    - day == today → sempre.
+    - day == today → re-sync se cache > 5 minutos (não sempre).
     - day in [today-7, today-1] e last_synced_at > 24h → sim.
     - day < today-7 e status == 'ok' → não.
     - day < today-7 e status == 'failed' → sim.
@@ -24,15 +24,17 @@ def _days_needing_sync(days: list[date], statuses: dict[date, object]) -> list[d
     now = datetime.utcnow()
     needed = []
     for d in days:
-        if d == today:
-            needed.append(d)
-            continue
         st = statuses.get(d)
         if st is None:
             needed.append(d)
             continue
         if st.status == "failed":
             needed.append(d)
+            continue
+        if d == today:
+            # Hoje: cache de 5 minutos. Re-sync busca apenas pedidos NOVOS.
+            if now - st.last_synced_at > timedelta(minutes=5):
+                needed.append(d)
             continue
         if d >= threshold_recent:
             if now - st.last_synced_at > timedelta(hours=24):
@@ -133,10 +135,22 @@ async def _sync_single_day(client, d: date) -> dict:
         return {"status": "failed", "orders_count": 0, "error": str(e)}
 
 
-async def _save_order(client, search_result: dict) -> None:
-    """Detalha um order do search result e salva no cache (upsert)."""
+async def _save_order(client, search_result: dict, *, force_refresh: bool = False) -> None:
+    """Salva um order do search result no cache. Skip se já existe (ou força refresh).
+
+    Otimização: usa payload do /orders/search direto. Evita call extra a /orders/{id}
+    e /items/{id} (campos `status`, `payments`, `order_items[].listing_type_id` já vêm).
+    Só faz 1 call extra: /shipments/{id} (cost/list_cost/logistic_type/mode).
+    """
     order_id = search_result["id"]
-    detail = await client.get_order(order_id)
+
+    # Skip se já existe (a menos que force_refresh)
+    if not force_refresh:
+        with SessionLocal() as session:
+            if session.query(MLOrderCache).filter_by(order_id=order_id).first():
+                return
+
+    detail = search_result  # usa payload do search direto
 
     shipment_id = (detail.get("shipping") or {}).get("id")
     shipment = await client.get_shipment(shipment_id) if shipment_id else {}
@@ -165,16 +179,9 @@ async def _save_order(client, search_result: dict) -> None:
     from services.ml_aggregator import _logistic_bucket
     bucket = _logistic_bucket(logistic_type, shipping_mode)
 
-    # Modalidade do anúncio (precisa do listing_type_id) — pega do primeiro item
-    modalidade = None
-    first_item = (detail.get("order_items") or [{}])[0].get("item", {})
-    item_id = first_item.get("id")
-    if item_id:
-        try:
-            item_detail = await client.get_item(item_id)
-            modalidade = item_detail.get("listing_type_id")
-        except Exception:
-            pass
+    # Modalidade do anúncio (listing_type_id) — já vem no search response
+    first_item = (detail.get("order_items") or [{}])[0]
+    modalidade = first_item.get("listing_type_id")
 
     with SessionLocal() as session:
         existing = session.query(MLOrderCache).filter_by(order_id=order_id).first()
