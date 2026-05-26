@@ -142,12 +142,17 @@ async def _sync_single_day(client, d: date) -> dict:
                     return await _save_order(client, o)
 
             t_page = time_module.perf_counter()
-            await asyncio.gather(*[_bounded(o) for o in results], return_exceptions=True)
+            page_results = await asyncio.gather(*[_bounded(o) for o in results], return_exceptions=True)
+            # Loga exceções engolidas (rate limit, timeout, payload inesperado, etc)
+            errors = [(results[i]["id"], r) for i, r in enumerate(page_results) if isinstance(r, Exception)]
+            for oid, err in errors:
+                trace.warning(f"sync.day[{d}] order_err id={oid} type={type(err).__name__} msg={str(err)[:200]}")
+            ok_count = len(results) - len(errors)
             trace.info(
                 f"sync.day[{d}] page offset={offset} fetched={len(results)} "
-                f"ms_page={(time_module.perf_counter()-t_page)*1000:.0f}"
+                f"ok={ok_count} err={len(errors)} ms_page={(time_module.perf_counter()-t_page)*1000:.0f}"
             )
-            orders_count += len(results)
+            orders_count += ok_count  # só conta os que realmente foram salvos
             if len(results) < 50:
                 break
             offset += 50
@@ -217,6 +222,8 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     frete_comprador = Decimal(str(so.get("cost", 0) or 0))
     list_cost = Decimal(str(so.get("list_cost", 0) or 0))
     frete_vendedor = max(Decimal("0"), list_cost - frete_comprador)
+    logistic_type = shipment.get("logistic_type")
+    shipping_mode = shipment.get("mode")
 
     # Bug 3a / 3c: ajustes de frete_comprador via /shipments/{id}/costs
     # Distinção pelo tipo de desconto em receiver.discounts:
@@ -233,7 +240,9 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
         disc_types = {d.get("type") for d in (receiver.get("discounts") or [])}
         if "loyal" in disc_types and sender_cost == 0:
             frete_comprador = Decimal(str(receiver.get("save") or 0))
-        elif "ratio" in disc_types and sender_cost > 0 and sender_save > 0:
+        elif "ratio" in disc_types and sender_cost > 0 and sender_save > 0 and logistic_type == "self_service":
+            # Específico de Flex (self_service): MT atribui sender.save como fc.
+            # Em Full (fulfillment), MT mostra fc=0 (mesmo padrão ratio+mandatory).
             frete_comprador = sender_save
 
     refund_total = Decimal("0")
@@ -253,10 +262,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
                 for it in (det.get("items") or []):
                     cupom_seller += Decimal(str((it.get("amounts") or {}).get("seller") or 0))
 
-    logistic_type = shipment.get("logistic_type")
-    shipping_mode = shipment.get("mode")
-
-    # Bucket pra breakdown logístico
+    # Bucket pra breakdown logístico (logistic_type e shipping_mode já definidos acima)
     from financeiro_ml.aggregator import _logistic_bucket
     bucket = _logistic_bucket(logistic_type, shipping_mode)
 
