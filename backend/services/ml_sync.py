@@ -91,9 +91,16 @@ async def _sync_single_day(client, d: date) -> dict:
             results = page.get("results", [])
             if not results:
                 break
-            for order in results:
-                await _save_order(client, order)
-                orders_count += 1
+            # Paralelismo dentro da página com semáforo configurável
+            max_parallel_orders = int(os.getenv("ML_SYNC_MAX_ORDERS_PARALLEL", "10"))
+            order_sem = asyncio.Semaphore(max_parallel_orders)
+
+            async def _bounded(o):
+                async with order_sem:
+                    return await _save_order(client, o)
+
+            await asyncio.gather(*[_bounded(o) for o in results], return_exceptions=True)
+            orders_count += len(results)
             if len(results) < 50:
                 break
             offset += 50
