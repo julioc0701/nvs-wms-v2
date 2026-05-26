@@ -335,25 +335,29 @@ def listar_boletos(
 def stats_boletos(
     vencimento_de: str | None = None,
     vencimento_ate: str | None = None,
-    pago_de: str | None = None,
-    pago_ate: str | None = None,
     db: DBSession = Depends(get_db),
 ):
     """Estatísticas pro dashboard do painel.
 
-    - total_a_pagar: status=registrado, respeitando filtros de vencimento
+    Os 3 cards usam o MESMO critério de data (vencimento) que a lista
+    de boletos, garantindo consistência visual:
+
+    - total_a_pagar: status=registrado, respeita filtro de vencimento
     - vencidos: status=registrado + vencimento < hoje, IGNORA filtros
-    - pagos: status=pago, respeitando filtros de pago_em
+    - pagos: status=pago, respeita filtro de vencimento (mesma regra da lista)
     """
     hoje = DateType.today()
 
-    # Total a pagar (respeita filtro de vencimento)
-    q_pagar = db.query(Boleto).filter(Boleto.status == "registrado")
-    if vencimento_de:
-        q_pagar = q_pagar.filter(Boleto.vencimento >= DateType.fromisoformat(vencimento_de))
-    if vencimento_ate:
-        q_pagar = q_pagar.filter(Boleto.vencimento <= DateType.fromisoformat(vencimento_ate))
-    boletos_pagar = q_pagar.all()
+    def aplicar_data(q):
+        if vencimento_de:
+            q = q.filter(Boleto.vencimento >= DateType.fromisoformat(vencimento_de))
+        if vencimento_ate:
+            q = q.filter(Boleto.vencimento <= DateType.fromisoformat(vencimento_ate))
+        return q
+
+    boletos_pagar = aplicar_data(
+        db.query(Boleto).filter(Boleto.status == "registrado")
+    ).all()
 
     # Vencidos (ignora filtros — sempre todos os registrados vencidos)
     boletos_vencidos = (
@@ -363,17 +367,9 @@ def stats_boletos(
         .all()
     )
 
-    # Pagos (respeita filtro de pago_em)
-    q_pagos = db.query(Boleto).filter(Boleto.status == "pago")
-    if pago_de:
-        de = DateType.fromisoformat(pago_de)
-        q_pagos = q_pagos.filter(Boleto.pago_em >= de)
-    if pago_ate:
-        # `<` no fim do dia seguinte pra incluir o dia inteiro
-        from datetime import timedelta as _td
-        ate = DateType.fromisoformat(pago_ate) + _td(days=1)
-        q_pagos = q_pagos.filter(Boleto.pago_em < ate)
-    boletos_pagos = q_pagos.all()
+    boletos_pagos = aplicar_data(
+        db.query(Boleto).filter(Boleto.status == "pago")
+    ).all()
 
     return {
         "total_a_pagar": {

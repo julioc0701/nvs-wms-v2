@@ -301,9 +301,6 @@ export default function FinanceiroPainel() {
         api.statsBoletos({
           vencimento_de: filtros.vencimento_de,
           vencimento_ate: filtros.vencimento_ate,
-          // Pra card de Pagos, usa as mesmas datas mas comparando com pago_em
-          pago_de: filtros.vencimento_de,
-          pago_ate: filtros.vencimento_ate,
         }),
       ])
       setDados(lista)
