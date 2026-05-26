@@ -430,3 +430,22 @@ Comparação campo a campo nas 749 cruzadas:
 - MT mostra `frete_comprador = 0,89` (= `senders[0].save`)
 - Hipótese inicial "fc = sender.save quando há mandatory" quebrou 547 outros pedidos quando testada universalmente. Padrão exato ainda não isolado.
 - Próxima rodada de dias (com mais amostras desse formato) deve permitir encontrar o invariante.
+
+### 15.4 Edge case resolvido
+
+Investigação isolada lado-a-lado dos 2 pedidos divergentes (R$ 0,89) contra controle Flex que batia: descoberto que `receiver.discounts` tem 2 tipos distintos quando `shipping_option.cost = 0`:
+
+| Tipo | Quem banca | sender.cost | fc no MT |
+|---|---|---|---|
+| `loyal` | ML 100% (Mercado Pontos) | 0 | `receiver.save` |
+| `ratio` | ML banca o ratio do comprador, seller absorve mandatory | > 0 | `senders[0].save` |
+
+Fix final em `_save_order`:
+```python
+if "loyal" in disc_types and sender_cost == 0:
+    frete_comprador = receiver.save
+elif "ratio" in disc_types and sender_cost > 0 and sender_save > 0:
+    frete_comprador = sender_save
+```
+
+**Resultado final: 749/749 (100%) iguais em todos os 6 campos numéricos.**
