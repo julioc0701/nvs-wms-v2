@@ -142,6 +142,28 @@ def init_db():
     from models import Operator, Session, PickingItem, Barcode, Label, ScanEvent, Printer, PrintJob, TinyOrderSync, AgentMemory, AgentRun, OrderOperational, SyncRun, TinyPickingList, TinyPickingListItem, Shortage, TinySeparationStatus, TinySeparationItemCache, TinySeparationHeader, TinyErpSendLog, AutoSeparationState, MercadoLivreFullPlan, Boleto, BoletoBeneficiario, LancamentoCategoria  # noqa
     Base.metadata.create_all(bind=engine)
 
+    # Seed inicial de ml_tokens a partir do .env (rodada uma vez só)
+    import os
+    from models import MLTokens
+    from datetime import datetime, timedelta
+    with SessionLocal() as session:
+        existing = session.query(MLTokens).first()
+        if not existing:
+            access = os.getenv("ML_ACCESS_TOKEN")
+            refresh = os.getenv("ML_REFRESH_TOKEN")
+            user_id = os.getenv("ML_USER_ID")
+            if access and refresh and user_id:
+                session.add(MLTokens(
+                    id=1,
+                    access_token=access,
+                    refresh_token=refresh,
+                    user_id=int(user_id),
+                    expires_at=datetime.utcnow() + timedelta(hours=5),
+                    updated_at=datetime.utcnow(),
+                ))
+                session.commit()
+                print("[financeiro-ml] ml_tokens seeded from env")
+
     # Lightweight column migrations (SQLite doesn't support DROP COLUMN but ADD is fine)
     from sqlalchemy import text, inspect as sa_inspect
     insp = sa_inspect(engine)
