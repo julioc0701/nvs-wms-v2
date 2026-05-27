@@ -4,6 +4,120 @@
 
 ---
 
+## 0. 🗺️ Mapa de Pastas — Caminhos Absolutos
+
+> **Tudo que pertence a este projeto está em UMA das 6 localizações abaixo.** Nada relacionado vive fora desta lista.
+
+**Raiz do repositório:** `/Users/julio/Documents/Antigra/warehouse-picker v2/`
+
+| # | Pasta / Arquivo | Caminho absoluto | O que tem |
+|---|---|---|---|
+| 1 | **Docs do projeto** | `/Users/julio/Documents/Antigra/warehouse-picker v2/Mercado Turbo/` | README (este arquivo), ESTUDO completo, snapshots do MT pra validação |
+| 2 | **Backend (código)** | `/Users/julio/Documents/Antigra/warehouse-picker v2/backend/financeiro_ml/` | Models SQL, cliente ML async, sync, aggregator, SKU service, router REST, 25 testes pytest |
+| 3 | **Frontend (código)** | `/Users/julio/Documents/Antigra/warehouse-picker v2/frontend/src/financeiro-ml/` | API client, páginas Resumo + Cadastro SKU, 5 componentes React |
+| 4 | **Spec formal** | `/Users/julio/Documents/Antigra/warehouse-picker v2/docs/superpowers/specs/2026-05-26-mercado-turbo-resumo-financeiro-design.md` | Design document de 14 seções (arquitetura, modelo de dados, endpoints, etc.) |
+| 5 | **Plano TDD original** | `/Users/julio/Documents/Antigra/warehouse-picker v2/docs/superpowers/plans/2026-05-26-mercado-turbo-resumo-financeiro.md` | 28 tasks que originalmente construíram o módulo (referência histórica) |
+| 6 | **Variáveis de ambiente** | `/Users/julio/Documents/Antigra/warehouse-picker v2/.env` | Credenciais OAuth ML (`.env.example` versionado tem o template) |
+
+### Detalhamento de cada pasta
+
+#### 📁 1. Pasta de docs do projeto
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/Mercado Turbo/`**
+```
+Mercado Turbo/
+├── README.md                         ← VOCÊ ESTÁ AQUI
+├── ESTUDO_RESUMO_FINANCEIRO.md       ← 16 seções: contexto + fórmulas + decisões + bugs + validações
+└── referencia/
+    └── MercadoTurbo_Financeiro_*.xlsx   ← exports reais do MT pra golden testing
+```
+
+#### ⚙️ 2. Backend — código Python
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/backend/financeiro_ml/`**
+```
+financeiro_ml/
+├── __init__.py
+├── models.py            ← 5 classes SQLAlchemy
+├── client.py            ← MLClient (httpx async + tenacity retry + OAuth refresh)
+├── sync.py              ← ensure_period_synced + _save_order
+├── aggregator.py        ← função pura aggregate() — cards/pizza/tabela
+├── sku_service.py       ← CRUD do sku_financeiro + import Excel
+├── router.py            ← endpoints REST /api/financeiro-ml/*
+└── tests/
+    ├── test_aggregator.py
+    ├── test_ml_client.py
+    ├── test_ml_sync.py
+    ├── test_sku_financeiro.py
+    └── test_routers.py
+```
+
+#### 🖥️ 3. Frontend — código React
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/frontend/src/financeiro-ml/`**
+```
+financeiro-ml/
+├── api.js                           ← wrappers fetch (financeiroMLApi.*)
+├── pages/
+│   ├── Resumo.jsx                   ← /financeiro-ml/resumo (página principal)
+│   └── Skus.jsx                     ← /financeiro-ml/skus (cadastro custo/imposto)
+└── components/
+    ├── KPICards.jsx                 ← 10 cards (5 coloridos + 5 brancos)
+    ├── PizzaChart.jsx               ← donut Recharts
+    ├── FiltrosBar.jsx               ← 9 filtros + Buscar
+    ├── TabelaVendas.jsx             ← TanStack Table com sort/paginação
+    └── Tooltip.jsx                  ← wrapper Radix
+```
+
+#### 📄 4. Spec formal de design
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/docs/superpowers/specs/2026-05-26-mercado-turbo-resumo-financeiro-design.md`**
+
+14 seções: objetivo, fora de escopo, arquitetura completa com diagrama ASCII, modelo de dados detalhado, cliente ML, serviços, API REST, frontend, testes, plano de rollout, riscos.
+
+#### 📋 5. Plano TDD original (referência histórica)
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/docs/superpowers/plans/2026-05-26-mercado-turbo-resumo-financeiro.md`**
+
+28 tasks que originalmente construíram o módulo. Mostra o pensamento original — útil pra entender DECISÕES. Os bugs descobertos depois (§5 deste README) refinaram o resultado final.
+
+#### 🔐 6. Configuração / Variáveis
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/.env`** (gitignored)
+**`/Users/julio/Documents/Antigra/warehouse-picker v2/.env.example`** (versionado)
+
+Contém credenciais OAuth ML (CLIENT_ID, CLIENT_SECRET, USER_ID, ACCESS_TOKEN, REFRESH_TOKEN) e flags de tuning (`ML_SYNC_MAX_DAYS_PARALLEL`, `ML_SYNC_MAX_ORDERS_PARALLEL`).
+
+### O que NÃO pertence ao projeto
+
+Pra evitar confusão, esses caminhos parecem mas **não fazem parte** do Mercado Turbo:
+
+- `/Users/julio/Documents/Antigra/warehouse-picker v2/Devoluçao/` → outro app Flask separado (devoluções ML)
+- `/Users/julio/Documents/Antigra/warehouse-picker v2/Planejamento Full ML/` → outro módulo
+- `/Users/julio/Documents/Antigra/warehouse-picker v2/Agent NVS/` → agente AI separado
+- `/Users/julio/Documents/Antigra/warehouse-picker v2/backend/routers/*.py` (exceto se referenciar `financeiro_ml`) → roteadores de outros módulos do NVS
+
+### Comando rápido pra listar TUDO do projeto
+
+```bash
+cd "/Users/julio/Documents/Antigra/warehouse-picker v2"
+
+ls -la "Mercado Turbo/"
+ls -la backend/financeiro_ml/
+ls -la frontend/src/financeiro-ml/
+ls -la docs/superpowers/specs/2026-05-26-mercado-turbo-resumo-financeiro-design.md
+ls -la docs/superpowers/plans/2026-05-26-mercado-turbo-resumo-financeiro.md
+ls -la .env .env.example
+```
+
+### Git branch atual
+
+```
+feature/financeiro-ml
+```
+
+Todo o código deste projeto está nessa branch (ainda não mergeada em `main`). Pra ver histórico:
+```bash
+cd "/Users/julio/Documents/Antigra/warehouse-picker v2"
+git log --oneline main..feature/financeiro-ml
+```
+
+---
+
 ## 1. O que é este projeto
 
 A Antigra (loja `NOVAESMOTOPEÇAS` no Mercado Livre) pagava assinatura mensal do SaaS **Mercado Turbo** principalmente pelo painel **"Resumo Financeiro"** — um dashboard que cruza vendas ML com cadastro local de custo/imposto e calcula margens.
