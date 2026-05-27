@@ -9,11 +9,12 @@ const buildSpark = (total, points = 12) => {
 }
 
 /**
- * tag:    label superior pequena
- * value:  big number
- * breakdown: array de { label, value } pra mostrar embaixo (max 2 itens)
+ * tag:      label superior pequena
+ * value:    big number
+ * subline:  jsx de subtítulo (breakdown, % ou texto livre)
+ * sparkValue: valor usado pra gerar sparkline (default = value)
  */
-export function MediumTile({ tag, value, breakdown, sparkValue }) {
+export function MediumTile({ tag, value, subline, sparkValue }) {
   const series = buildSpark(sparkValue ?? value)
   return (
     <div
@@ -28,18 +29,7 @@ export function MediumTile({ tag, value, breakdown, sparkValue }) {
         {formatBRL(value)}
       </div>
 
-      {breakdown && (
-        <div className="flex gap-3.5 mt-1.5 text-[11px]">
-          {breakdown.map((b, i) => (
-            <div key={i} className="text-[var(--fmlv2-muted)]">
-              {b.label}{' '}
-              <span className="fmlv2-mono font-semibold text-[var(--fmlv2-ink-2)]">
-                {formatBRL(b.value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {subline && <div className="mt-1.5">{subline}</div>}
 
       <div className="flex-1 mt-2 min-h-[30px]">
         <ResponsiveContainer width="100%" height="100%">

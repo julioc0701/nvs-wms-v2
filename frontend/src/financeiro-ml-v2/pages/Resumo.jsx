@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import '../tokens.css'
+import { formatBRL, formatPct } from '../utils'
 import { financeiroMLApi } from '../api'
 import { TopNav } from '../components/TopNav'
 import { BentoGrid } from '../components/BentoGrid'
@@ -117,16 +118,28 @@ export default function FinanceiroMLResumoV2() {
         )}
 
         <BentoGrid>
-          <HeroTile cards={cards} />
-
-          <MediumTile
+          <HeroTile
             tag="Faturamento ML"
             value={cards?.faturamento_ml}
-            breakdown={[
-              { label: 'Aprov.',  value: cards?.vendas_aprovadas },
-              { label: 'Cancel.', value: cards?.vendas_canceladas },
-            ]}
-            sparkValue={cards?.vendas_aprovadas}
+            subline={
+              <div className="flex items-baseline gap-3 text-[11px] opacity-85">
+                <span>Aprov. <span className="fmlv2-mono font-semibold">{formatBRL(cards?.vendas_aprovadas)}</span></span>
+                <span>Cancel. <span className="fmlv2-mono font-semibold">{formatBRL(cards?.vendas_canceladas)}</span></span>
+              </div>
+            }
+          />
+
+          <MediumTile
+            tag="Margem de Contribuição"
+            value={cards?.mc_total}
+            subline={
+              <div className="flex items-baseline gap-2">
+                <span className="fmlv2-mono text-[16px] font-semibold" style={{ color: 'var(--fmlv2-pos)' }}>
+                  {formatPct(cards?.mc_pct_global ?? 0)}
+                </span>
+                <span className="text-[10px] text-[var(--fmlv2-muted)]">margem média no período</span>
+              </div>
+            }
           />
 
           <DonutTile pizza={resultado?.pizza} />
