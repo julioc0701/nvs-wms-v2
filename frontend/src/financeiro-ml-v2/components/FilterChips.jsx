@@ -173,7 +173,7 @@ export function FilterChips({ filters, onChange }) {
             </label>
 
             <label className="block">
-              <span className="text-[var(--fmlv2-muted)]">Margem (MC%) — filtro local</span>
+              <span className="text-[var(--fmlv2-muted)]">Margem (MC%)</span>
               <select
                 value={filters.margem || 'todos'}
                 onChange={(e) => updateFilter('margem', e.target.value)}
