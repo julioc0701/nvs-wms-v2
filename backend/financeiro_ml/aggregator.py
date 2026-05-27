@@ -99,15 +99,20 @@ def aggregate(orders: list[dict], items: list[dict], sku_financeiro: dict[str, d
             fin = sku_financeiro.get(sku, {"custo_unit": Decimal("0"), "imposto_pct": Decimal("0")})
             custo_order += fin["custo_unit"] * Decimal(it["quantity"])
             unidades += it["quantity"]
-        # Imposto incide sobre o produto puro do pedido
-        # Se vários itens com aliquota diferente, simplifica: aliquota = média ponderada pelo valor
+        # Imposto incide sobre o produto LÍQUIDO (subtrai cupom seller).
+        # Validado contra MT: imp_mt / (faturamento - frete_comp) = imposto_pct exato.
+        # Pra cada item: subtrai parcela proporcional do cupom_seller do valor da linha.
+        cupom_order = order.get("cupom_seller", Decimal("0")) or Decimal("0")
         if order["produto_total"] > 0:
             imposto_sum_weighted = Decimal("0")
             for it in order_items:
                 sku = (it.get("seller_sku") or "").strip()
                 fin = sku_financeiro.get(sku, {"imposto_pct": Decimal("0")})
                 linha_valor = it["unit_price"] * Decimal(it["quantity"])
-                imposto_sum_weighted += linha_valor * fin["imposto_pct"] / Decimal("100")
+                # Cupom proporcional ao valor da linha
+                cupom_share = cupom_order * (linha_valor / order["produto_total"])
+                base_imposto = linha_valor - cupom_share
+                imposto_sum_weighted += base_imposto * fin["imposto_pct"] / Decimal("100")
             imposto_order = imposto_sum_weighted
 
         tarifa_liquida = order["tarifa_bruta"] - order["tarifa_refund"]
