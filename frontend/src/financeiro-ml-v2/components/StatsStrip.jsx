@@ -6,8 +6,8 @@
 export function StatsStrip({ items }) {
   return (
     <div
-      className="rounded-xl bg-white border border-[var(--fmlv2-border)] flex items-stretch divide-x divide-[var(--fmlv2-border)] overflow-hidden"
-      style={{ gridColumn: 'span 6', gridRow: 'span 1' }}
+      className="rounded-xl bg-white border border-[var(--fmlv2-border-strong)] flex items-stretch divide-x divide-[var(--fmlv2-border)] overflow-hidden"
+      style={{ gridColumn: 'span 6', gridRow: 'span 1', boxShadow: '0 2px 8px rgba(10,34,64,0.06)' }}
     >
       {items.map((it, i) => (
         <div key={i} className="flex-1 px-4 py-3 flex flex-col justify-center min-w-0">

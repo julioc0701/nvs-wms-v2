@@ -18,8 +18,8 @@ export function MediumTile({ tag, value, subline, sparkValue }) {
   const series = buildSpark(sparkValue ?? value)
   return (
     <div
-      className="rounded-xl p-4 bg-white border border-[var(--fmlv2-border)] flex flex-col"
-      style={{ gridColumn: 'span 3', gridRow: 'span 2' }}
+      className="rounded-xl p-4 bg-white border border-[var(--fmlv2-border-strong)] flex flex-col"
+      style={{ gridColumn: 'span 3', gridRow: 'span 2', boxShadow: '0 2px 8px rgba(10,34,64,0.06)' }}
     >
       <div className="text-[9px] uppercase tracking-[0.08em] text-[var(--fmlv2-muted)] font-semibold">
         {tag}

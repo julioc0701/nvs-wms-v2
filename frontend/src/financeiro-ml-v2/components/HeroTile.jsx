@@ -41,14 +41,14 @@ export function HeroTile({ tag, value, subline }) {
           <AreaChart data={series} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
             <defs>
               <linearGradient id="fmlv2HeroGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#6FE8A5" stopOpacity={0.5} />
-                <stop offset="100%" stopColor="#6FE8A5" stopOpacity={0} />
+                <stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
               </linearGradient>
             </defs>
             <Area
               type="monotone"
               dataKey="v"
-              stroke="#6FE8A5"
+              stroke="#FFFFFF"
               strokeWidth={2}
               fill="url(#fmlv2HeroGrad)"
             />
