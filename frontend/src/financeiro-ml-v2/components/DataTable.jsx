@@ -74,6 +74,7 @@ const COLUMNS = [
 ]
 
 const ALL_COL_KEYS = COLUMNS.map((c) => c.accessorKey)
+const EMPTY_DATA = Object.freeze([])  // referência estável pra useReactTable não disparar effects
 
 export function DataTable({ data, pagination, chips, onPageChange, onPageSizeChange, onExport }) {
   const [sorting, setSorting] = useState([])
@@ -88,8 +89,11 @@ export function DataTable({ data, pagination, chips, onPageChange, onPageSizeCha
     [visibleCols]
   )
 
+  // Estabiliza referência de data: array novo a cada render dispara loop com TanStack Table sob StrictMode
+  const tableData = data && data.length ? data : EMPTY_DATA
+
   const table = useReactTable({
-    data: data || [],
+    data: tableData,
     columns: filteredCols,
     state: { sorting },
     onSortingChange: setSorting,
