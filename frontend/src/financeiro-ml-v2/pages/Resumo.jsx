@@ -64,9 +64,12 @@ export default function FinanceiroMLResumoV2() {
   }, [])
 
   const onFiltersChange = useCallback((novos) => {
-    // Atualiza estado mas não dispara — usuário precisa clicar Buscar
     setFiltros(novos)
-  }, [])
+    // Auto-refetch se já existe resultado carregado (datas já validadas via Buscar)
+    if (resultado) {
+      mutation.mutate({ ...novos, page: 1 })
+    }
+  }, [resultado, mutation])
 
   // Paginação re-busca automático (não é nova busca, é navegação do dataset já carregado)
   const onPageChange = (page) => {
