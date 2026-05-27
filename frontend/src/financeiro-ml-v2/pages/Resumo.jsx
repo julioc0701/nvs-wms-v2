@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import '../tokens.css'
 import { financeiroMLApi } from '../api'
@@ -48,25 +48,23 @@ export default function FinanceiroMLResumoV2() {
     onSuccess: (data) => setResultado(data),
   })
 
-  // Dispara busca inicial ao montar (1x)
-  useEffect(() => {
-    mutation.mutate(INITIAL_FILTERS)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const onDateChange = ({ data_inicio, data_fim }) => {
-    const novos = { ...filtros, data_inicio, data_fim, page: 1 }
-    setFiltros(novos)
-    if (data_inicio && data_fim && data_inicio <= data_fim) {
-      mutation.mutate(novos)
+  // Busca sempre manual via botão Buscar — nunca dispara ao montar.
+  const onBuscar = () => {
+    if (filtros.data_inicio && filtros.data_fim && filtros.data_inicio <= filtros.data_fim) {
+      mutation.mutate({ ...filtros, page: 1 })
     }
   }
 
-  const onFiltersChange = (novos) => {
-    setFiltros(novos)
-    mutation.mutate(novos)
+  const onDateChange = ({ data_inicio, data_fim }) => {
+    setFiltros((f) => ({ ...f, data_inicio, data_fim, page: 1 }))
   }
 
+  const onFiltersChange = (novos) => {
+    // Atualiza estado mas não dispara — usuário precisa clicar Buscar
+    setFiltros(novos)
+  }
+
+  // Paginação re-busca automático (não é nova busca, é navegação do dataset já carregado)
   const onPageChange = (page) => {
     const novos = { ...filtros, page }
     setFiltros(novos)
@@ -100,6 +98,8 @@ export default function FinanceiroMLResumoV2() {
           dataInicio={filtros.data_inicio}
           dataFim={filtros.data_fim}
           onDateChange={onDateChange}
+          onBuscar={onBuscar}
+          loading={mutation.isPending}
         />
 
         {mutation.isError && (
