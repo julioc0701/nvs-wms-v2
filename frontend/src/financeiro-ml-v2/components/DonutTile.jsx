@@ -20,7 +20,7 @@ export function DonutTile({ pizza }) {
   return (
     <div
       className="rounded-xl p-3 bg-white border border-[var(--fmlv2-border)] flex gap-3 items-center"
-      style={{ gridColumn: 'span 2', gridRow: 'span 2' }}
+      style={{ gridColumn: 'span 3', gridRow: 'span 2' }}
     >
       <div className="relative shrink-0" style={{ width: 90, height: 90 }}>
         <ResponsiveContainer width="100%" height="100%">

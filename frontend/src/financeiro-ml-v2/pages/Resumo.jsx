@@ -7,8 +7,8 @@ import { TopNav } from '../components/TopNav'
 import { BentoGrid } from '../components/BentoGrid'
 import { HeroTile } from '../components/HeroTile'
 import { MediumTile } from '../components/MediumTile'
-import { SmallTile } from '../components/SmallTile'
 import { DonutTile } from '../components/DonutTile'
+import { StatsStrip } from '../components/StatsStrip'
 import { FilterChips } from '../components/FilterChips'
 import { DataTable } from '../components/DataTable'
 
@@ -144,23 +144,33 @@ export default function FinanceiroMLResumoV2() {
 
           <DonutTile pizza={resultado?.pizza} />
 
-          <SmallTile
-            tag="Custo + Imp."
-            value={cards?.custo_imposto_total}
-          />
-          <SmallTile
-            tag="Tarifa ML"
-            value={cards?.tarifa_venda}
-          />
-          <SmallTile
-            tag="Frete Total"
-            value={cards?.frete_total}
-          />
-          <SmallTile
-            tag="Qtd Vendas"
-            value={cards?.qtd_vendas_aprovadas}
-            sub={`${cards?.unidades_aprovadas ?? 0} unid. · ticket ${formatBRL(cards?.ticket_medio)}`}
-            int
+          <StatsStrip
+            items={[
+              {
+                label: 'Custo + Imposto',
+                value: formatBRL(cards?.custo_imposto_total),
+                sub: `Custo ${formatBRL(cards?.custo_total)} · Imp ${formatBRL(cards?.imposto_total)}`,
+                tone: 'neg',
+              },
+              {
+                label: 'Tarifa ML',
+                value: formatBRL(cards?.tarifa_venda),
+                sub: cards?.faturamento_ml
+                  ? `${formatPct((cards.tarifa_venda / cards.faturamento_ml) * 100)} do faturamento`
+                  : '—',
+                tone: 'neg',
+              },
+              {
+                label: 'Frete Total',
+                value: formatBRL(cards?.frete_total),
+                sub: `Comp ${formatBRL(cards?.frete_comprador_total)} · Vend ${formatBRL(cards?.frete_vendedor_total)}`,
+              },
+              {
+                label: 'Qtd Vendas',
+                value: new Intl.NumberFormat('pt-BR').format(cards?.qtd_vendas_aprovadas ?? 0),
+                sub: `${cards?.unidades_aprovadas ?? 0} unid. · ticket ${formatBRL(cards?.ticket_medio)}`,
+              },
+            ]}
           />
         </BentoGrid>
 
