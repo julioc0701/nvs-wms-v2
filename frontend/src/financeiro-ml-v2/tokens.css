@@ -1,0 +1,26 @@
+:root {
+  --fmlv2-canvas:        #E6EEF7;
+  --fmlv2-surface:       #F4F8FC;
+  --fmlv2-surface-2:     #FFFFFF;
+  --fmlv2-border:        #C5D5E6;
+  --fmlv2-border-strong: #94B0CC;
+  --fmlv2-ink:           #0A2240;
+  --fmlv2-ink-2:         #1B4F8A;
+  --fmlv2-ink-3:         #4A7BB0;
+  --fmlv2-text:          #0E2A47;
+  --fmlv2-muted:         #5A7796;
+  --fmlv2-pos:           #15803D;
+  --fmlv2-neg:           #B91C1C;
+  --fmlv2-accent-light:  #6FE8A5;
+}
+
+.fmlv2-root {
+  font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
+  background: var(--fmlv2-canvas);
+  color: var(--fmlv2-text);
+}
+
+.fmlv2-mono {
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
