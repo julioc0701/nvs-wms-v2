@@ -159,7 +159,7 @@ export default function FinanceiroMLResumoV2() {
           <SmallTile
             tag="Qtd Vendas"
             value={cards?.qtd_vendas_aprovadas}
-            sub={`${cards?.unidades_aprovadas ?? 0} unid.`}
+            sub={`${cards?.unidades_aprovadas ?? 0} unid. · ticket ${formatBRL(cards?.ticket_medio)}`}
             int
           />
         </BentoGrid>
