@@ -119,11 +119,11 @@ export default function FinanceiroMLResumoV2() {
 
         <BentoGrid>
           <HeroTile
-            tag="Faturamento ML"
-            value={cards?.faturamento_ml}
+            tag="Vendas Aprovadas"
+            value={cards?.vendas_aprovadas}
             subline={
               <div className="flex items-baseline gap-3 text-[11px] opacity-85">
-                <span>Aprov. <span className="fmlv2-mono font-semibold">{formatBRL(cards?.vendas_aprovadas)}</span></span>
+                <span>Faturamento ML <span className="fmlv2-mono font-semibold">{formatBRL(cards?.faturamento_ml)}</span></span>
                 <span>Cancel. <span className="fmlv2-mono font-semibold">{formatBRL(cards?.vendas_canceladas)}</span></span>
               </div>
             }
