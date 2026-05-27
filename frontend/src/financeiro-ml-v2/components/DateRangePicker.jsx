@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { Calendar } from 'lucide-react'
-import 'react-day-picker/style.css'
+import 'react-day-picker/dist/style.css'
 
 const parseDate = (s) => (s ? new Date(s + 'T00:00:00') : undefined)
 const toISO     = (d) => (d ? d.toISOString().slice(0, 10) : '')
@@ -12,8 +12,6 @@ function SingleDatePicker({ label, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
-  // Memoiza a Date — sem isso, DayPicker recebe nova instância a cada render
-  // e dispara loop interno (effect deps comparam por identidade).
   const selected = useMemo(() => parseDate(value), [value])
 
   const handleSelect = useCallback((d) => {
@@ -41,7 +39,7 @@ function SingleDatePicker({ label, value, onChange }) {
         {fmtBR(value)}
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-[var(--fmlv2-border)] rounded-lg shadow-xl p-2 fmlv2-daypicker">
+        <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-[var(--fmlv2-border)] rounded-lg shadow-xl p-1 fmlv2-daypicker">
           <DayPicker
             mode="single"
             selected={selected}
@@ -56,7 +54,6 @@ function SingleDatePicker({ label, value, onChange }) {
 }
 
 export function DateRangePicker({ dataInicio, dataFim, onChange }) {
-  // Memoiza callbacks pra estabilizar identidade
   const onDeChange = useCallback(
     (v) => onChange({ data_inicio: v, data_fim: dataFim }),
     [onChange, dataFim]

@@ -25,20 +25,25 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* react-day-picker — paleta azul/marinho Antigra */
-.fmlv2-daypicker .rdp-root {
-  --rdp-accent-color:       var(--fmlv2-ink-2);
-  --rdp-accent-background-color: var(--fmlv2-ink-2);
-  --rdp-background-color:   var(--fmlv2-surface);
-  --rdp-day-font:           "Inter", sans-serif;
-  --rdp-day_button-height:  32px;
-  --rdp-day_button-width:   32px;
-  --rdp-day_button-border-radius: 6px;
-  --rdp-selected-border:    2px solid var(--fmlv2-ink-2);
+/* react-day-picker v8 — paleta azul/marinho Antigra */
+.fmlv2-daypicker .rdp {
+  --rdp-cell-size:           34px;
+  --rdp-accent-color:        var(--fmlv2-ink-2);
+  --rdp-background-color:    var(--fmlv2-surface);
+  --rdp-accent-color-dark:   var(--fmlv2-ink);
+  --rdp-background-color-dark: var(--fmlv2-surface);
+  --rdp-outline:             2px solid var(--fmlv2-ink-2);
+  --rdp-outline-selected:    2px solid var(--fmlv2-ink-2);
+  --rdp-selected-color:      #FFFFFF;
+  font-family: "Inter", sans-serif;
   font-size: 12px;
   color: var(--fmlv2-text);
+  margin: 0;
 }
-.fmlv2-daypicker .rdp-caption_label { color: var(--fmlv2-ink); font-weight: 600; }
-.fmlv2-daypicker .rdp-weekday      { color: var(--fmlv2-muted); font-weight: 600; }
-.fmlv2-daypicker .rdp-today        { color: var(--fmlv2-ink-2); font-weight: 700; }
-.fmlv2-daypicker .rdp-day_button:hover:not([disabled]) { background: var(--fmlv2-surface); }
+.fmlv2-daypicker .rdp-caption_label { color: var(--fmlv2-ink); font-weight: 600; font-size: 13px; }
+.fmlv2-daypicker .rdp-head_cell     { color: var(--fmlv2-muted); font-weight: 600; font-size: 10px; }
+.fmlv2-daypicker .rdp-day_today     { color: var(--fmlv2-ink-2); font-weight: 700; }
+.fmlv2-daypicker .rdp-day_outside   { color: var(--fmlv2-muted); opacity: 0.5; }
+.fmlv2-daypicker .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background: var(--fmlv2-surface);
+}
