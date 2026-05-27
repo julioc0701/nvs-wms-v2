@@ -245,6 +245,20 @@ function FiltroPopover({ aberto, setAberto, ativos, categorias, filtros, onChang
 
           <div className="space-y-3">
             <div>
+              <label className="text-xs font-semibold text-slate-700 mb-1 block">Status</label>
+              <select
+                value={filtros.status}
+                onChange={(e) => onChange({ status: e.target.value })}
+                className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+              >
+                <option value="">Todos status</option>
+                <option value="registrado">Registrados</option>
+                <option value="atrasado">Atrasados</option>
+                <option value="pago">Pagos</option>
+              </select>
+            </div>
+
+            <div>
               <label className="text-xs font-semibold text-slate-700 mb-1 block">Categoria</label>
               <select
                 value={filtros.categoria_id}
@@ -415,13 +429,14 @@ export default function FinanceiroPainel() {
   // Conta quantos filtros do popover estão ativos (pra mostrar badge no botão)
   const filtrosAtivos = useMemo(() => {
     let n = 0
+    if (filtros.status) n++
     if (filtros.categoria_id) n++
     if (filtros.empresa) n++
     if (filtros.nota_fiscal) n++
     if (filtros.valor_min !== '' && filtros.valor_min != null) n++
     if (filtros.valor_max !== '' && filtros.valor_max != null) n++
     return n
-  }, [filtros.categoria_id, filtros.empresa, filtros.nota_fiscal, filtros.valor_min, filtros.valor_max])
+  }, [filtros.status, filtros.categoria_id, filtros.empresa, filtros.nota_fiscal, filtros.valor_min, filtros.valor_max])
 
   useEffect(() => {
     api.listarCategorias().then(setCategorias).catch(() => {})
@@ -610,24 +625,13 @@ export default function FinanceiroPainel() {
         />
       </div>
 
-      {/* Toolbar: Data + Status + botão "+ Filtro" */}
+      {/* Toolbar: Data + botão "Filtro" (todos os outros filtros dentro) */}
       <div className="bg-white rounded-lg shadow p-3 md:p-4 mb-4 flex flex-wrap items-center gap-2 md:gap-3 text-sm">
         <FiltroData
           vencimento_de={filtros.vencimento_de}
           vencimento_ate={filtros.vencimento_ate}
           onChange={(v) => setFiltros({ ...filtros, ...v })}
         />
-
-        <select
-          value={filtros.status}
-          onChange={(e) => setFiltros({ ...filtros, status: e.target.value })}
-          className="border rounded-full px-3 h-10 text-xs font-medium bg-white"
-        >
-          <option value="">Todos status</option>
-          <option value="registrado">Registrados</option>
-          <option value="atrasado">Atrasados</option>
-          <option value="pago">Pagos</option>
-        </select>
 
         <FiltroPopover
           aberto={filtroPopoverAberto}
@@ -638,6 +642,7 @@ export default function FinanceiroPainel() {
           onChange={(patch) => setFiltros({ ...filtros, ...patch })}
           onLimpar={() => setFiltros({
             ...filtros,
+            status: '',
             categoria_id: '',
             empresa: '',
             nota_fiscal: '',
