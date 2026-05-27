@@ -89,16 +89,23 @@ export function DataTable({ data, pagination, chips, onPageChange, onPageSizeCha
     [visibleCols]
   )
 
-  // Estabiliza referência de data: array novo a cada render dispara loop com TanStack Table sob StrictMode
-  const tableData = data && data.length ? data : EMPTY_DATA
+  // Estabiliza referência de data: array novo a cada render dispara loop com TanStack Table sob StrictMode (issue #4566)
+  const tableData = useMemo(
+    () => (Array.isArray(data) && data.length ? data : EMPTY_DATA),
+    [data]
+  )
+
+  // TanStack FAQ: row models devem ser memoizados — chamar a cada render gera ruído sob StrictMode
+  const coreRowModel   = useMemo(() => getCoreRowModel(),   [])
+  const sortedRowModel = useMemo(() => getSortedRowModel(), [])
 
   const table = useReactTable({
     data: tableData,
     columns: filteredCols,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    getCoreRowModel:   coreRowModel,
+    getSortedRowModel: sortedRowModel,
   })
 
   return (

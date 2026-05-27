@@ -23,8 +23,10 @@ function SingleDatePicker({ label, value, onChange }) {
     const handler = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    // pointerdown em capture phase: dispara ANTES dos handlers React (mousedown)
+    // evita race condition que causava freeze em conjunto com TanStack Table sob StrictMode
+    document.addEventListener('pointerdown', handler, true)
+    return () => document.removeEventListener('pointerdown', handler, true)
   }, [])
 
   return (

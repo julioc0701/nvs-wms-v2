@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import '../tokens.css'
 import { financeiroMLApi } from '../api'
@@ -55,14 +55,16 @@ export default function FinanceiroMLResumoV2() {
     }
   }
 
-  const onDateChange = ({ data_inicio, data_fim }) => {
+  // Callbacks memoizados pra estabilizar identidade — caso contrário cada render
+  // do Resumo invalida toda cadeia de useCallbacks dos componentes filhos
+  const onDateChange = useCallback(({ data_inicio, data_fim }) => {
     setFiltros((f) => ({ ...f, data_inicio, data_fim, page: 1 }))
-  }
+  }, [])
 
-  const onFiltersChange = (novos) => {
+  const onFiltersChange = useCallback((novos) => {
     // Atualiza estado mas não dispara — usuário precisa clicar Buscar
     setFiltros(novos)
-  }
+  }, [])
 
   // Paginação re-busca automático (não é nova busca, é navegação do dataset já carregado)
   const onPageChange = (page) => {
