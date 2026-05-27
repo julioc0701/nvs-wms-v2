@@ -131,11 +131,13 @@ export default function FinanceiroMLResumoV2() {
 
           <MediumTile
             tag="Margem de Contribuição"
-            value={cards?.mc_total}
+            display={formatPct(cards?.mc_pct_global ?? 0)}
+            displayTone="pos"
+            sparkValue={cards?.mc_total}
             subline={
               <div className="flex items-baseline gap-2">
-                <span className="fmlv2-mono text-[16px] font-semibold" style={{ color: 'var(--fmlv2-pos)' }}>
-                  {formatPct(cards?.mc_pct_global ?? 0)}
+                <span className="fmlv2-mono text-[15px] font-semibold text-[var(--fmlv2-ink)]">
+                  {formatBRL(cards?.mc_total)}
                 </span>
                 <span className="text-[10px] text-[var(--fmlv2-muted)]">margem média no período</span>
               </div>

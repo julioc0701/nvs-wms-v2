@@ -1,5 +1,4 @@
 import { Line, LineChart, ResponsiveContainer } from 'recharts'
-import { formatBRL } from '../utils'
 
 const buildSpark = (total, points = 12) => {
   if (!total) return Array(points).fill({ v: 0 })
@@ -9,13 +8,14 @@ const buildSpark = (total, points = 12) => {
 }
 
 /**
- * tag:      label superior pequena
- * value:    big number
- * subline:  jsx de subtítulo (breakdown, % ou texto livre)
- * sparkValue: valor usado pra gerar sparkline (default = value)
+ * tag:          label superior pequena
+ * display:      conteúdo do big number (string ou JSX já formatado)
+ * displayTone:  'ink' (default) | 'pos' | 'neg' — cor do display
+ * subline:      jsx de subtítulo
+ * sparkValue:   valor numérico usado pra gerar sparkline (opcional)
  */
-export function MediumTile({ tag, value, subline, sparkValue }) {
-  const series = buildSpark(sparkValue ?? value)
+export function MediumTile({ tag, display, displayTone = 'ink', subline, sparkValue }) {
+  const series = buildSpark(sparkValue ?? 0)
   return (
     <div
       className="rounded-xl p-4 bg-white border border-[var(--fmlv2-border-strong)] flex flex-col"
@@ -25,11 +25,14 @@ export function MediumTile({ tag, value, subline, sparkValue }) {
         {tag}
       </div>
 
-      <div className="fmlv2-mono text-[24px] font-bold text-[var(--fmlv2-ink)] mt-1 tracking-tight">
-        {formatBRL(value)}
+      <div
+        className="fmlv2-mono text-[28px] font-bold mt-1 tracking-tight leading-none"
+        style={{ color: `var(--fmlv2-${displayTone})` }}
+      >
+        {display}
       </div>
 
-      {subline && <div className="mt-1.5">{subline}</div>}
+      {subline && <div className="mt-2">{subline}</div>}
 
       <div className="flex-1 mt-2 min-h-[30px]">
         <ResponsiveContainer width="100%" height="100%">
