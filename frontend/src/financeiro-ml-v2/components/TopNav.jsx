@@ -1,6 +1,6 @@
 import { DateRangePicker } from './DateRangePicker'
 
-export function TopNav({ totalVendas, activePreset, onPresetChange }) {
+export function TopNav({ totalVendas, dataInicio, dataFim, onDateChange }) {
   return (
     <div className="flex items-center gap-4 px-4 py-2.5 bg-white border border-[var(--fmlv2-border)] rounded-xl mb-3">
       <div className="flex items-baseline gap-2">
@@ -16,7 +16,7 @@ export function TopNav({ totalVendas, activePreset, onPresetChange }) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <DateRangePicker active={activePreset} onChange={onPresetChange} />
+        <DateRangePicker dataInicio={dataInicio} dataFim={dataFim} onChange={onDateChange} />
       </div>
     </div>
   )

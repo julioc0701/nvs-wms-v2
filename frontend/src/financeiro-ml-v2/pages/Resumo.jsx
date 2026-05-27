@@ -34,7 +34,6 @@ const INITIAL_FILTERS = {
 
 export default function FinanceiroMLResumoV2() {
   const [filtros, setFiltros] = useState(INITIAL_FILTERS)
-  const [activePreset, setActivePreset] = useState('7d')
   const [resultado, setResultado] = useState(null)
 
   const mutation = useMutation({
@@ -55,11 +54,12 @@ export default function FinanceiroMLResumoV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const onPresetChange = ({ preset, data_inicio, data_fim }) => {
-    setActivePreset(preset)
+  const onDateChange = ({ data_inicio, data_fim }) => {
     const novos = { ...filtros, data_inicio, data_fim, page: 1 }
     setFiltros(novos)
-    mutation.mutate(novos)
+    if (data_inicio && data_fim && data_inicio <= data_fim) {
+      mutation.mutate(novos)
+    }
   }
 
   const onFiltersChange = (novos) => {
@@ -97,8 +97,9 @@ export default function FinanceiroMLResumoV2() {
       <div className="max-w-[1400px] mx-auto">
         <TopNav
           totalVendas={totalVendas}
-          activePreset={activePreset}
-          onPresetChange={onPresetChange}
+          dataInicio={filtros.data_inicio}
+          dataFim={filtros.data_fim}
+          onDateChange={onDateChange}
         />
 
         {mutation.isError && (
