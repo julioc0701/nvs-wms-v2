@@ -38,9 +38,10 @@ function McCell({ value }) {
 
 function McPctCell({ value }) {
   const v = Number(value) || 0
-  let color = 'var(--fmlv2-muted)'
-  if (v >= 30) color = 'var(--fmlv2-pos)'
-  else if (v < 15) color = 'var(--fmlv2-neg)'
+  // Faixas: >=13 verde · 10-12,99 amarelo · <10 vermelho
+  let color = 'var(--fmlv2-neg)'
+  if (v >= 13) color = 'var(--fmlv2-pos)'
+  else if (v >= 10) color = '#D97706'
   return <span style={{ color, fontWeight: 600 }}>{fmt(v)}%</span>
 }
 
