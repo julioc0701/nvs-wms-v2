@@ -133,6 +133,12 @@ export default function FinanceiroDrawer({ boleto, onClose, onChange }) {
             <Campo label="Descrição">{boleto.descricao}</Campo>
           )}
 
+          {boleto.nota_fiscal && (
+            <Campo label="Nota Fiscal">
+              <span className="font-mono text-sm">{boleto.nota_fiscal}</span>
+            </Campo>
+          )}
+
           <Campo label="Observação">
             {editando ? (
               <textarea value={obs} onChange={(e) => setObs(e.target.value)} className="w-full border rounded p-2" rows={3} />

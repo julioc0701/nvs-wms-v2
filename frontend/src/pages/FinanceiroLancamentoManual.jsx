@@ -28,6 +28,7 @@ export default function FinanceiroLancamentoManual() {
   const [valor, setValor] = useState('')
   const [vencimento, setVencimento] = useState('')
   const [chavePix, setChavePix] = useState('')
+  const [notaFiscal, setNotaFiscal] = useState('')
   const [descricao, setDescricao] = useState('')
   const [observacao, setObservacao] = useState('')
   const [anexoB64, setAnexoB64] = useState(null)
@@ -104,6 +105,7 @@ export default function FinanceiroLancamentoManual() {
         valor: valorNum,
         vencimento,
         chave_pix: chavePix.trim() || null,
+        nota_fiscal: notaFiscal.trim() || null,
         descricao: descricao.trim() || null,
         observacao: observacao.trim() || null,
         foto_base64: anexoB64,
@@ -246,6 +248,19 @@ export default function FinanceiroLancamentoManual() {
             />
           </div>
         )}
+
+        {/* Nota Fiscal */}
+        <div>
+          <label className="text-sm font-semibold text-slate-700 mb-1 block">
+            Nota Fiscal
+          </label>
+          <input
+            value={notaFiscal}
+            onChange={(e) => setNotaFiscal(e.target.value)}
+            className="w-full p-3 border-2 border-slate-300 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 outline-none rounded-lg text-base bg-white transition-colors"
+            placeholder="Número da NF (opcional)"
+          />
+        </div>
 
         {/* Descrição */}
         <div>

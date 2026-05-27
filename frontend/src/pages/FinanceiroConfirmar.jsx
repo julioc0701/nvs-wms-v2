@@ -9,6 +9,7 @@ export default function FinanceiroConfirmar() {
   const [codigo, setCodigo] = useState('')
   const [empresa, setEmpresa] = useState('')
   const [observacao, setObservacao] = useState('')
+  const [notaFiscal, setNotaFiscal] = useState('')
   const [fotoB64, setFotoB64] = useState(null)
   const [sugestoes, setSugestoes] = useState([])
   const [duplicata, setDuplicata] = useState(null)
@@ -84,6 +85,7 @@ export default function FinanceiroConfirmar() {
         operator_id: op.id,
         beneficiario_texto: empresa.trim(),
         observacao: observacao || null,
+        nota_fiscal: notaFiscal.trim() || null,
         foto_base64: fotoB64,
       })
       sessionStorage.removeItem('boletoScanResult')
@@ -179,6 +181,16 @@ export default function FinanceiroConfirmar() {
               ))}
             </ul>
           )}
+        </div>
+
+        <div>
+          <label className="text-sm text-slate-600">Nota Fiscal (opcional)</label>
+          <input
+            value={notaFiscal}
+            onChange={(e) => setNotaFiscal(e.target.value)}
+            className="w-full mt-1 p-2 border rounded"
+            placeholder="Número da NF"
+          />
         </div>
 
         <div>

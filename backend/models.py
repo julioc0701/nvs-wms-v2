@@ -511,4 +511,5 @@ class Boleto(Base):
     categoria_id: Mapped[int | None] = mapped_column(ForeignKey("lancamento_categorias.id"))
     descricao: Mapped[str | None] = mapped_column(Text)
     chave_pix: Mapped[str | None] = mapped_column(String(200))
+    nota_fiscal: Mapped[str | None] = mapped_column(String(50))
 

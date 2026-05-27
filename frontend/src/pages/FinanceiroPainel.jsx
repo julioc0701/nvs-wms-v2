@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, CheckCircle2, Plus, Calendar, ChevronDown, AlertTriangle, Wallet, ArrowRight } from 'lucide-react'
+import { Eye, CheckCircle2, Plus, Calendar, ChevronDown, AlertTriangle, Wallet, ArrowRight, SlidersHorizontal, X } from 'lucide-react'
 import { api } from '../api/client'
 import { nomeBanco, urgenciaVencimento } from '../utils/boletoBancos'
 import { cn } from '../lib/utils'
@@ -196,6 +196,136 @@ function FiltroData({ vencimento_de, vencimento_ate, onChange }) {
   )
 }
 
+// ── Popover de filtros adicionais ────────────────────────────────────────────
+
+function FiltroPopover({ aberto, setAberto, ativos, categorias, filtros, onChange, onLimpar }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!aberto) return
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setAberto(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [aberto, setAberto])
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setAberto(!aberto)}
+        className={cn(
+          'h-10 px-4 border text-xs font-medium flex items-center gap-2 rounded-full transition-all',
+          aberto
+            ? 'bg-slate-900 border-slate-900 text-white shadow-lg'
+            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+        )}
+      >
+        <SlidersHorizontal size={14} />
+        Filtro
+        {ativos > 0 && (
+          <span className={cn(
+            'inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold',
+            aberto ? 'bg-white text-slate-900' : 'bg-cyan-600 text-white'
+          )}>
+            {ativos}
+          </span>
+        )}
+        <ChevronDown size={14} className={cn('transition-transform', aberto && 'rotate-180')} />
+      </button>
+
+      {aberto && (
+        <div className="absolute top-12 right-0 md:right-auto md:left-0 w-[min(95vw,360px)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-30 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-bold text-slate-900">Filtros adicionais</h3>
+            <button onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-600">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 mb-1 block">Categoria</label>
+              <select
+                value={filtros.categoria_id}
+                onChange={(e) => onChange({ categoria_id: e.target.value })}
+                className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+              >
+                <option value="">Todas categorias</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 mb-1 block">Empresa</label>
+              <input
+                type="text"
+                value={filtros.empresa}
+                onChange={(e) => onChange({ empresa: e.target.value })}
+                placeholder="Buscar… (contém)"
+                className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-slate-700 mb-1 block">Nota Fiscal</label>
+              <input
+                type="text"
+                value={filtros.nota_fiscal}
+                onChange={(e) => onChange({ nota_fiscal: e.target.value })}
+                placeholder="Ex: 12345"
+                className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 mb-1 block">Valor mín</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={filtros.valor_min}
+                  onChange={(e) => onChange({ valor_min: e.target.value })}
+                  placeholder="R$"
+                  className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 mb-1 block">Valor máx</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={filtros.valor_max}
+                  onChange={(e) => onChange({ valor_max: e.target.value })}
+                  placeholder="R$"
+                  className="w-full p-2 border-2 border-slate-300 focus:border-cyan-500 outline-none rounded-lg bg-white text-sm"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 mt-5 pt-4 border-t border-slate-100">
+            <button
+              onClick={onLimpar}
+              className="flex-1 py-2 border-2 border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50"
+            >
+              Limpar filtros
+            </button>
+            <button
+              onClick={() => setAberto(false)}
+              className="flex-1 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold shadow"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Cards de stat no padrão Supervisor ───────────────────────────────────────
 
 function StatTileDark({ label, qtd, valor, sublabel, onClick, ativo }) {
@@ -276,8 +406,22 @@ export default function FinanceiroPainel() {
     valor_min: '',
     valor_max: '',
     categoria_id: '',
+    empresa: '',
+    nota_fiscal: '',
   })
   const [categorias, setCategorias] = useState([])
+  const [filtroPopoverAberto, setFiltroPopoverAberto] = useState(false)
+
+  // Conta quantos filtros do popover estão ativos (pra mostrar badge no botão)
+  const filtrosAtivos = useMemo(() => {
+    let n = 0
+    if (filtros.categoria_id) n++
+    if (filtros.empresa) n++
+    if (filtros.nota_fiscal) n++
+    if (filtros.valor_min !== '' && filtros.valor_min != null) n++
+    if (filtros.valor_max !== '' && filtros.valor_max != null) n++
+    return n
+  }, [filtros.categoria_id, filtros.empresa, filtros.nota_fiscal, filtros.valor_min, filtros.valor_max])
 
   useEffect(() => {
     api.listarCategorias().then(setCategorias).catch(() => {})
@@ -466,7 +610,7 @@ export default function FinanceiroPainel() {
         />
       </div>
 
-      {/* Filtros */}
+      {/* Toolbar: Data + Status + botão "+ Filtro" */}
       <div className="bg-white rounded-lg shadow p-3 md:p-4 mb-4 flex flex-wrap items-center gap-2 md:gap-3 text-sm">
         <FiltroData
           vencimento_de={filtros.vencimento_de}
@@ -485,32 +629,21 @@ export default function FinanceiroPainel() {
           <option value="pago">Pagos</option>
         </select>
 
-        <select
-          value={filtros.categoria_id}
-          onChange={(e) => setFiltros({ ...filtros, categoria_id: e.target.value })}
-          className="border rounded-full px-3 h-10 text-xs font-medium bg-white"
-        >
-          <option value="">Todas categorias</option>
-          {categorias.map((c) => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
-        </select>
-
-        <input
-          type="number"
-          step="0.01"
-          value={filtros.valor_min}
-          onChange={(e) => setFiltros({ ...filtros, valor_min: e.target.value })}
-          className="border rounded-full px-3 h-10 text-xs w-24 md:w-28"
-          placeholder="R$ mín"
-        />
-        <input
-          type="number"
-          step="0.01"
-          value={filtros.valor_max}
-          onChange={(e) => setFiltros({ ...filtros, valor_max: e.target.value })}
-          className="border rounded-full px-3 h-10 text-xs w-24 md:w-28"
-          placeholder="R$ máx"
+        <FiltroPopover
+          aberto={filtroPopoverAberto}
+          setAberto={setFiltroPopoverAberto}
+          ativos={filtrosAtivos}
+          categorias={categorias}
+          filtros={filtros}
+          onChange={(patch) => setFiltros({ ...filtros, ...patch })}
+          onLimpar={() => setFiltros({
+            ...filtros,
+            categoria_id: '',
+            empresa: '',
+            nota_fiscal: '',
+            valor_min: '',
+            valor_max: '',
+          })}
         />
 
         <div className="ml-auto text-xs text-slate-500">

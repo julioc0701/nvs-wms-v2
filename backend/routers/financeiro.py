@@ -36,6 +36,7 @@ class CriarLancamentoManualRequest(BaseModel):
     descricao: str | None = None
     observacao: str | None = None
     foto_base64: str | None = None
+    nota_fiscal: str | None = None
 
 
 class CategoriaCreate(BaseModel):
@@ -59,12 +60,14 @@ class CriarBoletoRequest(BaseModel):
     beneficiario_texto: str | None = None
     observacao: str | None = None
     foto_base64: str | None = None
+    nota_fiscal: str | None = None
 
 
 class EditarBoletoRequest(BaseModel):
     beneficiario_id: int | None = None
     beneficiario_texto: str | None = None
     observacao: str | None = None
+    nota_fiscal: str | None = None
 
 
 class PagarRequest(BaseModel):
@@ -111,6 +114,7 @@ def _boleto_to_dict(b: Boleto, db: DBSession) -> dict:
         "categoria_icon": categoria.icon if categoria else None,
         "descricao": b.descricao,
         "chave_pix": b.chave_pix,
+        "nota_fiscal": b.nota_fiscal,
     }
 
 
@@ -270,6 +274,7 @@ def criar_boleto(body: CriarBoletoRequest, db: DBSession = Depends(get_db)):
         capturado_por=body.operator_id,
         capturado_em=datetime.utcnow(),
         categoria_id=cat_boleto.id if cat_boleto else None,
+        nota_fiscal=body.nota_fiscal,
     )
     db.add(boleto)
     try:
@@ -301,8 +306,11 @@ def listar_boletos(
     valor_min: float | None = None,
     valor_max: float | None = None,
     categoria_id: int | None = None,
+    empresa: str | None = None,
+    nota_fiscal: str | None = None,
     db: DBSession = Depends(get_db),
 ):
+    from sqlalchemy import or_
     q = db.query(Boleto)
     if status == "atrasado":
         # Atrasado = registrado + vencimento já passou
@@ -321,6 +329,19 @@ def listar_boletos(
         q = q.filter(Boleto.valor >= valor_min)
     if valor_max is not None:
         q = q.filter(Boleto.valor <= valor_max)
+    if empresa:
+        # Busca por 'contém' tanto no texto livre quanto no cadastro de beneficiários
+        like = f"%{empresa.strip()}%"
+        q = q.outerjoin(
+            BoletoBeneficiario, Boleto.beneficiario_id == BoletoBeneficiario.id
+        ).filter(
+            or_(
+                Boleto.beneficiario_texto.ilike(like),
+                BoletoBeneficiario.razao_social.ilike(like),
+            )
+        )
+    if nota_fiscal:
+        q = q.filter(Boleto.nota_fiscal.ilike(f"%{nota_fiscal.strip()}%"))
 
     q = q.order_by(Boleto.vencimento.asc(), Boleto.id.desc())
     boletos = q.all()
@@ -406,6 +427,8 @@ def editar_boleto(boleto_id: int, body: EditarBoletoRequest, db: DBSession = Dep
         b.beneficiario_texto = body.beneficiario_texto
     if body.observacao is not None:
         b.observacao = body.observacao
+    if body.nota_fiscal is not None:
+        b.nota_fiscal = body.nota_fiscal
     db.commit()
     db.refresh(b)
     return _boleto_to_dict(b, db)
@@ -480,6 +503,7 @@ def criar_lancamento_manual(body: CriarLancamentoManualRequest, db: DBSession = 
         observacao=body.observacao,
         descricao=body.descricao,
         chave_pix=body.chave_pix,
+        nota_fiscal=body.nota_fiscal,
         categoria_id=body.categoria_id,
         status="registrado",
         capturado_por=body.operator_id,

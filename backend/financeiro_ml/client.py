@@ -5,6 +5,7 @@ Inspirado no padrão do Devoluçao/app.py mas reescrito em httpx async.
 from __future__ import annotations
 
 import os
+import logging
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -12,6 +13,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 ML_BASE = "https://api.mercadolibre.com"
+log = logging.getLogger("financeiro_ml.client")
 
 
 class MLClient:
@@ -108,11 +110,18 @@ class MLClient:
         """
         try:
             return await self._get(f"/shipments/{shipment_id}/costs")
-        except Exception:
+        except Exception as exc:
+            log.warning(
+                "get_shipment_costs failed shipment_id=%s type=%s msg=%s",
+                shipment_id, type(exc).__name__, str(exc)[:200],
+            )
             return {}
 
     async def get_item(self, item_id: str) -> dict:
         return await self._get(f"/items/{item_id}")
+
+    async def get_variation(self, item_id: str, variation_id: int | str) -> dict:
+        return await self._get(f"/items/{item_id}/variations/{variation_id}")
 
     async def get_order_discounts(self, order_id: int) -> dict:
         """GET /orders/{id}/discounts — cupons e ofertas aplicadas.
@@ -125,7 +134,11 @@ class MLClient:
         """
         try:
             return await self._get(f"/orders/{order_id}/discounts")
-        except Exception:
+        except Exception as exc:
+            log.warning(
+                "get_order_discounts failed order_id=%s type=%s msg=%s",
+                order_id, type(exc).__name__, str(exc)[:200],
+            )
             return {"details": []}
 
 

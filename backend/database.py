@@ -657,7 +657,7 @@ def init_db():
         ))
         conn.commit()
 
-        # ── Migrações pra extensão de lançamentos (categoria, descricao, chave_pix) ──
+        # ── Migrações pra extensão de lançamentos (categoria, descricao, chave_pix, nota_fiscal) ──
         boleto_cols_info = insp.get_columns("boletos")
         boleto_cols = [c["name"] for c in boleto_cols_info]
         if "categoria_id" not in boleto_cols:
@@ -666,6 +666,8 @@ def init_db():
             conn.execute(text("ALTER TABLE boletos ADD COLUMN descricao TEXT"))
         if "chave_pix" not in boleto_cols:
             conn.execute(text("ALTER TABLE boletos ADD COLUMN chave_pix VARCHAR(200)"))
+        if "nota_fiscal" not in boleto_cols:
+            conn.execute(text("ALTER TABLE boletos ADD COLUMN nota_fiscal VARCHAR(50)"))
         conn.commit()
 
         # SQLite não suporta ALTER COLUMN para tornar NOT NULL em nullable.

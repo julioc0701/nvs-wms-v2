@@ -8,6 +8,9 @@ from financeiro_ml.models import SkuFinanceiro
 from financeiro_ml.sku_service import upsert_sku, list_skus, delete_sku, import_excel
 
 
+TEST_SKUS = ["SKU_NEW", "SKU_X", "SKU_A", "SKU_B", "SKU_DEL", "IMP_A", "IMP_B"]
+
+
 @pytest.fixture(autouse=True)
 def setup_db():
     init_db()
@@ -16,8 +19,8 @@ def setup_db():
         if not s.query(Operator).filter_by(id=1).first():
             s.add(Operator(id=1, name="Test", badge="T", pin_code="1234"))
             s.commit()
-        # Limpa skus pra isolar
-        s.query(SkuFinanceiro).delete()
+        # Limpa apenas dados criados por estes testes.
+        s.query(SkuFinanceiro).filter(SkuFinanceiro.sku.in_(TEST_SKUS)).delete(synchronize_session=False)
         s.commit()
 
 

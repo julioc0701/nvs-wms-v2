@@ -237,6 +237,14 @@ export default function FinanceiroBoletoDetalhe() {
           </div>
         )}
 
+        {/* Nota Fiscal */}
+        {boleto.nota_fiscal && (
+          <div className="bg-white rounded-xl p-4 shadow-sm">
+            <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Nota Fiscal</div>
+            <div className="text-slate-800 font-mono">{boleto.nota_fiscal}</div>
+          </div>
+        )}
+
         {/* Observação */}
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-2">Observação</div>

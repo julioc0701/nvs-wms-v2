@@ -101,3 +101,19 @@ async def test_get_order_returns_payload():
     client = MLClient(session_factory=lambda: fake_session, client_id="x", client_secret="y")
     result = await client.get_order(2000016614536174)
     assert result["id"] == 2000016614536174
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_variation_returns_payload():
+    respx.get("https://api.mercadolibre.com/items/MLB123/variations/456").mock(
+        return_value=httpx.Response(200, json={"id": 456, "seller_custom_field": "SKU_VARIACAO"})
+    )
+    fake_session = MagicMock()
+    fake_session.query.return_value.first.return_value = MagicMock(
+        access_token="ok", refresh_token="r", user_id=1,
+        expires_at=datetime.utcnow() + timedelta(hours=1),
+    )
+    client = MLClient(session_factory=lambda: fake_session, client_id="x", client_secret="y")
+    result = await client.get_variation("MLB123", 456)
+    assert result["seller_custom_field"] == "SKU_VARIACAO"
