@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
-import { Calendar } from 'lucide-react'
 import 'react-day-picker/dist/style.css'
 
 const parseDate = (s) => (s ? new Date(s + 'T00:00:00') : undefined)
@@ -35,10 +34,10 @@ function SingleDatePicker({ label, value, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-xs px-2 py-1 bg-white border border-[var(--fmlv2-border)] rounded text-[var(--fmlv2-text)] min-w-[110px] hover:border-[var(--fmlv2-border-strong)]"
+        className="flex items-center gap-1 text-xs px-2 py-1 bg-white border border-[var(--fmlv2-border)] rounded text-[var(--fmlv2-text)] hover:border-[var(--fmlv2-border-strong)]"
       >
-        <Calendar size={12} className="text-[var(--fmlv2-muted)]" />
-        {fmtBR(value)}
+        <span className="text-[13px] leading-none">📅</span>
+        <span className="fmlv2-mono">{fmtBR(value)}</span>
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-[var(--fmlv2-border)] rounded-lg shadow-xl p-1 fmlv2-daypicker">
