@@ -124,7 +124,7 @@ export function DataTable({ data, pagination, chips, onPageChange, onPageSizeCha
         <div className="relative">
           <button
             onClick={() => setColMenuOpen((v) => !v)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-[var(--fmlv2-muted)] border border-[var(--fmlv2-border)] rounded hover:bg-white"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-[var(--fmlv2-ink-2)] border border-[var(--fmlv2-ink-2)] rounded hover:opacity-90"
           >
             <Settings size={12} /> Colunas
           </button>
@@ -148,7 +148,7 @@ export function DataTable({ data, pagination, chips, onPageChange, onPageSizeCha
         <div className="relative">
           <button
             onClick={() => setExportMenuOpen((v) => !v)}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] text-[var(--fmlv2-muted)] border border-[var(--fmlv2-border)] rounded hover:bg-white"
+            className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-white bg-[var(--fmlv2-ink-2)] border border-[var(--fmlv2-ink-2)] rounded hover:opacity-90"
           >
             <Download size={12} /> Exportar
           </button>

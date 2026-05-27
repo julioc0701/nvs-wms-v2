@@ -96,9 +96,9 @@ export function FilterChips({ filters, onChange }) {
       <div className="relative">
         <button
           onClick={() => setPopoverOpen((v) => !v)}
-          className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border border-dashed border-[var(--fmlv2-border-strong)] text-[var(--fmlv2-muted)] hover:bg-white"
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium text-white bg-[var(--fmlv2-ink-2)] border border-[var(--fmlv2-ink-2)] hover:opacity-90"
         >
-          <Plus size={11} /> Filtro
+          <Plus size={12} /> Filtro
         </button>
 
         {popoverOpen && (
