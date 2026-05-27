@@ -235,10 +235,13 @@ function FiltroPopover({ aberto, setAberto, ativos, categorias, filtros, onChang
       </button>
 
       {aberto && (
-        <div className="absolute top-12 right-0 md:right-auto md:left-0 w-[min(95vw,360px)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-30 p-5">
+        <form
+          className="absolute top-12 right-0 md:right-auto md:left-0 w-[min(95vw,360px)] bg-white border border-slate-200 rounded-2xl shadow-2xl z-30 p-5"
+          onSubmit={(e) => { e.preventDefault(); setAberto(false) }}
+        >
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-slate-900">Filtros adicionais</h3>
-            <button onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-600">
+            <button type="button" onClick={() => setAberto(false)} className="text-slate-400 hover:text-slate-600">
               <X size={18} />
             </button>
           </div>
@@ -322,19 +325,20 @@ function FiltroPopover({ aberto, setAberto, ativos, categorias, filtros, onChang
 
           <div className="flex items-center gap-2 mt-5 pt-4 border-t border-slate-100">
             <button
+              type="button"
               onClick={onLimpar}
               className="flex-1 py-2 border-2 border-slate-300 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-50"
             >
               Limpar filtros
             </button>
             <button
-              onClick={() => setAberto(false)}
+              type="submit"
               className="flex-1 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold shadow"
             >
               Fechar
             </button>
           </div>
-        </div>
+        </form>
       )}
     </div>
   )
