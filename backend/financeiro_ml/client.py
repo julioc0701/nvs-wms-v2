@@ -4,6 +4,7 @@ Inspirado no padrão do Devoluçao/app.py mas reescrito em httpx async.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import logging
 from datetime import datetime, timedelta
@@ -14,6 +15,24 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 
 ML_BASE = "https://api.mercadolibre.com"
 log = logging.getLogger("financeiro_ml.client")
+
+# Throttle global: limita req/s ao ML pra não estourar rate limit (429).
+# Default 0.2s entre chamadas = 5 req/s = 300/min. Ajustável via env.
+_THROTTLE_INTERVAL = float(os.getenv("ML_THROTTLE_INTERVAL_SEC", "0.2"))
+_throttle_lock = asyncio.Lock()
+_throttle_last = 0.0
+
+
+async def _global_throttle() -> None:
+    """Garante intervalo mínimo entre chamadas ao ML (cross-coroutine)."""
+    global _throttle_last
+    async with _throttle_lock:
+        loop = asyncio.get_event_loop()
+        now = loop.time()
+        wait = _THROTTLE_INTERVAL - (now - _throttle_last)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _throttle_last = loop.time()
 
 
 class MLClient:
@@ -60,11 +79,12 @@ class MLClient:
 
     @retry(
         retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
-        wait=wait_exponential(multiplier=1, min=1, max=8),
-        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=60),
+        stop=stop_after_attempt(6),
         reraise=True,
     )
     async def _get(self, path: str, params: dict | None = None) -> dict:
+        await _global_throttle()
         token = await self._ensure_fresh_token()
         async with httpx.AsyncClient(timeout=self._timeout) as http:
             resp = await http.get(
