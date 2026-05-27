@@ -449,3 +449,57 @@ elif "ratio" in disc_types and sender_cost > 0 and sender_save > 0:
 ```
 
 **Resultado final: 749/749 (100%) iguais em todos os 6 campos numéricos.**
+
+---
+
+## 16. Rodada de validação v2 + v3 (final)
+
+Validações posteriores contra Excel atualizado (749 → 794 vendas).
+
+### 16.1 Card global ≠ coluna do Excel
+
+Insight: a coluna "Faturamento ML" por linha do Excel inclui frete_comprador, **mas o card global "Vendas Aprovadas" do MT NÃO inclui**.
+
+- **Card global** = `Σ (produto - cupom_seller)` filtrado por status
+- **Linha tabela** = `Σ (produto + frete_comprador - cupom_seller)` por venda
+
+Aggregator atualizado pra refletir essa distinção (mantém ambos calculados).
+
+### 16.2 Bug do `logistic_type` (silent killer)
+
+`asyncio.gather(return_exceptions=True)` mascarava `UnboundLocalError` em `logistic_type` (usado antes de ser definido em fix anterior). Resultado: ~400 dos 1934 sync calls falhavam silenciosamente em cada execução.
+
+Fix: reordenar definição + logging explícito de exceções engolidas via `trace.warning(order_id, type, msg)`.
+
+### 16.3 Cadastro inicial de SKUs
+
+Em 26/05/2026, 186 SKUs cadastrados via import do Excel MT:
+- `custo_unit = custo_da_linha / qty` (coluna P é total da linha, não unitário)
+- `imposto_pct = 9.00` (fixo, decisão Antigra)
+
+Cadastro consolida automaticamente os custos que MT mantinha internamente.
+
+### 16.4 Edge case aberto — SKU de variação
+
+44 linhas (5%) sem cadastro de custo no NVS porque `seller_sku` extraído do ML é `MLB{item_id}_{variation_id}` em vez do SKU "humano" cadastrado pelo seller.
+
+Causa: nossa lógica `seller_custom_field OR seller_sku` lê da raiz do anúncio, não da variação. Pra anúncios com variações, o SKU correto vive em `/items/{item_id}/variations/{variation_id}`.
+
+**Fix conhecido**: quando `item.variation_id` existe, chamar endpoint de variação extra. Custo: +1 call ML pra ~5-10% dos pedidos. Não implementado nesta sessão.
+
+Esse é o último bug abertopara fechar comparação 100% com MT.
+
+### 16.5 Tabela comparativa final (subset 794 pedidos vs MT card)
+
+| Campo | NVS | MT | Status |
+|---|---|---|---|
+| Vendas Aprovadas | R$ 46.828,96 | R$ 46.828,96 | ✅ |
+| Vendas Canceladas | R$ 1.295,30 | R$ 1.295,30 | ✅ |
+| Frete Comprador | R$ 1.805,34 | R$ 1.805,35 | ✅ (centavo) |
+| Frete Vendedor | R$ 7.226,64 | R$ 7.226,64 | ✅ |
+| Tarifa | R$ 5.046,55 | R$ 5.043,55 | +R$ 3 (timing) |
+| Custo (com 186 SKUs cad) | R$ 21.720,63 | R$ 22.654,21 | -R$ 933 (= SKUs de variação) |
+| Qtd Aprovadas | 777 | 777 | ✅ |
+| Qtd Canceladas | 17 | 17 | ✅ |
+
+**Quando o bug do SKU variação for corrigido, expectativa: 7/8 cards a 100% (resta só timing tarifa).**
