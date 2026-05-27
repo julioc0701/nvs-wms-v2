@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { DayPicker } from 'react-day-picker'
 import { ptBR } from 'date-fns/locale'
 import { Calendar } from 'lucide-react'
@@ -11,6 +11,15 @@ const fmtBR     = (s) => (s ? new Date(s + 'T00:00:00').toLocaleDateString('pt-B
 function SingleDatePicker({ label, value, onChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+
+  // Memoiza a Date — sem isso, DayPicker recebe nova instância a cada render
+  // e dispara loop interno (effect deps comparam por identidade).
+  const selected = useMemo(() => parseDate(value), [value])
+
+  const handleSelect = useCallback((d) => {
+    onChange(toISO(d))
+    setOpen(false)
+  }, [onChange])
 
   useEffect(() => {
     const handler = (e) => {
@@ -35,11 +44,8 @@ function SingleDatePicker({ label, value, onChange }) {
         <div className="absolute top-full left-0 mt-1 z-30 bg-white border border-[var(--fmlv2-border)] rounded-lg shadow-xl p-2 fmlv2-daypicker">
           <DayPicker
             mode="single"
-            selected={parseDate(value)}
-            onSelect={(d) => {
-              onChange(toISO(d))
-              setOpen(false)
-            }}
+            selected={selected}
+            onSelect={handleSelect}
             locale={ptBR}
             showOutsideDays
           />
@@ -50,19 +56,21 @@ function SingleDatePicker({ label, value, onChange }) {
 }
 
 export function DateRangePicker({ dataInicio, dataFim, onChange }) {
+  // Memoiza callbacks pra estabilizar identidade
+  const onDeChange = useCallback(
+    (v) => onChange({ data_inicio: v, data_fim: dataFim }),
+    [onChange, dataFim]
+  )
+  const onAteChange = useCallback(
+    (v) => onChange({ data_inicio: dataInicio, data_fim: v }),
+    [onChange, dataInicio]
+  )
+
   return (
     <div className="flex items-center gap-2 bg-[var(--fmlv2-surface)] border border-[var(--fmlv2-border)] rounded-md px-2 py-1">
-      <SingleDatePicker
-        label="De"
-        value={dataInicio}
-        onChange={(v) => onChange({ data_inicio: v, data_fim: dataFim })}
-      />
+      <SingleDatePicker label="De"  value={dataInicio} onChange={onDeChange} />
       <span className="text-[var(--fmlv2-muted)] text-xs">→</span>
-      <SingleDatePicker
-        label="Até"
-        value={dataFim}
-        onChange={(v) => onChange({ data_inicio: dataInicio, data_fim: v })}
-      />
+      <SingleDatePicker label="Até" value={dataFim}    onChange={onAteChange} />
     </div>
   )
 }
