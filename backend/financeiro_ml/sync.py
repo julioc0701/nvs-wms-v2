@@ -190,19 +190,13 @@ async def _sync_single_day(client, d: date) -> dict:
 
 
 async def _save_order(client, search_result: dict, *, force_refresh: bool = False) -> None:
-    """Salva um order do search result no cache. Skip se já existe (ou força refresh).
+    """Salva ou atualiza um order do search result no cache.
 
     Otimização: usa payload do /orders/search direto. Evita call extra a /orders/{id}
     e /items/{id} (campos `status`, `payments`, `order_items[].listing_type_id` já vêm).
     Só faz 1 call extra: /shipments/{id} (cost/list_cost/logistic_type/mode).
     """
     order_id = search_result["id"]
-
-    # Skip se já existe (a menos que force_refresh)
-    if not force_refresh:
-        with SessionLocal() as session:
-            if session.query(MLOrderCache).filter_by(order_id=order_id).first():
-                return
 
     detail = search_result  # usa payload do search direto
 
@@ -270,6 +264,60 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
     first_item = (detail.get("order_items") or [{}])[0]
     modalidade = first_item.get("listing_type_id")
 
+    def _looks_human_sku(s: str | None) -> bool:
+        """Detecta SKU 'real' vs identificador composto tipo 'MLB...{number}_{number}'.
+
+        ML às vezes retorna em seller_custom_field um composto item_id+variation_id
+        que NÃO é o SKU cadastrado pelo seller (é lixo). O SKU humano vive em
+        seller_sku nesses casos. Heurística: tudo que não casa o padrão MLB...id é humano.
+        """
+        if not s:
+            return False
+        return not (s.startswith("MLB") and "_" in s)
+
+    async def _seller_sku_from_item(order_item: dict) -> str | None:
+        item = order_item.get("item") or {}
+        item_id = item.get("id")
+        variation_id = item.get("variation_id") or order_item.get("variation_id")
+        if item_id and variation_id:
+            try:
+                variation = await client.get_variation(item_id, variation_id)
+                sku = (
+                    variation.get("seller_custom_field")
+                    or variation.get("seller_sku")
+                    or variation.get("seller_sku_id")
+                )
+                if sku:
+                    return sku
+            except Exception as exc:
+                import logging
+                logging.getLogger("financeiro_ml.trace").warning(
+                    f"sync.order[{order_id}] variation_sku_err item={item_id} "
+                    f"variation={variation_id} type={type(exc).__name__} msg={str(exc)[:200]}"
+                )
+        # Prefere o SKU "humano" (não MLB_id). seller_custom_field às vezes vem com
+        # lixo composto (MLBxxx_yyy); nesses casos seller_sku tem o SKU real.
+        sku_cf  = item.get("seller_custom_field")
+        sku_sku = item.get("seller_sku")
+        if _looks_human_sku(sku_sku):
+            return sku_sku
+        if _looks_human_sku(sku_cf):
+            return sku_cf
+        return sku_cf or sku_sku  # ambos parecem lixo — usa qualquer um
+
+    item_rows = []
+    for it in detail.get("order_items", []):
+        item = it["item"]
+        item_rows.append(MLOrderItemCache(
+            order_id=order_id,
+            item_id=item["id"],
+            title=item.get("title", ""),
+            seller_sku=await _seller_sku_from_item(it),
+            quantity=it["quantity"],
+            unit_price=Decimal(str(it["unit_price"])),
+            category_id=item.get("category_id"),
+        ))
+
     with SessionLocal() as session:
         existing = session.query(MLOrderCache).filter_by(order_id=order_id).first()
         if existing is None:
@@ -295,20 +343,26 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
                 synced_at=datetime.utcnow(),
             )
             session.add(row)
-            # Itens
-            for it in detail.get("order_items", []):
-                session.add(MLOrderItemCache(
-                    order_id=order_id,
-                    item_id=it["item"]["id"],
-                    title=it["item"].get("title", ""),
-                    seller_sku=it["item"].get("seller_custom_field") or it["item"].get("seller_sku"),
-                    quantity=it["quantity"],
-                    unit_price=Decimal(str(it["unit_price"])),
-                    category_id=it["item"].get("category_id"),
-                ))
         else:
+            existing.date_created = _to_brt_naive(detail["date_created"])
+            existing.date_closed = _to_brt_naive(detail.get("date_closed"))
             existing.status = detail["status"]
+            existing.status_detail = detail.get("status_detail")
+            existing.produto_total = produto_total
+            existing.frete_comprador = frete_comprador
+            existing.frete_vendedor = frete_vendedor
+            existing.tarifa_bruta = tarifa_bruta
+            existing.tarifa_refund = Decimal("0")
             existing.refund_amount_partial = refund_partial
+            existing.cupom_seller = cupom_seller
+            existing.modalidade_anuncio = modalidade
+            existing.logistic_type = logistic_type
+            existing.shipping_mode = shipping_mode
+            existing.shipment_id = shipment_id
+            existing.breakdown_bucket = bucket
             existing.synced_at = datetime.utcnow()
             existing.raw_json = json.dumps(detail)
+            session.query(MLOrderItemCache).filter_by(order_id=order_id).delete()
+        for row in item_rows:
+            session.add(row)
         session.commit()
