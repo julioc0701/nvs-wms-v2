@@ -59,6 +59,15 @@ def main():
     HOJE_S = HOJE.isoformat()
 
     # Tupla: (categoria, empresa, valor, venc, status, pago_em, desc, chave_pix, nota_fiscal)
+    #
+    # Distribuição planejada por empresa (pra testar filtro de empresa):
+    #   Energisa Mato Grosso ........ 4 lançamentos
+    #   Sabesp ....................... 3 lançamentos
+    #   Vivo Fibra ................... 3 lançamentos
+    #   Imobiliária Central .......... 3 lançamentos
+    #   Fornecedor ABC LTDA .......... 3 lançamentos
+    #   Distribuidora ABC LTDA ....... 2 lançamentos
+    #   (demais empresas: 1 ocorrência)
     lancamentos = [
         # ── ESTA SEMANA (a pagar) — 7 lançamentos ─────────────────────────────
         ("Luz", "Energisa Mato Grosso", 350.00,
@@ -120,7 +129,7 @@ def main():
          (HOJE + timedelta(days=18)).isoformat(), "registrado", None,
          "IPTU prédio comercial", None, "BOL-IPTU-2026"),
 
-        # ── PAGOS — 6 lançamentos (variando pago_em) ──────────────────────────
+        # ── PAGOS — 8 lançamentos (variando pago_em) ──────────────────────────
         ("Reembolso", "Carlos Funcionário", 95.40,
          (HOJE - timedelta(days=3)).isoformat(), "pago",
          (HOJE - timedelta(days=2)).isoformat() + "T10:30:00",
@@ -129,6 +138,10 @@ def main():
          (HOJE - timedelta(days=25)).isoformat(), "pago",
          (HOJE - timedelta(days=24)).isoformat() + "T09:15:00",
          "Internet abril", None, "NF-VIVO-0424"),
+        ("Internet", "Vivo Fibra", 200.00,
+         (HOJE - timedelta(days=55)).isoformat(), "pago",
+         (HOJE - timedelta(days=54)).isoformat() + "T09:10:00",
+         "Internet março", None, "NF-VIVO-0324"),
         ("Água", "Sabesp", 115.30,
          (HOJE - timedelta(days=27)).isoformat(), "pago",
          (HOJE - timedelta(days=1)).isoformat() + "T14:20:00",
@@ -145,6 +158,43 @@ def main():
          (HOJE - timedelta(days=4)).isoformat(), "pago",
          (HOJE - timedelta(days=3)).isoformat() + "T16:30:00",
          "Vale antecipação", "ana.beatriz@email.com", None),
+
+        # ── REPETIÇÕES EXTRAS pra testar filtro de empresa ────────────────────
+        # Energisa Mato Grosso: 4 total (2 acima + 2 aqui)
+        ("Luz", "Energisa Mato Grosso", 312.45,
+         (HOJE - timedelta(days=33)).isoformat(), "pago",
+         (HOJE - timedelta(days=32)).isoformat() + "T11:00:00",
+         "Conta de luz - abril", None, "NF-LUZ-0324"),
+        ("Luz", "Energisa Mato Grosso", 295.10,
+         (HOJE - timedelta(days=62)).isoformat(), "pago",
+         (HOJE - timedelta(days=61)).isoformat() + "T11:00:00",
+         "Conta de luz - março", None, "NF-LUZ-0224"),
+
+        # Sabesp: 3 total (2 acima + 1 aqui)
+        ("Água", "Sabesp", 108.90,
+         (HOJE - timedelta(days=58)).isoformat(), "pago",
+         (HOJE - timedelta(days=57)).isoformat() + "T10:00:00",
+         "Conta de água março", None, "NF-AGU-0324"),
+
+        # Imobiliária Central: 3 total (2 acima + 1 aqui)
+        ("Aluguel", "Imobiliária Central", 2800.00,
+         (HOJE - timedelta(days=53)).isoformat(), "pago",
+         (HOJE - timedelta(days=52)).isoformat() + "T08:00:00",
+         "Aluguel março", None, None),
+
+        # Fornecedor ABC LTDA: 3 total (1 acima + 2 aqui)
+        ("Boleto", "Fornecedor ABC LTDA", 920.30,
+         (HOJE - timedelta(days=40)).isoformat(), "pago",
+         (HOJE - timedelta(days=39)).isoformat() + "T15:00:00",
+         "Boleto antigo fornecedor", None, "NF-ABC-7710"),
+        ("PIX Fornecedor", "Fornecedor ABC LTDA", 1180.00,
+         (HOJE + timedelta(days=15)).isoformat(), "registrado", None,
+         "Compra parcial materiais", "11.222.333/0001-44", "NF-ABC-7820"),
+
+        # Distribuidora ABC LTDA: 2 total (1 acima + 1 aqui)
+        ("PIX Fornecedor", "Distribuidora ABC LTDA", 1850.00,
+         (HOJE + timedelta(days=22)).isoformat(), "registrado", None,
+         "Reposição estoque", "11.222.333/0001-44", "NF-ABC-7900"),
     ]
 
     cap_em = datetime.now().isoformat()
