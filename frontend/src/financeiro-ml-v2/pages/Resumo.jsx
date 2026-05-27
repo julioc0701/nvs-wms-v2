@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import '../tokens.css'
 import { formatBRL, formatPct } from '../utils'
@@ -28,9 +28,19 @@ const INITIAL_FILTERS = {
   modalidade:  'todos',
   tipo_frete:  'todos',
   custo_imposto: 'todos',
+  margem:      'todos',  // filtro LOCAL — não enviado pro backend
   considerar_frete_comprador: false,
   page:        1,
   page_size:   50,
+}
+
+// Filtro client-side por faixa de MC%, aplicado na página atual já carregada
+function filterByMargem(rows, faixa) {
+  if (!rows || faixa === 'todos' || !faixa) return rows
+  if (faixa === 'bom')     return rows.filter(r => Number(r.mc_pct) >= 13)
+  if (faixa === 'atencao') return rows.filter(r => Number(r.mc_pct) >= 10 && Number(r.mc_pct) < 13)
+  if (faixa === 'critico') return rows.filter(r => Number(r.mc_pct) < 10)
+  return rows
 }
 
 export default function FinanceiroMLResumoV2() {
@@ -92,6 +102,12 @@ export default function FinanceiroMLResumoV2() {
 
   const cards = resultado?.cards
   const totalVendas = resultado?.pagination?.total
+
+  // Aplica filtro local de margem ANTES de passar pra tabela
+  const tabelaFiltrada = useMemo(
+    () => filterByMargem(resultado?.tabela, filtros.margem),
+    [resultado?.tabela, filtros.margem]
+  )
 
   return (
     <div className="fmlv2-root min-h-screen p-5">
@@ -181,7 +197,7 @@ export default function FinanceiroMLResumoV2() {
         </div>
 
         <DataTable
-          data={resultado?.tabela}
+          data={tabelaFiltrada}
           pagination={resultado?.pagination}
           chips={
             <FilterChips filters={filtros} onChange={onFiltersChange} />

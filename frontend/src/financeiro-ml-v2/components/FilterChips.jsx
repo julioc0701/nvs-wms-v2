@@ -31,6 +31,13 @@ const CI_LABELS = {
   sem_custo_imposto: 'Sem custo e imposto',
 }
 
+const MARGEM_LABELS = {
+  todos: null,
+  bom: 'Margem: Bom (≥13%)',
+  atencao: 'Margem: Atenção (10-13%)',
+  critico: 'Margem: Crítico (<10%)',
+}
+
 function buildActiveChips(filters) {
   const chips = []
   if (STATUS_LABELS[filters.status]) {
@@ -45,6 +52,9 @@ function buildActiveChips(filters) {
   if (CI_LABELS[filters.custo_imposto]) {
     chips.push({ key: 'custo_imposto', label: CI_LABELS[filters.custo_imposto] })
   }
+  if (MARGEM_LABELS[filters.margem]) {
+    chips.push({ key: 'margem', label: MARGEM_LABELS[filters.margem] })
+  }
   if (filters.sku) chips.push({ key: 'sku', label: `SKU: ${filters.sku}` })
   if (filters.mlb) chips.push({ key: 'mlb', label: `MLB: ${filters.mlb}` })
   if (filters.considerar_frete_comprador) {
@@ -58,6 +68,7 @@ const RESET_VALUES = {
   modalidade: 'todos',
   tipo_frete: 'todos',
   custo_imposto: 'todos',
+  margem: 'todos',
   sku: '',
   mlb: '',
   considerar_frete_comprador: false,
@@ -158,6 +169,20 @@ export function FilterChips({ filters, onChange }) {
                 <option value="sem_custo">Somente sem Custo</option>
                 <option value="sem_imposto">Somente sem Imposto</option>
                 <option value="sem_custo_imposto">Somente sem ambos</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-[var(--fmlv2-muted)]">Margem (MC%) — filtro local</span>
+              <select
+                value={filters.margem || 'todos'}
+                onChange={(e) => updateFilter('margem', e.target.value)}
+                className="block w-full mt-1 border border-[var(--fmlv2-border)] rounded px-2 py-1"
+              >
+                <option value="todos">Todas</option>
+                <option value="bom">🟢 Bom (≥13%)</option>
+                <option value="atencao">🟡 Atenção (10-13%)</option>
+                <option value="critico">🔴 Crítico (&lt;10%)</option>
               </select>
             </label>
 
