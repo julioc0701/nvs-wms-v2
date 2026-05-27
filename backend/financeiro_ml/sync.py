@@ -175,16 +175,20 @@ async def _sync_single_day(client, d: date) -> dict:
         )
         return {"status": "ok", "orders_count": orders_count}
     except Exception as e:
+        import traceback
+        trace.exception(f"sync.day[{d}] FAILED type={type(e).__name__} msg={e}")
+        tb_str = traceback.format_exc()
         with SessionLocal() as session:
             st = session.query(MLDaySyncStatus).filter_by(day=d).first()
+            err_msg = f"{type(e).__name__}: {e}\n{tb_str}"[:4000]
             if st is None:
                 st = MLDaySyncStatus(day=d, last_synced_at=datetime.utcnow(),
-                                       orders_count=0, status="failed", error_message=str(e))
+                                       orders_count=0, status="failed", error_message=err_msg)
                 session.add(st)
             else:
                 st.last_synced_at = datetime.utcnow()
                 st.status = "failed"
-                st.error_message = str(e)
+                st.error_message = err_msg
             session.commit()
         return {"status": "failed", "orders_count": 0, "error": str(e)}
 

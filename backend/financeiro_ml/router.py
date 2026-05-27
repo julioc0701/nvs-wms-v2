@@ -430,3 +430,27 @@ async def health():
             "ml_configured": token is not None,
             "user_id": token.user_id if token else None,
         }
+
+
+@router.get("/_debug/sync-status")
+async def debug_sync_status():
+    """Retorna últimos 30 dias de status de sync (incluindo erros). Debug only."""
+    from database import SessionLocal
+    from financeiro_ml.models import MLDaySyncStatus
+    with SessionLocal() as session:
+        rows = (
+            session.query(MLDaySyncStatus)
+            .order_by(MLDaySyncStatus.day.desc())
+            .limit(30)
+            .all()
+        )
+        return [
+            {
+                "day": str(r.day),
+                "status": r.status,
+                "orders_count": r.orders_count,
+                "last_synced_at": r.last_synced_at.isoformat() if r.last_synced_at else None,
+                "error_message": r.error_message,
+            }
+            for r in rows
+        ]
