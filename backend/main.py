@@ -78,6 +78,10 @@ async def on_startup():
     # Default true; pode desligar com ENABLE_MARKER_SYNC=false.
     if os.getenv("ENABLE_MARKER_SYNC", "true").strip().lower() in {"1", "true", "yes"}:
         start_marker_sync(os.getenv("TINY_API_TOKEN", ""))
+    if os.getenv("ENABLE_FINANCEIRO_ML_ROBOT", "false").strip().lower() in {"1", "true", "yes"}:
+        from financeiro_ml.worker import start_financeiro_ml_runtime
+        start_financeiro_ml_runtime()
+        print("[financeiro-ml] robo (worker + poller) iniciado")
 
 
 @app.on_event("shutdown")
@@ -86,6 +90,8 @@ async def on_shutdown():
     import routers.tiny as tiny
     tiny.IS_SHUTTING_DOWN = True
     await stop_local_scheduler()
+    from financeiro_ml.worker import stop_financeiro_ml_runtime
+    await stop_financeiro_ml_runtime()
     print("[SISTEMA] Sinal de Desligamento enviado para a Máquina do Tempo.")
 
 

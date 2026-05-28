@@ -162,3 +162,43 @@ def recover_orphan_jobs(session_factory) -> int:
         return len(rows)
     finally:
         s.close()
+
+
+_RUNTIME = {}
+
+
+def start_financeiro_ml_runtime():
+    """Cria queue + worker + poller no startup. Idempotente."""
+    import asyncio
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.poller import poller_loop
+
+    if _RUNTIME.get("started"):
+        return _RUNTIME
+    init_fin_db()
+    recover_orphan_jobs(FinSessionLocal)
+    queue = asyncio.Queue()
+    worker = WriteWorker(session_factory=FinSessionLocal,
+                         client_factory=lambda sid: build_default_client(seller_id=sid))
+    stop_event = asyncio.Event()
+    worker_task = asyncio.create_task(worker.run(queue))
+    poller_task = asyncio.create_task(poller_loop(FinSessionLocal, queue, stop_event=stop_event))
+    _RUNTIME.update(started=True, queue=queue, worker=worker, stop_event=stop_event,
+                    worker_task=worker_task, poller_task=poller_task)
+    return _RUNTIME
+
+
+async def stop_financeiro_ml_runtime():
+    rt = _RUNTIME
+    if not rt.get("started"):
+        return
+    rt["stop_event"].set()
+    rt["worker"].stop()
+    rt["poller_task"].cancel()
+    rt["worker_task"].cancel()
+    rt["started"] = False
+
+
+def get_write_queue():
+    return _RUNTIME.get("queue")
