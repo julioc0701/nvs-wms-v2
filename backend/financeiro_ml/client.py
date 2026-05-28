@@ -62,10 +62,16 @@ async def _global_throttle() -> None:
 
 
 class MLClient:
-    # Lock global (módulo-level): serializa refresh de token entre TODAS as instâncias
-    # do MLClient. Evita race condition onde N coroutines paralelas usam o mesmo
-    # refresh_token e ML invalida todos menos um → 401 cascade.
-    _refresh_lock = asyncio.Lock()
+    # Lock por seller: serializa refresh de token por seller_id. Refresh de A não
+    # bloqueia B. Evita race onde N coroutines do mesmo seller usam o mesmo
+    # refresh_token e o ML invalida todos menos um → 401 cascade.
+    _refresh_locks: dict[int, asyncio.Lock] = {}
+
+    @classmethod
+    def _refresh_lock_for(cls, seller_id: int) -> asyncio.Lock:
+        if seller_id not in cls._refresh_locks:
+            cls._refresh_locks[seller_id] = asyncio.Lock()
+        return cls._refresh_locks[seller_id]
 
     def __init__(self, *, session_factory: Callable, client_id: str, client_secret: str,
                   seller_id: int | None = None, timeout: float = 30.0):
@@ -88,8 +94,8 @@ class MLClient:
         finally:
             session.close()
 
-        # Slow path: token precisa renovar. Serializa via lock.
-        async with MLClient._refresh_lock:
+        # Slow path: token precisa renovar. Serializa via lock por seller.
+        async with MLClient._refresh_lock_for(self._seller_id):
             session = self._session_factory()
             try:
                 token_row = session.query(MLTokens).filter_by(seller_id=self._seller_id).first()
