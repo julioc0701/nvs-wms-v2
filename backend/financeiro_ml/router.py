@@ -432,6 +432,57 @@ async def health():
         }
 
 
+@router.post("/_debug/reset-tokens")
+async def debug_reset_tokens():
+    """Força reset da row ml_tokens lendo do env (ML_ACCESS_TOKEN/REFRESH_TOKEN/USER_ID).
+    Use após atualizar vars no Railway pra propagar pro DB."""
+    import os
+    from database import SessionLocal
+    from financeiro_ml.models import MLTokens
+    from datetime import datetime, timedelta
+    access = os.getenv("ML_ACCESS_TOKEN")
+    refresh = os.getenv("ML_REFRESH_TOKEN")
+    user_id = os.getenv("ML_USER_ID")
+    if not (access and refresh and user_id):
+        return {"ok": False, "error": "env vars ML_ACCESS_TOKEN/REFRESH_TOKEN/USER_ID missing"}
+    with SessionLocal() as session:
+        row = session.query(MLTokens).first()
+        if row is None:
+            row = MLTokens(id=1)
+            session.add(row)
+        row.access_token = access
+        row.refresh_token = refresh
+        row.user_id = int(user_id)
+        row.expires_at = datetime.utcnow() + timedelta(hours=5)
+        row.updated_at = datetime.utcnow()
+        session.commit()
+    return {"ok": True, "user_id": int(user_id), "access_first10": access[:10] + "..."}
+
+
+@router.get("/_debug/test-token")
+async def debug_test_token():
+    """Faz UMA chamada ao ML pra validar token. Retorna detalhe do erro se falhar."""
+    import httpx
+    from financeiro_ml.client import build_default_client
+    try:
+        client = build_default_client()
+        token = await client._ensure_fresh_token()
+        async with httpx.AsyncClient(timeout=15) as http:
+            resp = await http.get(
+                "https://api.mercadolibre.com/users/me",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            return {
+                "token_first10": token[:10] + "...",
+                "token_last5": "..." + token[-5:],
+                "users_me_status": resp.status_code,
+                "users_me_body": resp.json() if resp.status_code < 500 else resp.text[:500],
+            }
+    except Exception as e:
+        import traceback
+        return {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()[:2000]}
+
+
 @router.get("/_debug/sync-status")
 async def debug_sync_status():
     """Retorna últimos 30 dias de status de sync (incluindo erros). Debug only."""
