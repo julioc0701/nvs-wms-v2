@@ -31,7 +31,8 @@ def test_init_fin_db_creates_all_tables(tmp_path, monkeypatch):
     import importlib
     import financeiro_ml.db as db
     importlib.reload(db)
-    import financeiro_ml.models_v2  # noqa
+    import financeiro_ml.models_v2 as models_v2
+    importlib.reload(models_v2)  # re-registra modelos no FinBase recém-recarregado (ordem-independente)
     db.init_fin_db()
     from sqlalchemy import inspect
     tables = set(inspect(db.fin_engine).get_table_names())
