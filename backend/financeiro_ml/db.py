@@ -41,3 +41,9 @@ def get_fin_db():
         yield db
     finally:
         db.close()
+
+
+def init_fin_db():
+    """Cria todas as tabelas do schema v2 no banco isolado."""
+    import financeiro_ml.models_v2  # noqa — registra modelos em FinBase.metadata
+    FinBase.metadata.create_all(bind=fin_engine)
