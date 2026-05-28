@@ -46,3 +46,10 @@ def test_seller_lock_and_backfill_job_tables_exist(tmp_path, monkeypatch):
     assert s.query(m.MLSellerLock).count() == 1
     assert s.query(m.MLBackfillJob).count() == 1
     s.close()
+
+
+def test_fixture_fin_db_works(fin_db):
+    db, m = fin_db
+    s = db.FinSessionLocal()
+    assert s.query(m.MLOrderCache).count() == 0
+    s.close()
