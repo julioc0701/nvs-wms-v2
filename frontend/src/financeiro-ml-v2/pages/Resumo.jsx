@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import '../tokens.css'
 import { formatBRL, formatPct } from '../utils'
@@ -19,7 +19,10 @@ const daysAgo = (n) => {
   return d.toISOString().slice(0, 10)
 }
 
+const DEFAULT_SELLER_ID = 221832146
+
 const INITIAL_FILTERS = {
+  seller_id:   DEFAULT_SELLER_ID,
   data_inicio: daysAgo(6),
   data_fim:    today(),
   sku:         '',
@@ -37,6 +40,7 @@ const INITIAL_FILTERS = {
 export default function FinanceiroMLResumoV2() {
   const [filtros, setFiltros] = useState(INITIAL_FILTERS)
   const [resultado, setResultado] = useState(null)
+  const [backfill, setBackfill] = useState(null)  // { jobId, status, done, total, error }
 
   const mutation = useMutation({
     mutationFn: async (filtrosAtuais) => {
@@ -49,6 +53,39 @@ export default function FinanceiroMLResumoV2() {
     },
     onSuccess: (data) => setResultado(data),
   })
+
+  // Backfill: dispara busca de período no robô e faz polling do progresso.
+  const onBackfill = async () => {
+    try {
+      const { job_id } = await financeiroMLApi.startBackfill({
+        seller_id: filtros.seller_id,
+        day_from: filtros.data_inicio,
+        day_to: filtros.data_fim,
+      })
+      setBackfill({ jobId: job_id, status: 'pending', done: 0, total: 0, error: null })
+    } catch (e) {
+      setBackfill({ jobId: null, status: 'failed', done: 0, total: 0, error: String(e) })
+    }
+  }
+
+  const pollRef = useRef(null)
+  useEffect(() => {
+    if (!backfill?.jobId || (backfill.status !== 'pending' && backfill.status !== 'running')) {
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      try {
+        const p = await financeiroMLApi.getBackfillStatus(backfill.jobId)
+        setBackfill((b) => ({ ...b, status: p.status, done: p.progress_done, total: p.progress_total, error: p.error_message }))
+        if (p.status === 'done') {
+          mutation.mutate({ ...filtros, page: 1 })
+        }
+      } catch (e) {
+        setBackfill((b) => ({ ...b, status: 'failed', error: String(e) }))
+      }
+    }, 3000)
+    return () => clearInterval(pollRef.current)
+  }, [backfill?.jobId, backfill?.status, filtros, mutation])
 
   // Busca sempre manual via botão Buscar — nunca dispara ao montar.
   const onBuscar = () => {
@@ -120,6 +157,32 @@ export default function FinanceiroMLResumoV2() {
             </button>
           </div>
         )}
+
+        <div className="mb-3 flex items-center gap-3 text-sm">
+          <button
+            onClick={onBackfill}
+            disabled={backfill?.status === 'pending' || backfill?.status === 'running'}
+            className="px-3 py-1.5 bg-[var(--fmlv2-ink-2)] text-white rounded-md text-xs disabled:opacity-50"
+          >
+            Buscar histórico
+          </button>
+          {(backfill?.status === 'pending' || backfill?.status === 'running') && (
+            <span className="text-[var(--fmlv2-muted)] text-xs">
+              Buscando dados… {backfill.done}/{backfill.total || '?'}
+            </span>
+          )}
+          {backfill?.status === 'done' && (
+            <span className="text-green-600 text-xs">Histórico atualizado ✓</span>
+          )}
+          {backfill?.status === 'failed' && (
+            <span className="text-red-600 text-xs">
+              Falhou: {backfill.error || 'erro'}
+              <button onClick={onBackfill} className="ml-2 px-2 py-0.5 bg-red-600 text-white rounded text-xs">
+                Retry
+              </button>
+            </span>
+          )}
+        </div>
 
         <BentoGrid>
           <HeroTile

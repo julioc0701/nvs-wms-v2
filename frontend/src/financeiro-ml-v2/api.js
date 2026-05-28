@@ -69,4 +69,16 @@ export const financeiroMLApi = {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(filters),
     }).then(blobOrThrow),
+
+  startBackfill: ({ seller_id, day_from, day_to }) =>
+    fetch(`${BASE}/backfill`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ seller_id, day_from, day_to }),
+    }).then(jsonOrThrow),
+
+  getBackfillStatus: (jobId) =>
+    fetch(`${BASE}/backfill/${jobId}`, {
+      headers: authHeaders(),
+    }).then(jsonOrThrow),
 }
