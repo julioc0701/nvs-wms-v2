@@ -82,7 +82,16 @@ class WriteWorker:
                                    status="rate_limited", orders_count=0,
                                    error_message="429", retry_after_sec=RATE_LIMIT_COOLDOWN_SEC)
                     log.warning("worker.429 seller=%s day=%s — parando task", task.seller_id, day)
+                    if task.kind == "backfill":
+                        from financeiro_ml.backfill import finish_job
+                        finish_job(self._sf, task.job_id, status="failed", error="429 rate limited")
                     break
+            else:
+                if task.kind == "backfill":
+                    from financeiro_ml.backfill import claim_job, finish_job
+                    # claim idempotente (caso ainda 'pending') e marca done se não houve 429
+                    claim_job(self._sf, task.job_id)
+                    finish_job(self._sf, task.job_id, status="done")
         finally:
             release_seller_lock(self._sf, seller_id=task.seller_id, holder=holder)
 

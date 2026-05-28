@@ -85,3 +85,30 @@ def test_recover_orphan_jobs_resets_running_to_pending(fin_db):
     s = db.FinSessionLocal()
     assert s.query(m.MLBackfillJob).first().status == "pending"
     s.close()
+
+
+@pytest.mark.asyncio
+async def test_backfill_task_marks_job_done(fin_db):
+    db, m = fin_db
+    from datetime import date, datetime
+    from financeiro_ml.worker import WriteWorker, BackfillTask
+    from financeiro_ml.backfill import create_job
+
+    class FakeClient2:
+        async def search_orders(self, **kw):
+            return {"results": []}   # dia vazio → conclui rápido
+        async def get_shipment(self, sid): return {}
+        async def get_shipment_costs(self, sid): return {}
+        async def get_order_discounts(self, oid): return {"details": []}
+
+    job_id = create_job(db.FinSessionLocal, seller_id=1, day_from=date(2026,1,1), day_to=date(2026,1,2))
+    worker = WriteWorker(session_factory=db.FinSessionLocal, client_factory=lambda sid: FakeClient2())
+    import asyncio
+    q = asyncio.Queue()
+    await q.put(BackfillTask(seller_id=1, days=[date(2026,1,1), date(2026,1,2)], job_id=job_id))
+    runner = asyncio.create_task(worker.run(q))
+    await q.join()
+    worker.stop(); await runner
+    s = db.FinSessionLocal()
+    assert s.query(m.MLBackfillJob).filter_by(id=job_id).first().status == "done"
+    s.close()
