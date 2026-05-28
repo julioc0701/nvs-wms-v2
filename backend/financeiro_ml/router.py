@@ -25,6 +25,7 @@ if not trace.handlers:
 # ============ Schemas ============
 
 class FilterParams(BaseModel):
+    seller_id: int
     data_inicio: date
     data_fim: date
     sku: str | None = None
@@ -107,9 +108,8 @@ async def import_skus_excel(file: UploadFile = File(...), operator_id: int = Dep
 
 
 from datetime import datetime, time
-from financeiro_ml.sync import ensure_period_synced
 from financeiro_ml.aggregator import aggregate
-from financeiro_ml.models import MLOrderCache, MLOrderItemCache, SkuFinanceiro
+from financeiro_ml.models_v2 import MLOrderCache, MLOrderItemCache, SkuFinanceiro
 from sqlalchemy import and_
 
 
@@ -123,15 +123,7 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         f"frete_comprador={params.considerar_frete_comprador} page={params.page}x{params.page_size}"
     )
 
-    t1 = time_module.perf_counter()
-    sync_report = await ensure_period_synced(params.data_inicio, params.data_fim)
-    trace.info(
-        f"sync.done dias_sincronizados={sync_report['dias_sincronizados']} "
-        f"dias_falhos={sync_report['dias_falhos']} novos_orders={sync_report['total_orders']} "
-        f"ms={(time_module.perf_counter()-t1)*1000:.0f}"
-    )
-
-    from database import SessionLocal
+    from financeiro_ml.db import FinSessionLocal as SessionLocal
     from sqlalchemy import func
     with SessionLocal() as session:
         date_from = datetime.combine(params.data_inicio, time.min)
@@ -141,6 +133,7 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         # Pra status pre-payment (sem date_closed), cai em date_created.
         data_ref = func.coalesce(MLOrderCache.date_closed, MLOrderCache.date_created)
         q = session.query(MLOrderCache).filter(
+            MLOrderCache.seller_id == params.seller_id,
             and_(data_ref >= date_from, data_ref <= date_to)
         )
         if params.status == "aprovado":
@@ -179,7 +172,10 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         order_ids = [o["order_id"] for o in orders]
 
         tq1 = time_module.perf_counter()
-        items_q = session.query(MLOrderItemCache).filter(MLOrderItemCache.order_id.in_(order_ids))
+        items_q = session.query(MLOrderItemCache).filter(
+            MLOrderItemCache.seller_id == params.seller_id,
+            MLOrderItemCache.order_id.in_(order_ids),
+        )
         if params.sku:
             items_q = items_q.filter(MLOrderItemCache.seller_sku == params.sku)
         items = [_row_to_dict_item(r) for r in items_q.all()]
@@ -240,7 +236,6 @@ async def get_resumo(params: FilterParams, operator_id: int = Depends(require_ma
         "total": total,
         "total_pages": (total + params.page_size - 1) // params.page_size,
     }
-    result["sync_report"] = sync_report
     payload = _json_safe(result)
     trace.info(
         f"END vendas_aprovadas={result['cards']['vendas_aprovadas']} "
