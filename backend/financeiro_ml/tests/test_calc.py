@@ -46,3 +46,55 @@ def test_build_row_items_list():
     assert len(row["items"]) == 1
     assert row["items"][0]["seller_sku"] == "SKU-A"
     assert row["items"][0]["quantity"] == 2
+
+
+def test_build_row_frete_loyal_mercado_pontos():
+    order = _order()
+    shipment = {"shipping_option": {"cost": 0, "list_cost": 0}, "logistic_type": "fulfillment"}
+    costs = {"receiver": {"save": 18.5, "discounts": [{"type": "loyal"}]},
+             "senders": [{"cost": 0, "save": 0}]}
+    row = build_order_row(seller_id=1, order=order, shipment=shipment,
+                          shipment_costs=costs, discounts={"details": []})
+    assert row["frete_comprador"] == Decimal("18.5")
+    assert row["frete_incerto"] is False
+
+
+def test_build_row_frete_ratio_flex():
+    order = _order()
+    shipment = {"shipping_option": {"cost": 0, "list_cost": 0}, "logistic_type": "self_service"}
+    costs = {"receiver": {"discounts": [{"type": "ratio"}]},
+             "senders": [{"cost": 3.0, "save": 7.25}]}
+    row = build_order_row(seller_id=1, order=order, shipment=shipment,
+                          shipment_costs=costs, discounts={"details": []})
+    assert row["frete_comprador"] == Decimal("7.25")
+
+
+def test_build_row_frete_incerto_quando_costs_vazio():
+    order = _order()
+    shipment = {"shipping_option": {"cost": 0, "list_cost": 0}, "logistic_type": "fulfillment"}
+    row = build_order_row(seller_id=1, order=order, shipment=shipment,
+                          shipment_costs={}, discounts={"details": []})
+    # sem costs e fc=0 → marca incerteza (bug 4), não engole como 0 silencioso
+    assert row["frete_incerto"] is True
+
+
+def test_build_row_cupom_seller():
+    order = _order(tags=["order_has_discount"])
+    shipment = {"shipping_option": {"cost": 10, "list_cost": 10}}
+    disc = {"details": [{"type": "coupon", "items": [{"amounts": {"seller": 12.0}}]}]}
+    row = build_order_row(seller_id=1, order=order, shipment=shipment,
+                          shipment_costs={}, discounts=disc)
+    assert row["cupom_seller"] == Decimal("12.0")
+
+
+def test_build_row_refund_parcial_e_cancel_zera():
+    order = _order(payments=[{"transaction_amount_refunded": 30.0}])
+    shipment = {"shipping_option": {"cost": 10, "list_cost": 10}}
+    row = build_order_row(seller_id=1, order=order, shipment=shipment,
+                          shipment_costs={}, discounts={"details": []})
+    assert row["refund_amount_partial"] == Decimal("30.0")
+
+    order_cancel = _order(status="cancelled", payments=[{"transaction_amount_refunded": 100.0}])
+    row2 = build_order_row(seller_id=1, order=order_cancel, shipment=shipment,
+                           shipment_costs={}, discounts={"details": []})
+    assert row2["refund_amount_partial"] == Decimal("0")
