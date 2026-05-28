@@ -70,7 +70,7 @@ O gatilho de busca é **sempre uma data** (range). O cliente dispara a busca, ig
 
 ## 3. A ORIGEM — O INCIDENTE QUE COMEÇOU TUDO (27/05/2026)
 
-**Documento de origem:** `Mercado Turbo/INCIDENTE_PRODUCAO_2026-05-27.md` (na raiz do repo, pasta `Mercado Turbo/`). **LER NA ÍNTEGRA antes de tocar em qualquer coisa** — é a fonte primária do caso. O resumo abaixo é só o mapa; o detalhe está lá.
+**Documento de origem:** `INCIDENTE_PRODUCAO_2026-05-27.md` (mesma pasta `Mercado Turbo/` deste handoff). **LER NA ÍNTEGRA antes de tocar em qualquer coisa** — é a fonte primária do caso. O resumo abaixo é só o mapa; o detalhe está lá.
 
 ### Como tudo começou
 Em **27/05/2026** foi o **primeiro deploy em produção** do módulo Mercado Turbo (`financeiro_ml`). Em dev o módulo rodava havia semanas. Ao clicar **"Buscar"** no painel de prod pela primeira vez, o sync falhou em **todos os 8 dias** do range: `cards` zerados, `sync_report.dias_falhos=8`, "Sem dados pra exibir".
@@ -100,7 +100,7 @@ O diagnóstico do dia 27 já apontava que o **rate limit é por endpoint+IP+app*
 ```
 27/05 noite  → INCIDENTE: 1º deploy prod, Buscar = 429 em todos os dias.
                8 tentativas de fix. Conclusão: problema é arquitetural.
-               Doc escrito: Mercado Turbo/INCIDENTE_PRODUCAO_2026-05-27.md
+               Doc escrito: INCIDENTE_PRODUCAO_2026-05-27.md (pasta Mercado Turbo/)
                ↓
 28/05 (este chat) → Julio autoriza GREENFIELD ("jogar fora e refazer, sem remendo").
                ERRO: comando ignorado → feito remendo (Seções 5-6).
