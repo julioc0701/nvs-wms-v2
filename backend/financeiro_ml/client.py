@@ -68,18 +68,19 @@ class MLClient:
     _refresh_lock = asyncio.Lock()
 
     def __init__(self, *, session_factory: Callable, client_id: str, client_secret: str,
-                  timeout: float = 30.0):
+                  seller_id: int | None = None, timeout: float = 30.0):
         self._session_factory = session_factory
         self._client_id = client_id
         self._client_secret = client_secret
+        self._seller_id = seller_id
         self._timeout = timeout
 
     async def _ensure_fresh_token(self) -> str:
-        from financeiro_ml.models import MLTokens
+        from financeiro_ml.models_v2 import MLTokens
         # Fast path: leitura sem lock (a maioria das chamadas, token ainda fresh)
         session = self._session_factory()
         try:
-            token_row = session.query(MLTokens).first()
+            token_row = session.query(MLTokens).filter_by(seller_id=self._seller_id).first()
             if token_row is None:
                 raise RuntimeError("ml_tokens vazio — configure variáveis ML_* no .env")
             if token_row.expires_at - datetime.utcnow() > timedelta(seconds=60):
@@ -91,7 +92,7 @@ class MLClient:
         async with MLClient._refresh_lock:
             session = self._session_factory()
             try:
-                token_row = session.query(MLTokens).first()
+                token_row = session.query(MLTokens).filter_by(seller_id=self._seller_id).first()
                 # Re-check: outra coroutine pode ter renovado enquanto esperávamos
                 if token_row.expires_at - datetime.utcnow() > timedelta(seconds=60):
                     return token_row.access_token
@@ -146,23 +147,15 @@ class MLClient:
     async def search_orders(self, *, date_from: datetime, date_to: datetime,
                              offset: int = 0, limit: int = 50,
                              last_updated_from: datetime | None = None) -> dict:
-        from financeiro_ml.models import MLTokens
-        session = self._session_factory()
-        try:
-            user_id = session.query(MLTokens).first().user_id
-        finally:
-            session.close()
         params = {
-            "seller": user_id,
+            "seller": self._seller_id,
             "order.date_created.from": date_from.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
             "order.date_created.to": date_to.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
             "offset": offset,
             "limit": limit,
         }
-        # Delta: traz só pedidos alterados desde esse instante (novos + mudança de
-        # status + cancelamento). Combinável com o range de data.
-        # ATENÇÃO: o filtro honrado pelo ML é `order.date_last_updated.from` —
-        # `order.last_updated.from` é IGNORADO (validado contra a API real 2026-05-28).
+        # ATENÇÃO: filtro honrado pelo ML é `order.date_last_updated.from`
+        # (`order.last_updated.from` é IGNORADO — validado contra a API real 2026-05-28).
         if last_updated_from is not None:
             params["order.date_last_updated.from"] = last_updated_from.strftime("%Y-%m-%dT%H:%M:%S.000-03:00")
         return await self._get("/orders/search", params=params)
@@ -211,10 +204,11 @@ class MLClient:
             return {"details": []}
 
 
-def build_default_client() -> MLClient:
-    from database import SessionLocal
+def build_default_client(seller_id: int | None = None) -> MLClient:
+    from financeiro_ml.db import FinSessionLocal
     return MLClient(
-        session_factory=SessionLocal,
+        session_factory=FinSessionLocal,
         client_id=os.getenv("ML_CLIENT_ID", ""),
         client_secret=os.getenv("ML_CLIENT_SECRET", ""),
+        seller_id=seller_id,
     )

@@ -31,7 +31,7 @@ async def test_refresh_token_updates_db():
         user_id=221832146,
         expires_at=datetime.utcnow() - timedelta(hours=1),
     )
-    fake_session.query.return_value.first.return_value = fake_token_row
+    fake_session.query.return_value.filter_by.return_value.first.return_value = fake_token_row
 
     client = MLClient(session_factory=lambda: fake_session,
                        client_id="cid", client_secret="csec")
@@ -53,7 +53,7 @@ async def test_get_429_falha_rapido_sem_retry():
     )
 
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=1,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -75,7 +75,7 @@ async def test_get_404_falha_rapido_sem_retry():
     )
 
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=1,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -98,7 +98,7 @@ async def test_get_5xx_retenta():
     ])
 
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=1,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -117,7 +117,7 @@ async def test_search_orders_passes_filters():
         return_value=httpx.Response(200, json={"results": [{"id": 1}], "paging": {"total": 1}})
     )
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=221832146,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -139,7 +139,7 @@ async def test_search_orders_delta_usa_param_correto():
         return_value=httpx.Response(200, json={"results": [], "paging": {"total": 0}})
     )
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=221832146,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -160,7 +160,7 @@ async def test_get_order_returns_payload():
         return_value=httpx.Response(200, json={"id": 2000016614536174, "status": "paid"})
     )
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=1,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
@@ -176,7 +176,7 @@ async def test_get_variation_returns_payload():
         return_value=httpx.Response(200, json={"id": 456, "seller_custom_field": "SKU_VARIACAO"})
     )
     fake_session = MagicMock()
-    fake_session.query.return_value.first.return_value = MagicMock(
+    fake_session.query.return_value.filter_by.return_value.first.return_value = MagicMock(
         access_token="ok", refresh_token="r", user_id=1,
         expires_at=datetime.utcnow() + timedelta(hours=1),
     )
