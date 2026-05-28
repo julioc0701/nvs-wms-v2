@@ -166,6 +166,29 @@ class MLClient:
             params["order.date_last_updated.from"] = last_updated_from.strftime("%Y-%m-%dT%H:%M:%S.000-03:00")
         return await self._get("/orders/search", params=params)
 
+    async def scan_orders(self, *, date_from, date_to):
+        """Gera orders via search_type=scan + scroll_id (sem teto de offset).
+        Serial, concorrência=1. Não misturar com offset/limit."""
+        params = {
+            "seller": self._seller_id,
+            "search_type": "scan",
+            "order.date_created.from": date_from.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+            "order.date_created.to": date_to.strftime("%Y-%m-%dT%H:%M:%S.000-03:00"),
+        }
+        scroll_id = None
+        while True:
+            if scroll_id:
+                params["scroll_id"] = scroll_id
+            page = await self._get("/orders/search", params=params)
+            results = page.get("results", [])
+            scroll_id = page.get("scroll_id")
+            if not results:
+                break
+            for o in results:
+                yield o
+            if not scroll_id:
+                break
+
     async def get_shipment(self, shipment_id: int) -> dict:
         return await self._get(f"/shipments/{shipment_id}")
 
