@@ -36,6 +36,11 @@ async def _global_throttle() -> None:
 
 
 class MLClient:
+    # Lock global (módulo-level): serializa refresh de token entre TODAS as instâncias
+    # do MLClient. Evita race condition onde N coroutines paralelas usam o mesmo
+    # refresh_token e ML invalida todos menos um → 401 cascade.
+    _refresh_lock = asyncio.Lock()
+
     def __init__(self, *, session_factory: Callable, client_id: str, client_secret: str,
                   timeout: float = 30.0):
         self._session_factory = session_factory
@@ -45,37 +50,47 @@ class MLClient:
 
     async def _ensure_fresh_token(self) -> str:
         from financeiro_ml.models import MLTokens
+        # Fast path: leitura sem lock (a maioria das chamadas, token ainda fresh)
         session = self._session_factory()
         try:
             token_row = session.query(MLTokens).first()
             if token_row is None:
                 raise RuntimeError("ml_tokens vazio — configure variáveis ML_* no .env")
-
-            # Renova se faltam menos de 60s pra expirar
             if token_row.expires_at - datetime.utcnow() > timedelta(seconds=60):
                 return token_row.access_token
-
-            async with httpx.AsyncClient(timeout=self._timeout) as http:
-                resp = await http.post(
-                    f"{ML_BASE}/oauth/token",
-                    data={
-                        "grant_type": "refresh_token",
-                        "client_id": self._client_id,
-                        "client_secret": self._client_secret,
-                        "refresh_token": token_row.refresh_token,
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-
-            token_row.access_token = data["access_token"]
-            token_row.refresh_token = data["refresh_token"]
-            token_row.expires_at = datetime.utcnow() + timedelta(seconds=int(data.get("expires_in", 21600)))
-            token_row.updated_at = datetime.utcnow()
-            session.commit()
-            return token_row.access_token
         finally:
             session.close()
+
+        # Slow path: token precisa renovar. Serializa via lock.
+        async with MLClient._refresh_lock:
+            session = self._session_factory()
+            try:
+                token_row = session.query(MLTokens).first()
+                # Re-check: outra coroutine pode ter renovado enquanto esperávamos
+                if token_row.expires_at - datetime.utcnow() > timedelta(seconds=60):
+                    return token_row.access_token
+
+                async with httpx.AsyncClient(timeout=self._timeout) as http:
+                    resp = await http.post(
+                        f"{ML_BASE}/oauth/token",
+                        data={
+                            "grant_type": "refresh_token",
+                            "client_id": self._client_id,
+                            "client_secret": self._client_secret,
+                            "refresh_token": token_row.refresh_token,
+                        },
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                token_row.access_token = data["access_token"]
+                token_row.refresh_token = data["refresh_token"]
+                token_row.expires_at = datetime.utcnow() + timedelta(seconds=int(data.get("expires_in", 21600)))
+                token_row.updated_at = datetime.utcnow()
+                session.commit()
+                return token_row.access_token
+            finally:
+                session.close()
 
     @retry(
         retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TimeoutException)),
