@@ -35,3 +35,28 @@ def upsert_order_row(session_factory, row: dict) -> None:
         s.commit()
     finally:
         s.close()
+
+
+def set_day_status(session_factory, *, seller_id: int, day, status: str,
+                   orders_count: int = 0, error_message: str | None = None,
+                   retry_after_sec: int | None = None) -> None:
+    from financeiro_ml.models_v2 import MLDaySyncStatus
+    from datetime import timedelta
+    s = session_factory()
+    try:
+        row = s.query(MLDaySyncStatus).filter_by(seller_id=seller_id, day=day).first()
+        next_retry = (datetime.utcnow() + timedelta(seconds=retry_after_sec)) if retry_after_sec else None
+        if row is None:
+            row = MLDaySyncStatus(seller_id=seller_id, day=day, last_synced_at=datetime.utcnow(),
+                                  orders_count=orders_count, status=status,
+                                  error_message=error_message, next_retry_at=next_retry)
+            s.add(row)
+        else:
+            row.last_synced_at = datetime.utcnow()
+            row.orders_count = orders_count
+            row.status = status
+            row.error_message = error_message
+            row.next_retry_at = next_retry
+        s.commit()
+    finally:
+        s.close()

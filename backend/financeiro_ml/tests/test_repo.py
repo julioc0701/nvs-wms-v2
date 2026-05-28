@@ -48,3 +48,27 @@ def test_upsert_isolates_by_seller(fin_db):
     s = db.FinSessionLocal()
     assert s.query(m.MLOrderCache).count() == 2  # mesmo order_id, sellers diferentes
     s.close()
+
+
+from datetime import date, timedelta
+
+def test_set_day_status_ok(fin_db):
+    db, m = fin_db
+    from financeiro_ml.repo import set_day_status
+    set_day_status(db.FinSessionLocal, seller_id=1, day=date(2026,5,20), status="ok", orders_count=42)
+    s = db.FinSessionLocal()
+    row = s.query(m.MLDaySyncStatus).filter_by(seller_id=1, day=date(2026,5,20)).first()
+    assert row.status == "ok" and row.orders_count == 42
+    s.close()
+
+
+def test_set_day_status_rate_limited_sets_retry(fin_db):
+    db, m = fin_db
+    from financeiro_ml.repo import set_day_status
+    set_day_status(db.FinSessionLocal, seller_id=1, day=date(2026,5,20),
+                   status="rate_limited", orders_count=0, retry_after_sec=300)
+    s = db.FinSessionLocal()
+    row = s.query(m.MLDaySyncStatus).filter_by(seller_id=1, day=date(2026,5,20)).first()
+    assert row.status == "rate_limited"
+    assert row.next_retry_at is not None
+    s.close()
