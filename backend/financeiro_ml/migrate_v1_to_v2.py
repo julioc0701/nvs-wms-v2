@@ -92,3 +92,15 @@ def migrate(*, v1_db_path: str, seller_id: int) -> dict:
         s.close()
         src.dispose()
     return report
+
+
+if __name__ == "__main__":
+    import argparse
+    from financeiro_ml.db import init_fin_db
+    parser = argparse.ArgumentParser(description="Migra dados financeiro ML v1 -> v2")
+    parser.add_argument("--v1-db", required=True, help="caminho do .db v1 (ex: ./warehouse_v3_local.db)")
+    parser.add_argument("--seller-id", type=int, required=True, help="user_id ML do seller default")
+    args = parser.parse_args()
+    init_fin_db()
+    rep = migrate(v1_db_path=args.v1_db, seller_id=args.seller_id)
+    print(f"[migrate] {rep}")
