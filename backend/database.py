@@ -776,4 +776,26 @@ def init_db():
                 conn.commit()
         except Exception:
             pass
+
+        # ── FINANCEIRO ML: cursor de delta + dedup de itens ──
+        tables = insp.get_table_names()
+        if "ml_orders_cache" in tables:
+            ml_cols = [c["name"] for c in insp.get_columns("ml_orders_cache")]
+            if "date_last_updated" not in ml_cols:
+                conn.execute(text("ALTER TABLE ml_orders_cache ADD COLUMN date_last_updated DATETIME"))
+                conn.commit()
+                print("--- DATABASE MIGRATION: date_last_updated added to ml_orders_cache ---")
+        if "ml_order_items_cache" in tables:
+            # UNIQUE(order_id,item_id) garante upsert idempotente do item.
+            # Em try/except: se houver duplicata legada, não derruba o boot.
+            try:
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_ml_item_order_item "
+                    "ON ml_order_items_cache (order_id, item_id)"
+                ))
+                conn.commit()
+                print("--- DATABASE MIGRATION: unique(order_id,item_id) em ml_order_items_cache ---")
+            except Exception as exc:
+                print(f"--- DATABASE MIGRATION: unique ml_order_items_cache PULADA ({exc}) ---")
+
         conn.commit()

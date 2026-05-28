@@ -46,7 +46,7 @@ def _days_needing_sync(days: list[date], statuses: dict[date, object]) -> list[d
         if st is None:
             needed.append(d)
             continue
-        if st.status == "failed":
+        if st.status != "ok":  # failed, rate_limited, parcial → re-tenta
             needed.append(d)
             continue
         if d == today:
@@ -67,7 +67,7 @@ from decimal import Decimal
 
 from database import SessionLocal
 from financeiro_ml.models import MLDaySyncStatus, MLOrderCache, MLOrderItemCache
-from financeiro_ml.client import build_default_client
+from financeiro_ml.client import build_default_client, MLRateLimited
 
 
 async def ensure_period_synced(date_from: date, date_to: date) -> dict:
@@ -102,23 +102,46 @@ async def ensure_period_synced(date_from: date, date_to: date) -> dict:
         trace.info("sync.cache_hit (todos os dias estao fresh)")
         return {"dias_sincronizados": 0, "dias_falhos": 0, "total_orders": 0}
 
-    max_parallel = int(os.getenv("ML_SYNC_MAX_DAYS_PARALLEL", "5"))
-    sem = asyncio.Semaphore(max_parallel)
     client = build_default_client()
+    sucessos = 0
+    falhas = 0
+    total = 0
+    rate_limited = False
 
-    async def sync_one(d: date):
-        async with sem:
-            return await _sync_single_day(client, d)
+    # Dias SEQUENCIAIS + circuit breaker. O throttle global já serializa as chamadas,
+    # então paralelismo de dias não acelera e só arrisca rajada. Ao primeiro 429,
+    # paramos: os dias restantes ficam pendentes (status != ok) e re-tentam depois.
+    for d in needed:
+        st = statuses.get(d)
+        # DELTA: se o dia já foi sincronizado com sucesso, busca só o que mudou desde
+        # então (novos + mudança de status + cancelamento). Senão, carga completa.
+        cursor = st.last_synced_at if (st is not None and st.status == "ok") else None
+        try:
+            r = await _sync_single_day(client, d, last_updated_from=cursor)
+        except MLRateLimited:
+            rate_limited = True
+            trace.warning(f"sync.freio 429 no dia {d} — parando; dias restantes ficam pendentes")
+            break
+        if r.get("status") == "ok":
+            sucessos += 1
+        else:
+            falhas += 1
+        total += r.get("orders_count", 0)
 
-    results = await asyncio.gather(*[sync_one(d) for d in needed], return_exceptions=True)
-    sucessos = sum(1 for r in results if isinstance(r, dict) and r.get("status") == "ok")
-    falhas = len(results) - sucessos
-    total = sum(r.get("orders_count", 0) for r in results if isinstance(r, dict))
-    return {"dias_sincronizados": sucessos, "dias_falhos": falhas, "total_orders": total}
+    return {
+        "dias_sincronizados": sucessos,
+        "dias_falhos": falhas,
+        "total_orders": total,
+        "rate_limited": rate_limited,
+    }
 
 
-async def _sync_single_day(client, d: date) -> dict:
-    """Sincroniza um dia: busca orders, detalha cada um, insere no cache."""
+async def _sync_single_day(client, d: date, last_updated_from: datetime | None = None) -> dict:
+    """Sincroniza um dia: busca orders, detalha cada um, insere no cache.
+
+    Se `last_updated_from` for informado → DELTA: traz só pedidos alterados desde então
+    (novos + mudança de status + cancelamento). Senão → carga completa por date_created.
+    """
     import logging, time as time_module
     trace = logging.getLogger("financeiro_ml.trace")
 
@@ -129,12 +152,13 @@ async def _sync_single_day(client, d: date) -> dict:
     try:
         offset = 0
         while True:
-            page = await client.search_orders(date_from=inicio, date_to=fim, offset=offset, limit=50)
+            page = await client.search_orders(date_from=inicio, date_to=fim, offset=offset,
+                                              limit=50, last_updated_from=last_updated_from)
             results = page.get("results", [])
             if not results:
                 break
-            # Paralelismo dentro da página com semáforo configurável
-            max_parallel_orders = int(os.getenv("ML_SYNC_MAX_ORDERS_PARALLEL", "10"))
+            # Paralelismo BAIXO dentro da página (o throttle global é o gate real de ritmo).
+            max_parallel_orders = int(os.getenv("ML_SYNC_MAX_ORDERS_PARALLEL", "4"))
             order_sem = asyncio.Semaphore(max_parallel_orders)
 
             async def _bounded(o):
@@ -145,6 +169,10 @@ async def _sync_single_day(client, d: date) -> dict:
             page_results = await asyncio.gather(*[_bounded(o) for o in results], return_exceptions=True)
             # Loga exceções engolidas (rate limit, timeout, payload inesperado, etc)
             errors = [(results[i]["id"], r) for i, r in enumerate(page_results) if isinstance(r, Exception)]
+            # 429 num pedido → freio imediato (não engole, propaga pro circuit breaker).
+            for _, err in errors:
+                if isinstance(err, MLRateLimited):
+                    raise err
             for oid, err in errors:
                 trace.warning(f"sync.day[{d}] order_err id={oid} type={type(err).__name__} msg={str(err)[:200]}")
             ok_count = len(results) - len(errors)
@@ -174,6 +202,23 @@ async def _sync_single_day(client, d: date) -> dict:
             f"ms_total={(time_module.perf_counter()-t_day)*1000:.0f}"
         )
         return {"status": "ok", "orders_count": orders_count}
+    except MLRateLimited:
+        # Freio: marca o dia como pendente (re-tenta depois) e propaga pro orquestrador parar.
+        with SessionLocal() as session:
+            st = session.query(MLDaySyncStatus).filter_by(day=d).first()
+            if st is None:
+                st = MLDaySyncStatus(day=d, last_synced_at=datetime.utcnow(),
+                                       orders_count=orders_count, status="rate_limited",
+                                       error_message="429 Too Many Requests")
+                session.add(st)
+            else:
+                st.last_synced_at = datetime.utcnow()
+                st.orders_count = orders_count
+                st.status = "rate_limited"
+                st.error_message = "429 Too Many Requests"
+            session.commit()
+        trace.warning(f"sync.day[{d}] RATE_LIMITED (429) — parcial orders={orders_count}")
+        raise
     except Exception as e:
         import traceback
         trace.exception(f"sync.day[{d}] FAILED type={type(e).__name__} msg={e}")
@@ -329,6 +374,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
                 order_id=order_id,
                 date_created=_to_brt_naive(detail["date_created"]),
                 date_closed=_to_brt_naive(detail.get("date_closed")),
+                date_last_updated=_to_brt_naive(detail.get("last_updated") or detail.get("date_last_updated")),
                 status=detail["status"],
                 status_detail=detail.get("status_detail"),
                 produto_total=produto_total,
@@ -350,6 +396,7 @@ async def _save_order(client, search_result: dict, *, force_refresh: bool = Fals
         else:
             existing.date_created = _to_brt_naive(detail["date_created"])
             existing.date_closed = _to_brt_naive(detail.get("date_closed"))
+            existing.date_last_updated = _to_brt_naive(detail.get("last_updated") or detail.get("date_last_updated"))
             existing.status = detail["status"]
             existing.status_detail = detail.get("status_detail")
             existing.produto_total = produto_total

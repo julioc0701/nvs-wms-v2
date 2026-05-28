@@ -1,5 +1,5 @@
 from datetime import datetime, date
-from sqlalchemy import Integer, String, Text, DateTime, Date, ForeignKey, Numeric
+from sqlalchemy import Integer, String, Text, DateTime, Date, ForeignKey, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
@@ -35,6 +35,8 @@ class MLOrderCache(Base):
     order_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     date_created: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     date_closed: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Cursor do sync incremental (delta): maior valor cacheado define o "desde quando" buscar.
+    date_last_updated: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     status_detail: Mapped[str | None] = mapped_column(String(100), nullable=True)
     produto_total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, default=0)
@@ -56,6 +58,9 @@ class MLOrderCache(Base):
 
 class MLOrderItemCache(Base):
     __tablename__ = "ml_order_items_cache"
+    __table_args__ = (
+        UniqueConstraint("order_id", "item_id", name="uq_ml_item_order_item"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     order_id: Mapped[int] = mapped_column(ForeignKey("ml_orders_cache.order_id"), nullable=False, index=True)

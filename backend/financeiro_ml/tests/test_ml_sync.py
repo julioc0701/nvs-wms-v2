@@ -145,3 +145,51 @@ async def test_save_order_uses_variation_seller_sku():
     with SessionLocal() as s:
         item = s.query(MLOrderItemCache).filter_by(order_id=456).one()
         assert item.seller_sku == "SKU_VARIACAO"
+
+
+@pytest.mark.asyncio
+async def test_sync_day_delta_passa_last_updated():
+    """Em modo delta, _sync_single_day repassa last_updated_from pro search_orders."""
+    from financeiro_ml.sync import _sync_single_day
+    from financeiro_ml.models import MLDaySyncStatus
+
+    captured = {}
+
+    class Cap:
+        async def search_orders(self, **kw):
+            captured.update(kw)
+            return {"results": [], "paging": {"total": 0}}
+
+    cursor = datetime(2026, 5, 28, 10, 0, 0)
+    d = date(2099, 1, 2)
+    try:
+        await _sync_single_day(Cap(), d, last_updated_from=cursor)
+        assert captured.get("last_updated_from") == cursor
+    finally:
+        with SessionLocal() as s:
+            s.query(MLDaySyncStatus).filter_by(day=d).delete(synchronize_session=False)
+            s.commit()
+
+
+@pytest.mark.asyncio
+async def test_sync_day_429_marca_rate_limited_e_propaga():
+    """Circuit breaker: 429 marca o dia como rate_limited e relança MLRateLimited."""
+    from financeiro_ml.sync import _sync_single_day
+    from financeiro_ml.client import MLRateLimited
+    from financeiro_ml.models import MLDaySyncStatus
+
+    class RL:
+        async def search_orders(self, **kw):
+            raise MLRateLimited("/orders/search")
+
+    d = date(2099, 1, 1)
+    try:
+        with pytest.raises(MLRateLimited):
+            await _sync_single_day(RL(), d)
+        with SessionLocal() as s:
+            st = s.query(MLDaySyncStatus).filter_by(day=d).one()
+            assert st.status == "rate_limited"
+    finally:
+        with SessionLocal() as s:
+            s.query(MLDaySyncStatus).filter_by(day=d).delete(synchronize_session=False)
+            s.commit()
