@@ -596,3 +596,37 @@ async def debug_import_cache(
         session.commit()
 
     return {"ok": True, "orders": n_orders, "items": n_items, "days": n_days}
+
+
+# ============ Backfill ============
+
+class BackfillParams(BaseModel):
+    seller_id: int
+    day_from: date
+    day_to: date
+
+
+@router.post("/backfill")
+async def create_backfill(params: BackfillParams, operator_id: int = Depends(require_master)):
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.backfill import create_job
+    from financeiro_ml.worker import BackfillTask, get_write_queue
+    from datetime import timedelta
+    job_id = create_job(FinSessionLocal, seller_id=params.seller_id,
+                        day_from=params.day_from, day_to=params.day_to)
+    days = [params.day_from + timedelta(days=i)
+            for i in range((params.day_to - params.day_from).days + 1)]
+    queue = get_write_queue()
+    if queue is not None:
+        await queue.put(BackfillTask(seller_id=params.seller_id, days=days, job_id=job_id))
+    return {"job_id": job_id}
+
+
+@router.get("/backfill/{job_id}")
+async def get_backfill_status(job_id: int, operator_id: int = Depends(require_master)):
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.backfill import get_job
+    prog = get_job(FinSessionLocal, job_id)
+    if prog is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return prog
