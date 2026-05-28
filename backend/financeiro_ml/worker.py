@@ -146,3 +146,19 @@ class WriteWorker:
                 s.commit()
         finally:
             s.close()
+
+
+def recover_orphan_jobs(session_factory) -> int:
+    """Jobs 'running' órfãos (crash/deploy no meio) → 'pending'. Roda no startup.
+    Copia o padrão de services/sync_engine.recover_stale_runs (sem importar — Tiny-coupled)."""
+    from financeiro_ml.models_v2 import MLBackfillJob
+    s = session_factory()
+    try:
+        rows = s.query(MLBackfillJob).filter_by(status="running").all()
+        for r in rows:
+            r.status = "pending"
+            r.claimed_at = None
+        s.commit()
+        return len(rows)
+    finally:
+        s.close()

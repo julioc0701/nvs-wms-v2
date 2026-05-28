@@ -70,3 +70,18 @@ async def test_worker_single_writer_serializes(fin_db):
     assert s.query(m.MLOrderCache).filter_by(seller_id=1).count() == 1
     assert s.query(m.MLOrderCache).filter_by(seller_id=2).count() == 1
     s.close()
+
+
+def test_recover_orphan_jobs_resets_running_to_pending(fin_db):
+    db, m = fin_db
+    from datetime import date, datetime
+    s = db.FinSessionLocal()
+    s.add(m.MLBackfillJob(seller_id=1, day_from=date(2026,1,1), day_to=date(2026,1,2),
+                          status="running", created_at=datetime.utcnow(), claimed_at=datetime.utcnow()))
+    s.commit(); s.close()
+    from financeiro_ml.worker import recover_orphan_jobs
+    n = recover_orphan_jobs(db.FinSessionLocal)
+    assert n == 1
+    s = db.FinSessionLocal()
+    assert s.query(m.MLBackfillJob).first().status == "pending"
+    s.close()
