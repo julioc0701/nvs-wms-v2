@@ -505,3 +505,94 @@ async def debug_sync_status():
             }
             for r in rows
         ]
+
+
+def _coerce_row(model, d: dict) -> dict:
+    """Converte um dict (vindo de JSON) nos tipos das colunas do model.
+    DateTime/Date viram objetos; Numeric vira Decimal. Ignora colunas ausentes."""
+    from sqlalchemy import DateTime, Date, Numeric
+    from datetime import datetime as _dt, date as _date
+    out = {}
+    for col in model.__table__.columns:
+        if col.name not in d:
+            continue
+        v = d[col.name]
+        if v is not None:
+            if isinstance(col.type, DateTime):
+                v = _dt.fromisoformat(v)
+            elif isinstance(col.type, Date):
+                v = _date.fromisoformat(v)
+            elif isinstance(col.type, Numeric):
+                v = Decimal(str(v))
+        out[col.name] = v
+    return out
+
+
+@router.post("/_debug/import-cache")
+async def debug_import_cache(
+    payload: dict,
+    x_import_secret: str | None = Header(default=None, alias="X-Import-Secret"),
+):
+    """Importa cache ML de outro ambiente (transferência local→prod). Escopado às 3 tabelas
+    ML; UPSERT idempotente. Guard: header X-Import-Secret == ML_CLIENT_SECRET.
+
+    payload = {"orders": [...], "items": [...], "days": [...]}
+    - orders: dicts com colunas de ml_orders_cache (raw_json opcional → default '{}').
+    - items: dicts de ml_order_items_cache (sem 'id'); regravados por order_id (delete+insert).
+    - days: dicts de ml_day_sync_status (chave: day).
+    """
+    import os
+    from database import SessionLocal
+    from financeiro_ml.models import MLOrderCache, MLOrderItemCache, MLDaySyncStatus
+
+    secret = os.getenv("ML_CLIENT_SECRET")
+    if not secret or x_import_secret != secret:
+        raise HTTPException(status_code=403, detail="forbidden")
+
+    orders = payload.get("orders", [])
+    items = payload.get("items", [])
+    days = payload.get("days", [])
+
+    n_orders = n_items = n_days = 0
+    with SessionLocal() as session:
+        # ORDERS (upsert por order_id)
+        for o in orders:
+            row_data = _coerce_row(MLOrderCache, o)
+            row_data.setdefault("raw_json", "{}")
+            oid = row_data["order_id"]
+            existing = session.query(MLOrderCache).filter_by(order_id=oid).first()
+            if existing is None:
+                session.add(MLOrderCache(**row_data))
+            else:
+                for k, v in row_data.items():
+                    setattr(existing, k, v)
+            n_orders += 1
+
+        # ITEMS (regrava por order_id: delete + insert; ignora 'id' de origem)
+        order_ids_with_items = {it.get("order_id") for it in items if it.get("order_id") is not None}
+        if order_ids_with_items:
+            session.query(MLOrderItemCache).filter(
+                MLOrderItemCache.order_id.in_(order_ids_with_items)
+            ).delete(synchronize_session=False)
+        for it in items:
+            row_data = _coerce_row(MLOrderItemCache, it)
+            row_data.pop("id", None)
+            session.add(MLOrderItemCache(**row_data))
+            n_items += 1
+
+        # DAYS (upsert por day)
+        for drow in days:
+            row_data = _coerce_row(MLDaySyncStatus, drow)
+            row_data.pop("id", None)
+            day_val = row_data["day"]
+            existing = session.query(MLDaySyncStatus).filter_by(day=day_val).first()
+            if existing is None:
+                session.add(MLDaySyncStatus(**row_data))
+            else:
+                for k, v in row_data.items():
+                    setattr(existing, k, v)
+            n_days += 1
+
+        session.commit()
+
+    return {"ok": True, "orders": n_orders, "items": n_items, "days": n_days}
