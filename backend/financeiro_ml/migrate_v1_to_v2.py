@@ -19,10 +19,10 @@ def _parse_dt(v):
 def migrate(*, v1_db_path: str, seller_id: int) -> dict:
     from financeiro_ml.db import FinSessionLocal
     from financeiro_ml.models_v2 import (
-        MLOrderCache, MLOrderItemCache, MLDaySyncStatus, MLTokens,
+        MLOrderCache, MLOrderItemCache, MLDaySyncStatus, MLTokens, SkuFinanceiro,
     )
     src = create_engine(f"sqlite:///{v1_db_path}", connect_args={"check_same_thread": False})
-    report = {"orders": 0, "orders_src": 0, "items": 0, "days": 0, "tokens": 0}
+    report = {"orders": 0, "orders_src": 0, "items": 0, "days": 0, "tokens": 0, "skus": 0}
 
     with src.connect() as c:
         order_rows = c.execute(text("SELECT * FROM ml_orders_cache")).mappings().all()
@@ -32,6 +32,10 @@ def migrate(*, v1_db_path: str, seller_id: int) -> dict:
             tok_rows = c.execute(text("SELECT * FROM ml_tokens")).mappings().all()
         except Exception:
             tok_rows = []
+        try:
+            sku_rows = c.execute(text("SELECT * FROM sku_financeiro")).mappings().all()
+        except Exception:
+            sku_rows = []
     report["orders_src"] = len(order_rows)
 
     s = FinSessionLocal()
@@ -77,6 +81,16 @@ def migrate(*, v1_db_path: str, seller_id: int) -> dict:
                 error_message=r["error_message"],
             ))
             report["days"] += 1
+
+        for r in sku_rows:
+            s.merge(SkuFinanceiro(
+                sku=r["sku"],
+                custo_unit=r["custo_unit"] or 0,
+                imposto_pct=r["imposto_pct"] or 0,
+                updated_at=_parse_dt(r["updated_at"]) or datetime.utcnow(),
+                updated_by=r["updated_by"] or 0,
+            ))
+            report["skus"] += 1
 
         for r in tok_rows:
             s.merge(MLTokens(
