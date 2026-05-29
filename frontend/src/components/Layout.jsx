@@ -99,7 +99,6 @@ export default function Layout() {
   ] : isFinanceiroActive && isMaster ? [
     { label: 'Pagamentos',                path: '/financeiro',                icon: Wallet },
     { label: 'Análise Financeira',        path: '/financeiro-ml/resumo',      icon: BarChart2 },
-    { label: 'Análise Financeira (beta)', path: '/financeiro-ml/resumo-v2',   icon: BarChart2 },
     { label: 'Cadastro Custo SKU',        path: '/financeiro-ml/skus',        icon: Tag },
   ] : []
 

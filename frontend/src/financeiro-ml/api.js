@@ -16,23 +16,8 @@ async function jsonOrThrow(res) {
   return res.json()
 }
 
-async function blobOrThrow(res) {
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`${res.status} ${res.statusText} ${text}`)
-  }
-  return res.blob()
-}
-
 export const financeiroMLApi = {
   health: () => fetch(`${BASE}/health`).then(jsonOrThrow),
-
-  getResumo: (filters) =>
-    fetch(`${BASE}/resumo`, {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(filters),
-    }).then(jsonOrThrow),
 
   listSkus: (q = '') =>
     fetch(`${BASE}/skus?q=${encodeURIComponent(q)}`, {
@@ -62,11 +47,4 @@ export const financeiroMLApi = {
     })
     return jsonOrThrow(res)
   },
-
-  exportResumo: (filters, formato = 'excel') =>
-    fetch(`${BASE}/export?formato=${formato}`, {
-      method: 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(filters),
-    }).then(blobOrThrow),
 }

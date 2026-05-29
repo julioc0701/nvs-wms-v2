@@ -21,8 +21,7 @@ import FinanceiroConfirmar from './pages/FinanceiroConfirmar'
 import FinanceiroPainel from './pages/FinanceiroPainel'
 import FinanceiroBoletoDetalhe from './pages/FinanceiroBoletoDetalhe'
 import FinanceiroLancamentoManual from './pages/FinanceiroLancamentoManual'
-import FinanceiroMLResumo from './financeiro-ml/pages/Resumo'
-import FinanceiroMLResumoV2 from './financeiro-ml-v2/pages/Resumo'
+import FinanceiroMLResumo from './financeiro-ml-v2/pages/Resumo'
 import FinanceiroMLSkus from './financeiro-ml/pages/Skus'
 
 function AppRoutes() {
@@ -56,7 +55,7 @@ function AppRoutes() {
           <Route path="/financeiro/boleto/:id" element={<FinanceiroBoletoDetalhe />} />
           <Route path="/financeiro/lancamento-manual" element={<FinanceiroLancamentoManual />} />
           <Route path="/financeiro-ml/resumo" element={<FinanceiroMLResumo />} />
-          <Route path="/financeiro-ml/resumo-v2" element={<FinanceiroMLResumoV2 />} />
+          <Route path="/financeiro-ml/resumo-v2" element={<Navigate to="/financeiro-ml/resumo" replace />} />
           <Route path="/financeiro-ml/skus" element={<FinanceiroMLSkus />} />
         </Route>
         <Route path="*" element={<Navigate to="/" />} />
