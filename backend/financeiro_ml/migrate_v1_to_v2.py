@@ -108,6 +108,46 @@ def migrate(*, v1_db_path: str, seller_id: int) -> dict:
     return report
 
 
+def _main_db_path() -> str | None:
+    """Caminho do .db principal (v1) a partir de DATABASE_URL. None se não-sqlite."""
+    import os
+    url = os.getenv("DATABASE_URL", "sqlite:///./warehouse_v3_local.db")
+    if url.startswith("sqlite:////"):
+        return url.replace("sqlite:////", "/")
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "")
+    return None
+
+
+def maybe_migrate_on_boot() -> dict:
+    """Migração one-shot no boot (prod). Idempotente via guard: só roda se o banco
+    isolado ainda não tem orders do seller. Lê do banco principal (DATABASE_URL).
+    Nunca re-busca no ML. Falha não derruba o app (chamador trata)."""
+    import os
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.models_v2 import MLOrderCache
+
+    seller_env = os.getenv("ML_USER_ID")
+    if not seller_env:
+        return {"status": "skipped", "reason": "ML_USER_ID ausente"}
+    seller_id = int(seller_env)
+
+    s = FinSessionLocal()
+    try:
+        already = s.query(MLOrderCache).filter_by(seller_id=seller_id).count()
+    finally:
+        s.close()
+    if already > 0:
+        return {"status": "skipped", "reason": "já migrado", "orders": already}
+
+    v1_path = _main_db_path()
+    if not v1_path or not os.path.exists(v1_path):
+        return {"status": "skipped", "reason": "banco v1 inexistente"}
+
+    rep = migrate(v1_db_path=v1_path, seller_id=seller_id)
+    return {"status": "migrated", **rep}
+
+
 if __name__ == "__main__":
     import argparse
     from financeiro_ml.db import init_fin_db

@@ -186,6 +186,12 @@ def start_financeiro_ml_runtime():
     if _RUNTIME.get("started"):
         return _RUNTIME
     init_fin_db()
+    try:
+        from financeiro_ml.migrate_v1_to_v2 import maybe_migrate_on_boot
+        res = maybe_migrate_on_boot()
+        log.info("financeiro-ml boot migration: %s", res)
+    except Exception:
+        log.exception("financeiro-ml boot migration falhou — robô segue com dados existentes")
     recover_orphan_jobs(FinSessionLocal)
     queue = asyncio.Queue()
     worker = WriteWorker(session_factory=FinSessionLocal,
