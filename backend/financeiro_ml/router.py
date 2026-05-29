@@ -625,3 +625,60 @@ async def get_backfill_status(job_id: int, operator_id: int = Depends(require_ma
     if prog is None:
         raise HTTPException(status_code=404, detail="job não encontrado")
     return prog
+
+
+class OAuthExchangeParams(BaseModel):
+    code: str
+
+
+@router.post("/_debug/ml-oauth-exchange")
+async def ml_oauth_exchange(params: OAuthExchangeParams, operator_id: int = Depends(require_master)):
+    """Troca um authorization code do ML por tokens novos e grava no banco ISOLADO.
+    Usa ML_CLIENT_ID/SECRET/REDIRECT_URI/USER_ID do ambiente. Nunca ecoa os tokens."""
+    import os
+    import httpx
+    from datetime import datetime, timedelta
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.models_v2 import MLTokens
+
+    client_id = os.getenv("ML_CLIENT_ID")
+    client_secret = os.getenv("ML_CLIENT_SECRET")
+    redirect_uri = os.getenv("ML_REDIRECT_URI")
+    user_id = os.getenv("ML_USER_ID")
+    if not (client_id and client_secret and redirect_uri and user_id):
+        raise HTTPException(status_code=400,
+                            detail="env ML_CLIENT_ID/SECRET/REDIRECT_URI/USER_ID ausente")
+
+    async with httpx.AsyncClient(timeout=20) as http:
+        resp = await http.post(
+            "https://api.mercadolibre.com/oauth/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "code": params.code,
+                "redirect_uri": redirect_uri,
+            },
+        )
+    if resp.status_code != 200:
+        ct = resp.headers.get("content-type", "")
+        return {"ok": False, "ml_status": resp.status_code,
+                "ml_error": resp.json() if ct.startswith("application/json") else resp.text[:300]}
+
+    data = resp.json()
+    seller_id = int(user_id)
+    s = FinSessionLocal()
+    try:
+        row = s.query(MLTokens).filter_by(seller_id=seller_id).first()
+        if row is None:
+            row = MLTokens(seller_id=seller_id)
+            s.add(row)
+        row.access_token = data["access_token"]
+        row.refresh_token = data["refresh_token"]
+        row.expires_at = datetime.utcnow() + timedelta(seconds=int(data.get("expires_in", 21600)))
+        row.client_id = client_id
+        row.updated_at = datetime.utcnow()
+        s.commit()
+    finally:
+        s.close()
+    return {"ok": True, "seller_id": seller_id, "expires_in": data.get("expires_in")}
