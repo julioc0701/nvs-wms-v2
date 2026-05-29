@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 import logging
 from datetime import datetime, timedelta
 from typing import Callable
@@ -45,6 +46,13 @@ def _is_retryable(exc: BaseException) -> bool:
 # Default 0.25s entre chamadas = 4 req/s = 240/min — margem abaixo do teto (~300/min
 # por Client ID + endpoint). Ajustável via env.
 _THROTTLE_INTERVAL = float(os.getenv("ML_THROTTLE_INTERVAL_SEC", "0.25"))
+
+# Backoff exponencial + full jitter no 429 (SPEC §6). Re-tenta a MESMA chamada
+# algumas vezes com espera crescente antes de desistir (lançar MLRateLimited).
+# Não é o retry agressivo do incidente (tenacity 6x rápido) — é espaçado + jitter.
+_R429_BASE_SEC = float(os.getenv("ML_429_BACKOFF_BASE_SEC", "2"))
+_R429_CAP_SEC = float(os.getenv("ML_429_BACKOFF_CAP_SEC", "60"))
+_R429_MAX_ATTEMPTS = int(os.getenv("ML_429_MAX_ATTEMPTS", "5"))
 _throttle_lock = asyncio.Lock()
 _throttle_last = 0.0
 
@@ -132,17 +140,26 @@ class MLClient:
         reraise=True,
     )
     async def _get(self, path: str, params: dict | None = None) -> dict:
-        await _global_throttle()
-        token = await self._ensure_fresh_token()
-        async with httpx.AsyncClient(timeout=self._timeout) as http:
-            resp = await http.get(
-                f"{ML_BASE}{path}",
-                params=params,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            # 429 → freio (não retenta, lança sinal pro orquestrador).
+        attempt = 0
+        while True:
+            await _global_throttle()
+            token = await self._ensure_fresh_token()
+            async with httpx.AsyncClient(timeout=self._timeout) as http:
+                resp = await http.get(
+                    f"{ML_BASE}{path}",
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+            # 429 → backoff exponencial + full jitter; re-tenta a mesma chamada.
+            # Esgotou as tentativas → lança MLRateLimited (orquestrador marca o dia).
             if resp.status_code == 429:
-                raise MLRateLimited(path)
+                attempt += 1
+                if attempt >= _R429_MAX_ATTEMPTS:
+                    raise MLRateLimited(path)
+                delay = random.uniform(0, min(_R429_CAP_SEC, _R429_BASE_SEC * (2 ** attempt)))
+                log.warning("client.429 path=%s attempt=%s — backoff %.1fs", path, attempt, delay)
+                await asyncio.sleep(delay)
+                continue
             # 4xx não-429 → falha na hora (não retentável). 5xx → retenta (via _is_retryable).
             resp.raise_for_status()
             return resp.json()

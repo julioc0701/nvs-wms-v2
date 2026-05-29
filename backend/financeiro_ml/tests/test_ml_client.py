@@ -45,8 +45,14 @@ async def test_refresh_token_updates_db():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_get_429_falha_rapido_sem_retry():
-    """429 NÃO retenta (fail-fast): lança MLRateLimited na 1ª chamada."""
+async def test_get_429_backoff_e_desiste(monkeypatch):
+    """429 retenta com backoff+jitter (SPEC §6) e desiste após o máximo,
+    lançando MLRateLimited. NÃO é retry storm: limitado a _R429_MAX_ATTEMPTS."""
+    import financeiro_ml.client as client_mod
+    # sem espera real no teste
+    async def _no_sleep(*_a, **_k):
+        return None
+    monkeypatch.setattr(client_mod.asyncio, "sleep", _no_sleep)
 
     route = respx.get("https://api.mercadolibre.com/orders/123").mock(
         return_value=httpx.Response(429)
@@ -62,7 +68,7 @@ async def test_get_429_falha_rapido_sem_retry():
     with pytest.raises(MLRateLimited):
         await client._get("/orders/123")
 
-    assert route.call_count == 1  # sem retry storm
+    assert route.call_count == client_mod._R429_MAX_ATTEMPTS  # backoff limitado, sem loop infinito
 
 
 @pytest.mark.asyncio
