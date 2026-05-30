@@ -703,12 +703,20 @@ async def probe_search(params: ProbeSearchParams, operator_id: int = Depends(req
     s = FinSessionLocal()
     try:
         tok = s.query(MLTokens).filter_by(seller_id=seller_id).first()
-        if tok is None:
-            raise HTTPException(status_code=400, detail="sem token no banco isolado")
-        access_token = tok.access_token
-        token_client_id = tok.client_id
+        token_client_id = tok.client_id if tok else None
+        has_token = tok is not None
     finally:
         s.close()
+    if not has_token:
+        raise HTTPException(status_code=400, detail="sem token no banco isolado")
+
+    # garante token FRESCO (refresca se expirado) — também testa se o refresh_token ainda vive
+    from financeiro_ml.client import build_default_client
+    try:
+        access_token = await build_default_client(seller_id=seller_id)._ensure_fresh_token()
+    except Exception as exc:
+        return {"step": "refresh_falhou", "token_client_id": token_client_id,
+                "error": f"{type(exc).__name__}: {str(exc)[:300]}"}
 
     day = params.data
     q = {
@@ -731,6 +739,7 @@ async def probe_search(params: ProbeSearchParams, operator_id: int = Depends(req
     diag_keys = ("content-type", "retry-after", "cf-ray", "cf-mitigated", "server",
                  "via", "x-cache", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset")
     return {
+        "step": "search",
         "status": resp.status_code,
         "http_version": resp.http_version,
         "egress_ip": egress_ip,
