@@ -185,3 +185,36 @@ async def test_poll_skips_fresh_recent_day(fin_db):
     q = asyncio.Queue(); await q.put(PollTask(seller_id=1, days=[today]))
     runner = asyncio.create_task(worker.run(q)); await q.join(); worker.stop(); await runner
     assert fc.search_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_poll_continues_after_429_and_processes_newest_first(fin_db):
+    """429 num dia-buraco não trava o ciclo; dias recentes são vistos primeiro."""
+    db, m = fin_db
+    from financeiro_ml.worker import WriteWorker, PollTask
+    from financeiro_ml.client import MLRateLimited
+
+    class FC:
+        def __init__(self): self.days_seen = []
+        async def search_orders(self, *, date_from, date_to, offset=0, limit=50, last_updated_from=None):
+            self.days_seen.append(date_from.date())
+            if date_from.date() == date(2026, 5, 19):
+                raise MLRateLimited("/orders/search")
+            return {"results": [_order_payload(date_from.day * 100 + 1)]} if offset == 0 else {"results": []}
+        async def get_shipment(self, sid):
+            return {"shipping_option": {"cost": 5, "list_cost": 5}, "logistic_type": "drop_off", "mode": "me2"}
+        async def get_shipment_costs(self, sid): return {}
+        async def get_order_discounts(self, oid): return {"details": []}
+
+    fc = FC()
+    worker = WriteWorker(session_factory=db.FinSessionLocal, client_factory=lambda sid: fc)
+    q = asyncio.Queue()
+    await q.put(PollTask(seller_id=1, days=[date(2026, 5, 18), date(2026, 5, 19), date(2026, 5, 20)]))
+    runner = asyncio.create_task(worker.run(q)); await q.join(); worker.stop(); await runner
+    s = db.FinSessionLocal()
+    ok = {r.day for r in s.query(m.MLDaySyncStatus).filter_by(seller_id=1, status="ok").all()}
+    rl = {r.day for r in s.query(m.MLDaySyncStatus).filter_by(seller_id=1, status="rate_limited").all()}
+    s.close()
+    assert date(2026, 5, 18) in ok and date(2026, 5, 20) in ok   # 429 no 19 não bloqueou
+    assert date(2026, 5, 19) in rl
+    assert fc.days_seen.index(date(2026, 5, 20)) < fc.days_seen.index(date(2026, 5, 18))  # novo→velho

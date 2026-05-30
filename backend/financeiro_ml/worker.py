@@ -65,8 +65,13 @@ class WriteWorker:
             await queue.put(task)  # outro segura o seller — re-enfileira
             return
         client = self._client_factory(task.seller_id)
-        # Poll: pula dias já frescos (freshness). Backfill é explícito → não filtra.
-        days = self._days_needing_sync(task.seller_id, task.days) if task.kind == "poll" else task.days
+        # Poll: pula dias já frescos (freshness) e processa do mais novo → mais velho,
+        # pra dias recentes (leves, importantes) terminarem antes de qualquer dia-buraco.
+        # Backfill é explícito → não filtra nem reordena.
+        if task.kind == "poll":
+            days = sorted(self._days_needing_sync(task.seller_id, task.days), reverse=True)
+        else:
+            days = task.days
         calls0 = ml_call_count()
         try:
             for day in days:
@@ -84,11 +89,14 @@ class WriteWorker:
                     set_day_status(self._sf, seller_id=task.seller_id, day=day,
                                    status="rate_limited", orders_count=0,
                                    error_message="429", retry_after_sec=RATE_LIMIT_COOLDOWN_SEC)
-                    log.warning("worker.429 seller=%s day=%s — parando task", task.seller_id, day)
                     if task.kind == "backfill":
+                        log.warning("worker.429 seller=%s day=%s — abortando backfill", task.seller_id, day)
                         from financeiro_ml.backfill import finish_job
                         finish_job(self._sf, task.job_id, status="failed", error="429 rate limited")
-                    break
+                        break
+                    # poll: um dia-buraco não trava o ciclo — marca rate_limited e segue os outros
+                    log.warning("worker.429 seller=%s day=%s — pulando dia, segue ciclo", task.seller_id, day)
+                    continue
             else:
                 if task.kind == "backfill":
                     from financeiro_ml.backfill import claim_job, finish_job
