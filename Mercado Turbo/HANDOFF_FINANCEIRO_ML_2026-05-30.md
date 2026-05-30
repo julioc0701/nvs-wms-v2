@@ -25,6 +25,61 @@
 
 ---
 
+## ★ ONDE ESTÁ TUDO (localização do projeto)
+
+**Repositório:** `github.com/julioc0701/nvs-wms-v2` (branch de produção: **`main`**).
+**Diretório raiz local (Mac do dono):** `/Users/julio/Documents/Antigra/warehouse-picker v2/`
+**Projeto Railway:** `virtuous-unity` · **URL prod:** `https://nvs-wms-v2-production.up.railway.app`
+
+| O quê | Caminho (relativo à raiz) |
+|---|---|
+| **Backend do módulo** (todo o robô + API) | `backend/financeiro_ml/` |
+| **Testes do módulo** | `backend/financeiro_ml/tests/` (94 testes) |
+| **Frontend do painel novo (oficial)** | `frontend/src/financeiro-ml-v2/` |
+| **Frontend antigo** (só sobrou a tela de Custo SKU) | `frontend/src/financeiro-ml/` |
+| **Rotas/menu do front** | `frontend/src/App.jsx`, `frontend/src/components/Layout.jsx` |
+| **Documentos de estudo/spec/incidente/handoff** | `Mercado Turbo/*.md` |
+| **Plano de execução (31 tasks TDD)** | `docs/superpowers/plans/2026-05-28-financeiro-ml-v2.md` |
+| **Banco principal (app inteiro)** | `DATABASE_URL` → Railway `/data/warehouse_v3_local.db` ; local `backend/warehouse_v3_local.db` |
+| **Banco isolado do financeiro** | `FINANCEIRO_ML_DATABASE_URL` → Railway `/data/financeiro_ml.db` ; local `backend/financeiro_ml.db` |
+| **Migração one-shot** | `backend/financeiro_ml/migrate_v1_to_v2.py` |
+| **Subir ambiente local isolado** | `run_backend_isolado.sh` (porta 8001) + `run_frontend_isolado.sh` (porta 5174) |
+| **Deploy de produção** | `publicar_producao.command` / `.bat` (faz add+commit+push na `main`) |
+| **Config de deploy** | `Dockerfile`, `railway.toml` |
+| **CODEBASE geral** | `CODEBASE.md` na raiz (mapa de arquivos/rotas/modelos) |
+
+**Como rodar os testes:** `cd backend && python -m pytest financeiro_ml/tests/ -v`
+**Como rodar local isolado:** `bash run_backend_isolado.sh` e `bash run_frontend_isolado.sh` (não toca produção; robô desligado por padrão pra não chamar o ML).
+
+---
+
+## ★ ANTES vs DEPOIS (a estratégia, em uma página)
+
+**ANTES (v1, o que causou o incidente de 27/05):**
+- Usuário clica "Buscar" → o backend sai **buscando no ML na hora**, com **muitas chamadas em paralelo** (5 dias × 10 pedidos = 50 simultâneas).
+- ML responde **429**. Pior: o código **re-tentava o 429 em rajada** (tenacity 6x) → piorava. E **refresh de token paralelo** dava 401 em cascata.
+- Resultado: painel **trava**, cards zerados, "Sem dados". Inutilizável.
+- Tudo num banco só (`MLTokens id=1` global, `day` unique global) → não dava pra multi-loja.
+
+**ESTRATÉGIA (o que a mesa desenhou pra resolver):**
+- **Separar leitura de escrita (CQRS):** o painel **nunca** chama o ML; só lê um cache pronto. Um **robô no fundo** é o único que fala com o ML. (É o que o concorrente faz — confirmado por inspeção.)
+- **1 escritor único** (worker) + fila → acaba "database is locked" e bursts.
+- **Throttle + backoff+jitter + circuit-breaker, tudo por seller** → respeita o limite e absorve 429 sem travar.
+- **Cursor delta** (`date_last_updated`) → busca só o que mudou (poucas chamadas).
+- **Migrar os dados existentes** (sem re-baixar) → evita cold-start dos 284k históricos (que estouraria o 429).
+- **Banco isolado multi-seller** → pronto pra várias lojas.
+- **Construir ao lado → validar → cortar** (não quebrar o velho de cara).
+
+**DEPOIS (estado em 30/05):**
+- ✅ Painel novo em produção, lê cache, **não trava**, mostra histórico correto.
+- ✅ Dados migrados (7.446 pedidos) sem re-buscar. Token recuperado. Backoff de 429 no ar.
+- ⚠️ Robô puxa, mas o **backfill manual** ainda tomou 429 (IP penalizado por excesso de teste + possível limite baixo do app). **Poller automático leve ainda não testado limpo.**
+- 🔭 **Próxima fronteira (SaaS):** botão "Conectar conta", **webhooks** (ML empurra), **parceria NVS TECH** (cota maior). Ver §11.
+
+**Em uma frase:** saímos de "o clique do usuário derruba o painel com 429" para "o painel nunca cai (lê cache) e o 429 vira um problema só do robô no fundo, que precisa de afinação final + cota/webhook pra ficar 100%".
+
+---
+
 ## 1. Documentos-fonte (ler junto com este)
 
 Todos em `Mercado Turbo/`:
@@ -170,7 +225,14 @@ A mesa desenhou as defesas de 429, mas **parte foi escrita e NÃO ligada**:
 
 ## 9. O problema do 429 — análise honesta e status atual
 
-**Fato medido (30/05):** com o token novo + backoff, o robô **puxou dados reais** (dia 30 = 29 vendas, R$1.836) mas **tomou 429 de novo após ~60 chamadas** e o job marcou `failed`. 60 chamadas é **muito pouco** (limite normal ~1500/min) → indica:
+> ⚠️ **Distinção crítica (não confundir):** o 429 observado em 30/05 veio do **backfill MANUAL** (caminho "Buscar histórico", pesado — puxa o dia inteiro de uma vez), **disparado pelo assistente pra testar** — **NÃO** do robô automático de 6h (delta leve). **O robô automático leve NUNCA foi observado limpo** porque os testes manuais pesados atrapalharam. Ou seja: **ainda NÃO se sabe se o poller automático leve toma 429 sozinho.** O que se sabe é que o **caminho pesado** toma — e ele foi disparado à mão.
+
+| Caminho | O que faz | Carga | Tomou 429? |
+|---|---|---|---|
+| **Backfill manual** (`POST /backfill`, "Buscar histórico") | puxa dia(s) inteiro(s) | pesada | **Sim (30/05)** |
+| **Robô automático** (poller 6h, delta `date_last_updated`) | só o que mudou | leve | **Não testado limpo** |
+
+**Fato medido (30/05, backfill MANUAL de teste):** com o token novo + backoff, o backfill **puxou dados reais** (dia 30 = 29 vendas, R$1.836) mas **tomou 429 após ~60 chamadas** e o job marcou `failed`. 60 chamadas é **muito pouco** (limite normal ~1500/min) → indica:
 - **(a)** IP de produção ainda **penalizado** (de testes excessivos — ver §10), e/ou
 - **(b)** `max_requests_per_hour` do app **baixo** (não visível na UI).
 
