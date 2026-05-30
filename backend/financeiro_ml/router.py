@@ -682,3 +682,59 @@ async def ml_oauth_exchange(params: OAuthExchangeParams, operator_id: int = Depe
     finally:
         s.close()
     return {"ok": True, "seller_id": seller_id, "expires_in": data.get("expires_in")}
+
+
+class ProbeSearchParams(BaseModel):
+    data: str  # YYYY-MM-DD
+
+
+@router.post("/_debug/probe-search")
+async def probe_search(params: ProbeSearchParams, operator_id: int = Depends(require_master)):
+    """Fase 0b da investigação 429: 1 chamada CRUA a /orders/search (limit=1, SEM
+    retry/backoff/enriquecimento), devolvendo status + headers diagnósticos + corpo +
+    http_version + IP de egress + o client_id dono do token. NÃO grava nada.
+    Revela se o 429 é cota da API (corpo local_rate_limited) ou bloqueio de borda (cf-ray)."""
+    import os
+    import httpx
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.models_v2 import MLTokens
+
+    seller_id = int(os.getenv("ML_USER_ID", "0"))
+    s = FinSessionLocal()
+    try:
+        tok = s.query(MLTokens).filter_by(seller_id=seller_id).first()
+        if tok is None:
+            raise HTTPException(status_code=400, detail="sem token no banco isolado")
+        access_token = tok.access_token
+        token_client_id = tok.client_id
+    finally:
+        s.close()
+
+    day = params.data
+    q = {
+        "seller": seller_id,
+        "order.date_created.from": f"{day}T00:00:00.000-03:00",
+        "order.date_created.to": f"{day}T23:59:59.000-03:00",
+        "offset": 0, "limit": 1,
+    }
+    egress_ip = "unknown"
+    async with httpx.AsyncClient(timeout=20) as http:
+        try:
+            egress_ip = (await http.get("https://api.ipify.org")).text.strip()
+        except Exception:
+            pass
+        resp = await http.get(
+            "https://api.mercadolibre.com/orders/search",
+            params=q,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    diag_keys = ("content-type", "retry-after", "cf-ray", "cf-mitigated", "server",
+                 "via", "x-cache", "x-ratelimit-limit", "x-ratelimit-remaining", "x-ratelimit-reset")
+    return {
+        "status": resp.status_code,
+        "http_version": resp.http_version,
+        "egress_ip": egress_ip,
+        "token_client_id": token_client_id,
+        "headers": {k: resp.headers.get(k) for k in diag_keys if resp.headers.get(k)},
+        "body": resp.text[:800],
+    }

@@ -64,6 +64,22 @@ def ml_call_count() -> int:
     return _ml_call_count
 
 
+def _diag_429(resp) -> str:
+    """Evidência diagnóstica de um 429: distingue rate-limit da API ML (corpo JSON
+    tipo local_rate_limited) de bloqueio de borda/CDN (cf-ray, HTML). Defensivo —
+    não quebra se a resposta não tiver headers/text (fakes de teste)."""
+    try:
+        h = getattr(resp, "headers", None) or {}
+        keys = ("content-type", "retry-after", "cf-ray", "cf-mitigated", "server",
+                "via", "x-cache", "x-ratelimit-limit", "x-ratelimit-remaining",
+                "x-ratelimit-reset")
+        diag = {k: h.get(k) for k in keys if hasattr(h, "get") and h.get(k)}
+        body = (getattr(resp, "text", "") or "")[:500]
+        return f"headers={diag} body={body!r}"
+    except Exception as exc:
+        return f"diag-indisponivel ({type(exc).__name__})"
+
+
 async def _global_throttle() -> None:
     """Garante intervalo mínimo entre chamadas ao ML (cross-coroutine)."""
     global _throttle_last
@@ -163,10 +179,11 @@ class MLClient:
             # Esgotou as tentativas → lança MLRateLimited (orquestrador marca o dia).
             if resp.status_code == 429:
                 attempt += 1
+                # Instrumentação: captura corpo+headers do 429 (cota da API vs bloqueio de borda).
+                log.warning("client.429 path=%s attempt=%s %s", path, attempt, _diag_429(resp))
                 if attempt >= _R429_MAX_ATTEMPTS:
                     raise MLRateLimited(path)
                 delay = random.uniform(0, min(_R429_CAP_SEC, _R429_BASE_SEC * (2 ** attempt)))
-                log.warning("client.429 path=%s attempt=%s — backoff %.1fs", path, attempt, delay)
                 await asyncio.sleep(delay)
                 continue
             # 4xx não-429 → falha na hora (não retentável). 5xx → retenta (via _is_retryable).
