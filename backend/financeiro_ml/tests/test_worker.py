@@ -112,3 +112,76 @@ async def test_backfill_task_marks_job_done(fin_db):
     s = db.FinSessionLocal()
     assert s.query(m.MLBackfillJob).filter_by(id=job_id).first().status == "done"
     s.close()
+
+
+# ---- Fase A: robô enxuto ----
+
+def test_cursor_falls_back_to_last_synced_when_dlu_null(fin_db):
+    """Dia migrado (ok) com date_last_updated NULL → cursor usa last_synced_at,
+    em vez de None (que dispararia re-varredura do dia inteiro)."""
+    db, m = fin_db
+    from datetime import date, datetime, timedelta
+    from financeiro_ml.worker import WriteWorker
+    s = db.FinSessionLocal()
+    s.add(m.MLOrderCache(seller_id=1, order_id=500, date_created=datetime(2026, 5, 20, 10),
+                         date_last_updated=None, status="paid", raw_json="{}"))
+    synced = datetime(2026, 5, 25, 12, 0, 0)
+    s.add(m.MLDaySyncStatus(seller_id=1, day=date(2026, 5, 20), last_synced_at=synced,
+                            orders_count=1, status="ok"))
+    s.commit(); s.close()
+    w = WriteWorker(session_factory=db.FinSessionLocal, client_factory=lambda sid: None)
+    assert w._cursor_for(1, date(2026, 5, 20)) == synced - timedelta(hours=1)
+
+
+@pytest.mark.asyncio
+async def test_enrich_skipped_when_order_unchanged(fin_db):
+    """Pedido já em cache com mesmo date_last_updated → não re-busca shipment."""
+    db, m = fin_db
+    from financeiro_ml.worker import WriteWorker, PollTask
+    from financeiro_ml.calc import _to_brt_naive
+    dlu = _to_brt_naive("2026-05-20T11:30:00.000-03:00")
+    s = db.FinSessionLocal()
+    s.add(m.MLOrderCache(seller_id=1, order_id=100, date_created=datetime(2026, 5, 20, 10),
+                         date_last_updated=dlu, status="paid", raw_json="{}"))
+    s.commit(); s.close()
+
+    class FC:
+        def __init__(self): self.shipment_calls = 0
+        async def search_orders(self, **kw):
+            return {"results": [_order_payload(100)]} if kw.get("offset", 0) == 0 else {"results": []}
+        async def get_shipment(self, sid):
+            self.shipment_calls += 1; return {}
+        async def get_shipment_costs(self, sid): return {}
+        async def get_order_discounts(self, oid): return {"details": []}
+
+    fc = FC()
+    worker = WriteWorker(session_factory=db.FinSessionLocal, client_factory=lambda sid: fc)
+    q = asyncio.Queue(); await q.put(PollTask(seller_id=1, days=[date(2026, 5, 20)]))
+    runner = asyncio.create_task(worker.run(q)); await q.join(); worker.stop(); await runner
+    assert fc.shipment_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_poll_skips_fresh_recent_day(fin_db):
+    """Dia recente já ok e sincronizado agora → freshness pula, zero chamada ML."""
+    db, m = fin_db
+    from financeiro_ml.worker import WriteWorker, PollTask
+    today = date.today()
+    s = db.FinSessionLocal()
+    s.add(m.MLDaySyncStatus(seller_id=1, day=today, last_synced_at=datetime.utcnow(),
+                            orders_count=5, status="ok"))
+    s.commit(); s.close()
+
+    class FC:
+        def __init__(self): self.search_calls = 0
+        async def search_orders(self, **kw):
+            self.search_calls += 1; return {"results": []}
+        async def get_shipment(self, sid): return {}
+        async def get_shipment_costs(self, sid): return {}
+        async def get_order_discounts(self, oid): return {"details": []}
+
+    fc = FC()
+    worker = WriteWorker(session_factory=db.FinSessionLocal, client_factory=lambda sid: fc)
+    q = asyncio.Queue(); await q.put(PollTask(seller_id=1, days=[today]))
+    runner = asyncio.create_task(worker.run(q)); await q.join(); worker.stop(); await runner
+    assert fc.search_calls == 0

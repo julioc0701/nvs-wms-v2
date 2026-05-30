@@ -56,6 +56,13 @@ _R429_MAX_ATTEMPTS = int(os.getenv("ML_429_MAX_ATTEMPTS", "5"))
 _throttle_lock = asyncio.Lock()
 _throttle_last = 0.0
 
+# Instrumentação Fase A: conta GETs ao ML por execução. Worker loga o delta/ciclo.
+_ml_call_count = 0
+
+
+def ml_call_count() -> int:
+    return _ml_call_count
+
 
 async def _global_throttle() -> None:
     """Garante intervalo mínimo entre chamadas ao ML (cross-coroutine)."""
@@ -150,6 +157,8 @@ class MLClient:
                     params=params,
                     headers={"Authorization": f"Bearer {token}"},
                 )
+            global _ml_call_count
+            _ml_call_count += 1
             # 429 → backoff exponencial + full jitter; re-tenta a mesma chamada.
             # Esgotou as tentativas → lança MLRateLimited (orquestrador marca o dia).
             if resp.status_code == 429:
