@@ -128,6 +128,7 @@ async def run_billing_period_job(
 
     try:
         for _ in range(max_pages):
+            previous_from_id = next_from_id
             payload = await client.get_billing_period_details(
                 key=job["period_key"],
                 document_type=job["document_type"],
@@ -168,7 +169,7 @@ async def run_billing_period_job(
                 total_results=total_results,
             )
 
-            if len(raw_results) < job["limit"] or not next_from_id:
+            if not next_from_id or next_from_id == previous_from_id:
                 _finish_job(session_factory, job_id, status="done", total_results=total_results)
                 return BillingPeriodRunResult(
                     job_id=job_id,

@@ -16,12 +16,18 @@ class FakeBillingClient:
                     _line(20, order_id=1002, shipment_id=5002, amount=9.87, as_lists=True),
                 ],
             }
+        if from_id == 20:
+            return {
+                "total": 1,
+                "last_id": 30,
+                "results": [
+                    _line(30, order_id=1003, shipment_id=5003, amount=1.23),
+                ],
+            }
         return {
             "total": 1,
-            "last_id": 30,
-            "results": [
-                _line(30, order_id=1003, shipment_id=5003, amount=1.23),
-            ],
+            "last_id": from_id,
+            "results": [],
         }
 
 
@@ -86,13 +92,25 @@ async def test_billing_period_job_runs_with_checkpoint(fin_db):
         max_pages=1,
     )
 
-    assert second.status == "done"
+    assert second.status == "running"
     assert second.pages_processed == 1
     assert second.lines_processed == 1
     assert second.next_from_id == 30
+
+    third = await run_billing_period_job(
+        db.FinSessionLocal,
+        client=client,
+        job_id=job_id,
+        max_pages=1,
+    )
+
+    assert third.status == "done"
+    assert third.pages_processed == 0
+    assert third.lines_processed == 0
     assert client.calls == [
         ("2026-06-01", "BILL", 2, 0),
         ("2026-06-01", "BILL", 2, 20),
+        ("2026-06-01", "BILL", 2, 30),
     ]
 
     s = db.FinSessionLocal()
