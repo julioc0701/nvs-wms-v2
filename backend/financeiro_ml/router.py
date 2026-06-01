@@ -739,6 +739,7 @@ class BillingPeriodJobCreateParams(BaseModel):
 class BillingPeriodJobRunParams(BaseModel):
     seller_id: int
     max_pages: int = Field(default=3, ge=1, le=50)
+    sleep_sec: float = Field(default=2, ge=0, le=30)
 
 
 @router.post("/_debug/canary/orders-search")
@@ -811,6 +812,7 @@ async def run_billing_period_job_endpoint(job_id: int, params: BillingPeriodJobR
         client=client,
         job_id=job_id,
         max_pages=params.max_pages,
+        sleep_sec=params.sleep_sec,
     )
     if result.status == "not_found":
         raise HTTPException(status_code=404, detail="job não encontrado")

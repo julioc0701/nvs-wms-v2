@@ -4,6 +4,7 @@ Uso esperado em producao: rodar poucas paginas por chamada, salvar o cursor
 next_from_id e continuar depois sem repetir o periodo inteiro.
 """
 import json
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -96,6 +97,7 @@ async def run_billing_period_job(
     client,
     job_id: int,
     max_pages: int = 3,
+    sleep_sec: float = 0,
 ) -> BillingPeriodRunResult:
     from financeiro_ml.models_v2 import MLBillingPeriodJob
 
@@ -179,6 +181,9 @@ async def run_billing_period_job(
                     next_from_id=next_from_id,
                     total_results=total_results,
                 )
+
+            if sleep_sec > 0:
+                await asyncio.sleep(sleep_sec)
 
         current = _load_job(session_factory, job_id)
         status = current["status"] if current else "running"
