@@ -119,8 +119,9 @@ async def run_orders_search_canary(
     day_end = datetime.combine(day, time.max)
     orders_count = 0
     pages_count = 0
+    seen_order_ids: set[str] = set()
     pending_shipments: set[str] = set()
-    pending_discounts = 0
+    pending_discounts: set[str] = set()
     pending_shipping_costs: set[str] = set()
     error_message = None
     status = "ok"
@@ -138,19 +139,17 @@ async def run_orders_search_canary(
             results = page.get("results", [])
             if not results:
                 break
-            _persist_page(
+            persisted_count = _persist_page(
                 session_factory=session_factory,
                 run_id=run_id,
                 seller_id=seller_id,
                 orders=results,
+                seen_order_ids=seen_order_ids,
                 pending_shipments=pending_shipments,
+                pending_discounts=pending_discounts,
                 pending_shipping_costs=pending_shipping_costs,
             )
-            for order in results:
-                orders_count += 1
-                flags = _missing_flags(order)
-                if "pending_discount" in flags:
-                    pending_discounts += 1
+            orders_count += persisted_count
             if len(results) < 50:
                 break
             offset += 50
@@ -171,7 +170,7 @@ async def run_orders_search_canary(
         orders_count=orders_count,
         pages_count=pages_count,
         pending_shipments=len(pending_shipments),
-        pending_discounts=pending_discounts,
+        pending_discounts=len(pending_discounts),
         pending_shipping_costs=len(pending_shipping_costs),
         error_message=error_message,
     )
@@ -183,7 +182,7 @@ async def run_orders_search_canary(
         orders_count=orders_count,
         pages_count=pages_count,
         pending_shipments=len(pending_shipments),
-        pending_discounts=pending_discounts,
+        pending_discounts=len(pending_discounts),
         pending_shipping_costs=len(pending_shipping_costs),
         error_message=error_message,
     )
@@ -195,14 +194,21 @@ def _persist_page(
     run_id: int,
     seller_id: int,
     orders: list[dict],
+    seen_order_ids: set[str],
     pending_shipments: set[str],
+    pending_discounts: set[str],
     pending_shipping_costs: set[str],
-) -> None:
+) -> int:
     from financeiro_ml.models_v2 import MLCanaryOrderSnapshot, MLCanaryPendingTask
 
     s = session_factory()
     try:
+        persisted_count = 0
         for order in orders:
+            order_ref = str(order["id"])
+            if order_ref in seen_order_ids:
+                continue
+            seen_order_ids.add(order_ref)
             shipment_id = (order.get("shipping") or {}).get("id")
             flags = _missing_flags(order)
             s.add(MLCanaryOrderSnapshot(
@@ -215,6 +221,7 @@ def _persist_page(
                 missing_flags=json.dumps(flags),
                 raw_json=json.dumps(order),
             ))
+            persisted_count += 1
             if shipment_id and "pending_seller_shipping" in flags:
                 ref = str(shipment_id)
                 if ref not in pending_shipments:
@@ -236,13 +243,16 @@ def _persist_page(
                         ref_id=ref,
                     ))
             if "pending_discount" in flags:
-                s.add(MLCanaryPendingTask(
-                    run_id=run_id,
-                    seller_id=seller_id,
-                    kind="discount",
-                    ref_id=str(order["id"]),
-                ))
+                if order_ref not in pending_discounts:
+                    pending_discounts.add(order_ref)
+                    s.add(MLCanaryPendingTask(
+                        run_id=run_id,
+                        seller_id=seller_id,
+                        kind="discount",
+                        ref_id=order_ref,
+                    ))
         s.commit()
+        return persisted_count
     finally:
         s.close()
 

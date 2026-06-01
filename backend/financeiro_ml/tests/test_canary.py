@@ -83,6 +83,47 @@ async def test_orders_search_canary_persists_snapshots_and_pending_tasks(fin_db)
 
 
 @pytest.mark.asyncio
+async def test_orders_search_canary_ignores_duplicate_orders_across_pages(fin_db):
+    db, m = fin_db
+    from financeiro_ml.canary import run_orders_search_canary
+
+    page1 = [_order(101, shipment_id=5001, tags=["order_has_discount"], shipping_cost=0)] * 50
+    page2 = [_order(101, shipment_id=5001, tags=["order_has_discount"], shipping_cost=0)]
+    client = FakeClient([
+        {"results": page1},
+        {"results": page2},
+        {"results": []},
+    ])
+
+    result = await run_orders_search_canary(
+        session_factory=db.FinSessionLocal,
+        client=client,
+        seller_id=1,
+        day=date(2026, 6, 1),
+        max_pages=5,
+    )
+
+    assert result.status == "ok"
+    assert result.orders_count == 1
+    assert result.pages_count == 2
+    assert result.pending_shipments == 1
+    assert result.pending_discounts == 1
+    assert result.pending_shipping_costs == 1
+
+    s = db.FinSessionLocal()
+    try:
+        assert s.query(m.MLCanaryOrderSnapshot).count() == 1
+        tasks = s.query(m.MLCanaryPendingTask).all()
+        assert {(t.kind, t.ref_id) for t in tasks} == {
+            ("seller_shipping", "5001"),
+            ("shipping_cost", "5001"),
+            ("discount", "101"),
+        }
+    finally:
+        s.close()
+
+
+@pytest.mark.asyncio
 async def test_orders_search_canary_records_rate_limited(fin_db):
     db, m = fin_db
     from financeiro_ml.canary import run_orders_search_canary
