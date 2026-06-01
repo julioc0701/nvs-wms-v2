@@ -188,8 +188,9 @@ async def test_poll_skips_fresh_recent_day(fin_db):
 
 
 @pytest.mark.asyncio
-async def test_poll_continues_after_429_and_processes_newest_first(fin_db):
-    """429 num dia-buraco não trava o ciclo; dias recentes são vistos primeiro."""
+async def test_poll_hard_brake_stops_cycle_on_429(fin_db):
+    """FREIO DURO: 429 para o ciclo na hora (não martela os outros dias).
+    Dias do mais novo→velho: 5/20 fecha ok, 5/19 dá 429 e PARA, 5/18 nem é tocado."""
     db, m = fin_db
     from financeiro_ml.worker import WriteWorker, PollTask
     from financeiro_ml.client import MLRateLimited
@@ -215,6 +216,8 @@ async def test_poll_continues_after_429_and_processes_newest_first(fin_db):
     ok = {r.day for r in s.query(m.MLDaySyncStatus).filter_by(seller_id=1, status="ok").all()}
     rl = {r.day for r in s.query(m.MLDaySyncStatus).filter_by(seller_id=1, status="rate_limited").all()}
     s.close()
-    assert date(2026, 5, 18) in ok and date(2026, 5, 20) in ok   # 429 no 19 não bloqueou
-    assert date(2026, 5, 19) in rl
-    assert fc.days_seen.index(date(2026, 5, 20)) < fc.days_seen.index(date(2026, 5, 18))  # novo→velho
+    assert date(2026, 5, 20) in ok            # processado antes do 429
+    assert date(2026, 5, 19) in rl            # 429 marcado
+    assert date(2026, 5, 18) not in ok        # freio: ciclo parou, não foi tocado
+    assert date(2026, 5, 18) not in fc.days_seen
+    assert fc.days_seen.index(date(2026, 5, 20)) < fc.days_seen.index(date(2026, 5, 19))  # novo→velho

@@ -94,9 +94,11 @@ class WriteWorker:
                         from financeiro_ml.backfill import finish_job
                         finish_job(self._sf, task.job_id, status="failed", error="429 rate limited")
                         break
-                    # poll: um dia-buraco não trava o ciclo — marca rate_limited e segue os outros
-                    log.warning("worker.429 seller=%s day=%s — pulando dia, segue ciclo", task.seller_id, day)
-                    continue
+                    # poll: FREIO DURO — 429 = ML bloqueando o IP. Insistir nos outros
+                    # dias só prolonga o bloqueio (rajada). Para o ciclo na hora; o
+                    # cooldown + próximo ciclo retentam o dia marcado.
+                    log.warning("worker.429 seller=%s day=%s — freio: parando ciclo", task.seller_id, day)
+                    break
             else:
                 if task.kind == "backfill":
                     from financeiro_ml.backfill import claim_job, finish_job
