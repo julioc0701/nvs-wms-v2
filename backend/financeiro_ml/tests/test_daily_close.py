@@ -129,3 +129,128 @@ def test_daily_close_period_key_and_yesterday(monkeypatch):
     assert period_key_for(date(2026, 6, 2)) == "2026-06-01"
     now = datetime(2026, 6, 3, 3, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
     assert yesterday_brt(now) == date(2026, 6, 2)
+
+
+def test_daily_close_reconciliation_audit_counts_billing_matches(fin_db):
+    db, m = fin_db
+    from financeiro_ml.billing_reconciliation import audit_daily_close_reconciliation
+
+    s = db.FinSessionLocal()
+    try:
+        daily = m.MLDailyCloseJob(
+            seller_id=1,
+            day=date(2026, 6, 1),
+            status="consolidated",
+            phase="consolidated",
+            orders_run_id=10,
+            billing_job_id=20,
+        )
+        billing_job = m.MLBillingPeriodJob(
+            id=20,
+            seller_id=1,
+            period_key="2026-06-01",
+            document_type="BILL",
+            status="done",
+            limit=100,
+        )
+        s.add_all([daily, billing_job])
+        s.flush()
+        s.add_all([
+            m.MLCanaryOrderSnapshot(
+                run_id=10,
+                seller_id=1,
+                order_id=101,
+                shipment_id=9101,
+                order_status="paid",
+                ingest_status="snapshot",
+                missing_flags="[]",
+                raw_json="{}",
+            ),
+            m.MLCanaryOrderSnapshot(
+                run_id=10,
+                seller_id=1,
+                order_id=102,
+                shipment_id=9102,
+                order_status="paid",
+                ingest_status="snapshot",
+                missing_flags='["pending_seller_shipping"]',
+                raw_json="{}",
+            ),
+            m.MLBillingPeriodLine(
+                seller_id=1,
+                detail_id=500,
+                period_key="2026-06-01",
+                document_type="BILL",
+                detail_amount=8.05,
+                order_id=101,
+                shipment_id=9101,
+                raw_json="{}",
+            ),
+        ])
+        s.commit()
+        job_id = daily.id
+    finally:
+        s.close()
+
+    result = audit_daily_close_reconciliation(db.FinSessionLocal, job_id=job_id)
+
+    assert result["orders_total"] == 2
+    assert result["billing_lines_total"] == 1
+    assert result["matched_orders"] == 1
+    assert result["missing_orders"] == 1
+    assert result["shipments_to_probe_sample"] == [9102]
+
+
+def test_daily_close_order_id_diff_compares_excel_reference(fin_db):
+    db, m = fin_db
+    from financeiro_ml.billing_reconciliation import compare_daily_close_order_ids
+
+    s = db.FinSessionLocal()
+    try:
+        daily = m.MLDailyCloseJob(
+            seller_id=1,
+            day=date(2026, 6, 1),
+            status="consolidated",
+            phase="consolidated",
+            orders_run_id=10,
+        )
+        s.add(daily)
+        s.flush()
+        s.add_all([
+            m.MLCanaryOrderSnapshot(
+                run_id=10,
+                seller_id=1,
+                order_id=101,
+                shipment_id=9101,
+                order_status="paid",
+                ingest_status="snapshot",
+                missing_flags="[]",
+                raw_json="{}",
+            ),
+            m.MLCanaryOrderSnapshot(
+                run_id=10,
+                seller_id=1,
+                order_id=102,
+                shipment_id=9102,
+                order_status="paid",
+                ingest_status="snapshot",
+                missing_flags="[]",
+                raw_json="{}",
+            ),
+        ])
+        s.commit()
+        job_id = daily.id
+    finally:
+        s.close()
+
+    result = compare_daily_close_order_ids(
+        db.FinSessionLocal,
+        job_id=job_id,
+        reference_order_ids=["#101", "#103"],
+    )
+
+    assert result["ml_orders_count"] == 2
+    assert result["reference_orders_count"] == 2
+    assert result["matched_count"] == 1
+    assert result["only_ml_sample"] == [102]
+    assert result["only_reference_sample"] == [103]

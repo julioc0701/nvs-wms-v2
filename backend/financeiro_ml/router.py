@@ -751,6 +751,11 @@ class DailyCloseRunParams(BaseModel):
     cooldown_min: int = Field(default=30, ge=1, le=240)
 
 
+class DailyCloseOrderIdDiffParams(BaseModel):
+    reference_order_ids: list[int | str] = Field(min_length=1, max_length=10000)
+    sample_limit: int = Field(default=50, ge=1, le=500)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -820,6 +825,45 @@ async def get_daily_close_job_endpoint(job_id: int,
     if job is None:
         raise HTTPException(status_code=404, detail="job não encontrado")
     return job
+
+
+@router.get("/_debug/daily-close/jobs/{job_id}/audit")
+async def audit_daily_close_job_endpoint(job_id: int,
+                                         sample_limit: int = 20,
+                                         operator_id: int = Depends(require_master)):
+    """Audita o fechamento salvo: pedidos x linhas do Billing, sem chamar ML."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.billing_reconciliation import audit_daily_close_reconciliation
+
+    init_fin_db()
+    result = audit_daily_close_reconciliation(
+        FinSessionLocal,
+        job_id=job_id,
+        sample_limit=max(1, min(sample_limit, 100)),
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return result
+
+
+@router.post("/_debug/daily-close/jobs/{job_id}/order-id-diff")
+async def diff_daily_close_order_ids_endpoint(job_id: int,
+                                              params: DailyCloseOrderIdDiffParams,
+                                              operator_id: int = Depends(require_master)):
+    """Compara IDs do robo com uma referencia externa, ex. Excel Mercado Turbo."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.billing_reconciliation import compare_daily_close_order_ids
+
+    init_fin_db()
+    result = compare_daily_close_order_ids(
+        FinSessionLocal,
+        job_id=job_id,
+        reference_order_ids=params.reference_order_ids,
+        sample_limit=params.sample_limit,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return result
 
 
 @router.post("/_debug/billing-period/jobs")
