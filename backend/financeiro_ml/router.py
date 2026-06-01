@@ -742,6 +742,15 @@ class BillingPeriodJobRunParams(BaseModel):
     sleep_sec: float = Field(default=2, ge=0, le=30)
 
 
+class DailyCloseRunParams(BaseModel):
+    seller_id: int
+    day: date | None = None
+    max_order_pages: int = Field(default=40, ge=1, le=80)
+    billing_pages_per_cycle: int = Field(default=5, ge=1, le=20)
+    billing_sleep_sec: float = Field(default=2, ge=0, le=30)
+    cooldown_min: int = Field(default=30, ge=1, le=240)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -764,6 +773,53 @@ async def canary_orders_search(params: CanaryOrdersSearchParams,
         max_pages=params.max_pages,
     )
     return result.as_dict()
+
+
+@router.post("/_debug/daily-close/run")
+async def run_daily_close_endpoint(params: DailyCloseRunParams,
+                                   operator_id: int = Depends(require_master)):
+    """Roda um ciclo controlado do fechamento diario. Default: ontem em BRT."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.daily_close import run_daily_close_cycle, yesterday_brt
+
+    init_fin_db()
+    target_day = params.day or yesterday_brt()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await run_daily_close_cycle(
+        FinSessionLocal,
+        client=client,
+        seller_id=params.seller_id,
+        day=target_day,
+        max_order_pages=params.max_order_pages,
+        billing_pages_per_cycle=params.billing_pages_per_cycle,
+        billing_sleep_sec=params.billing_sleep_sec,
+        cooldown_min=params.cooldown_min,
+    )
+    return result.as_dict()
+
+
+@router.get("/_debug/daily-close/jobs")
+async def list_daily_close_jobs_endpoint(limit: int = 20,
+                                         operator_id: int = Depends(require_master)):
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.daily_close import list_daily_close_jobs
+
+    init_fin_db()
+    return {"jobs": list_daily_close_jobs(FinSessionLocal, limit=limit)}
+
+
+@router.get("/_debug/daily-close/jobs/{job_id}")
+async def get_daily_close_job_endpoint(job_id: int,
+                                       operator_id: int = Depends(require_master)):
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.daily_close import get_daily_close_job
+
+    init_fin_db()
+    job = get_daily_close_job(FinSessionLocal, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return job
 
 
 @router.post("/_debug/billing-period/jobs")

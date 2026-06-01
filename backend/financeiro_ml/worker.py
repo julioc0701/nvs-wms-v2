@@ -231,9 +231,9 @@ _RUNTIME = {}
 def start_financeiro_ml_runtime():
     """Cria queue + worker + poller no startup. Idempotente."""
     import asyncio
+    import os
     from financeiro_ml.db import FinSessionLocal, init_fin_db
     from financeiro_ml.client import build_default_client
-    from financeiro_ml.poller import poller_loop
 
     if _RUNTIME.get("started"):
         return _RUNTIME
@@ -250,9 +250,19 @@ def start_financeiro_ml_runtime():
                          client_factory=lambda sid: build_default_client(seller_id=sid))
     stop_event = asyncio.Event()
     worker_task = asyncio.create_task(worker.run(queue))
-    poller_task = asyncio.create_task(poller_loop(FinSessionLocal, queue, stop_event=stop_event))
+    tasks = [worker_task]
+    if os.getenv("ML_LEGACY_POLLER_ENABLED", "false").strip().lower() in {"1", "true", "yes"}:
+        from financeiro_ml.poller import poller_loop
+        tasks.append(asyncio.create_task(poller_loop(FinSessionLocal, queue, stop_event=stop_event)))
+    if os.getenv("ML_DAILY_CLOSE_ENABLED", "true").strip().lower() in {"1", "true", "yes"}:
+        from financeiro_ml.daily_close import daily_close_loop
+        tasks.append(asyncio.create_task(daily_close_loop(
+            FinSessionLocal,
+            client_factory=lambda sid: build_default_client(seller_id=sid),
+            stop_event=stop_event,
+        )))
     _RUNTIME.update(started=True, queue=queue, worker=worker, stop_event=stop_event,
-                    worker_task=worker_task, poller_task=poller_task)
+                    tasks=tasks, worker_task=worker_task)
     return _RUNTIME
 
 
@@ -262,8 +272,8 @@ async def stop_financeiro_ml_runtime():
         return
     rt["stop_event"].set()
     rt["worker"].stop()
-    rt["poller_task"].cancel()
-    rt["worker_task"].cancel()
+    for task in rt.get("tasks", []):
+        task.cancel()
     rt["started"] = False
 
 

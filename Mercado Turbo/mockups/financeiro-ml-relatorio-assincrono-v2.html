@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup V2 - Financeiro ML Central de Relatorios</title>
+  <style>
+    :root {
+      --bg: #e7f0f8;
+      --ink: #09213f;
+      --muted: #5b7391;
+      --line: #b7cde5;
+      --soft-line: #d8e5f1;
+      --panel: #ffffff;
+      --blue: #14599d;
+      --blue-dark: #0d3868;
+      --blue-ink: #08264a;
+      --green: #128341;
+      --green-soft: #e8f6ed;
+      --amber: #b76006;
+      --amber-soft: #fff6e7;
+      --red: #c81f1f;
+      --shadow: 0 20px 55px rgba(10, 47, 86, .15);
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.34), transparent 220px),
+        radial-gradient(circle at 16% -10%, rgba(57, 123, 188, .18), transparent 300px),
+        var(--bg);
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .stage {
+      width: 1200px;
+      min-height: 760px;
+      margin: 0 auto;
+      padding: 16px 32px 28px;
+    }
+
+    .topbar {
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.86);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px 8px 16px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.8) inset;
+      backdrop-filter: blur(10px);
+    }
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-weight: 900;
+      font-size: 12px;
+    }
+    .brand span { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .controls { display: flex; align-items: center; gap: 7px; }
+    .date {
+      height: 32px;
+      border: 1px solid #b6cae4;
+      background: #f7fbff;
+      border-radius: 6px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 850;
+    }
+    .btn {
+      height: 32px;
+      padding: 0 13px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: var(--blue);
+      color: white;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      font-weight: 900;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .btn.secondary {
+      background: white;
+      color: var(--blue);
+      border-color: #aac4e4;
+    }
+    .btn.green { background: var(--green); }
+    .btn.amber { background: var(--amber); }
+
+    .command-strip {
+      margin: 10px 0 8px;
+      display: grid;
+      grid-template-columns: 155px 1fr 260px;
+      gap: 10px;
+      align-items: center;
+    }
+    .history-btn {
+      height: 36px;
+      border-radius: 7px;
+      background: var(--blue);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .range-console {
+      height: 44px;
+      border: 1px solid #aac4e4;
+      border-radius: 8px;
+      background: rgba(255,255,255,.8);
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .console-step {
+      height: 28px;
+      border-radius: 999px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10px;
+      font-weight: 900;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .console-step.ready { color: var(--green); background: var(--green-soft); border-color: #bde5ca; }
+    .console-step.run { color: var(--amber); background: var(--amber-soft); border-color: #f3cf95; }
+    .console-step.wait { color: #315d8d; background: #edf5ff; border-color: #c7dbf2; }
+    .console-line {
+      height: 2px;
+      width: 36px;
+      background: #bdd1e7;
+      flex: 0 0 auto;
+    }
+    .health {
+      height: 44px;
+      border-radius: 8px;
+      border: 1px solid #aac4e4;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      font-size: 11px;
+      font-weight: 850;
+      color: #315d8d;
+    }
+    .pulse {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 5px rgba(18, 131, 65, .1);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .main-panel,
+    .side-panel,
+    .table-panel {
+      border: 1px solid #97b7dc;
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .hero {
+      height: 218px;
+      color: white;
+      padding: 18px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0)),
+        linear-gradient(145deg, #174d82, #0d3764);
+      position: relative;
+    }
+    .kicker {
+      text-transform: uppercase;
+      letter-spacing: 1.35px;
+      font-size: 9px;
+      font-weight: 950;
+      color: rgba(255,255,255,.75);
+    }
+    .amount {
+      font-size: 36px;
+      line-height: 1;
+      margin: 12px 0 7px;
+      font-weight: 500;
+      letter-spacing: 1px;
+    }
+    .sub {
+      font-size: 10px;
+      font-weight: 750;
+      color: rgba(255,255,255,.82);
+    }
+    .curve {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 28px;
+      height: 70px;
+      background: linear-gradient(180deg, rgba(126, 178, 222, .38), rgba(126, 178, 222, .12));
+      clip-path: polygon(0 50%, 18% 30%, 38% 24%, 58% 58%, 74% 66%, 100% 42%, 100% 100%, 0 100%);
+      border-bottom: 1px solid rgba(255,255,255,.2);
+    }
+    .curve:before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 35px;
+      border-top: 2px solid white;
+      transform: skewY(-8deg);
+    }
+    .margin-card {
+      height: 106px;
+      padding: 15px 16px;
+      position: relative;
+    }
+    .margin-card h3 {
+      margin: 0;
+      color: #55759d;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      font-weight: 950;
+    }
+    .margin-card .pct {
+      color: var(--green);
+      font-size: 28px;
+      font-weight: 950;
+      margin-top: 2px;
+    }
+    .spark {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 12px;
+      height: 34px;
+      background: linear-gradient(180deg, rgba(20,89,157,.08), transparent);
+      clip-path: polygon(0 70%, 18% 50%, 36% 46%, 54% 60%, 72% 68%, 100% 34%, 100% 100%, 0 100%);
+      border-bottom: 2px solid var(--blue);
+    }
+    .composition {
+      height: 110px;
+      margin-top: 8px;
+      padding: 14px 15px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .donut {
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      background: conic-gradient(#0d3764 0 34%, #14599d 34% 54%, #8bb5dd 54% 74%, #128341 74% 100%);
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .donut:after {
+      content: "19,4%\\A MC";
+      white-space: pre;
+      position: absolute;
+      inset: 15px;
+      border-radius: 50%;
+      background: white;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 9px;
+      line-height: 1.15;
+      font-weight: 950;
+    }
+    .legend {
+      flex: 1;
+      display: grid;
+      gap: 5px;
+      font-size: 10px;
+      font-weight: 850;
+    }
+    .legend-row { display: flex; justify-content: space-between; }
+    .mark { width: 7px; height: 7px; display: inline-block; border-radius: 2px; margin-right: 7px; }
+    .metrics {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid #9dbade;
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .metric {
+      min-height: 72px;
+      border-right: 1px solid #c8d9ec;
+      padding: 13px;
+    }
+    .metric:last-child { border-right: 0; }
+    .metric .label {
+      color: #55759d;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 9px;
+      font-weight: 950;
+    }
+    .metric .num { font-size: 17px; font-weight: 950; margin-top: 8px; }
+    .red { color: var(--red); }
+    .tiny { margin-top: 4px; color: var(--muted); font-size: 9px; font-weight: 800; }
+
+    .side-panel {
+      min-height: 399px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+    }
+    .side-head {
+      padding: 14px 14px 12px;
+      border-bottom: 1px solid var(--soft-line);
+      background: linear-gradient(180deg, #fff, #f8fbff);
+    }
+    .side-head .eyebrow {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #55759d;
+      font-weight: 950;
+    }
+    .side-head h2 {
+      margin: 5px 0 5px;
+      font-size: 16px;
+      line-height: 1.15;
+    }
+    .side-head p {
+      margin: 0;
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 750;
+      line-height: 1.35;
+    }
+    .report-card {
+      margin: 10px;
+      border: 1px solid var(--soft-line);
+      border-radius: 8px;
+      padding: 12px;
+      background: white;
+    }
+    .report-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: start;
+    }
+    .period { font-size: 12px; font-weight: 950; }
+    .report-card small {
+      display: block;
+      color: var(--muted);
+      font-weight: 750;
+      margin-top: 4px;
+      line-height: 1.25;
+    }
+    .tag {
+      height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 950;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+    .tag.ready { color: var(--green); background: var(--green-soft); border-color: #bde5ca; }
+    .tag.run { color: var(--amber); background: var(--amber-soft); border-color: #f3cf95; }
+    .tag.wait { color: #2563eb; background: #edf5ff; border-color: #c7dbf2; }
+    .progress {
+      height: 8px;
+      margin-top: 10px;
+      border-radius: 999px;
+      background: #eef3f8;
+      overflow: hidden;
+    }
+    .bar { height: 100%; border-radius: inherit; background: var(--amber); width: 62%; }
+    .bar.green { width: 100%; background: var(--green); }
+    .bar.blue { width: 20%; background: #2563eb; }
+    .report-action {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .queue-footer {
+      margin-top: auto;
+      padding: 12px 14px;
+      border-top: 1px solid var(--soft-line);
+      background: #f8fbff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .queue-footer span {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 800;
+      line-height: 1.25;
+    }
+
+    .divider {
+      grid-column: 1 / -1;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      color: #84a8cb;
+      font-size: 23px;
+    }
+    .table-panel {
+      grid-column: 1 / -1;
+      height: 178px;
+    }
+    .table-head {
+      height: 52px;
+      border-bottom: 1px solid #c8d9ec;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+    }
+    .table-title { font-size: 12px; font-weight: 950; }
+    .table-sub { margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 800; }
+    table { border-collapse: collapse; width: 100%; font-size: 10px; }
+    th {
+      height: 28px;
+      text-align: left;
+      padding: 0 10px;
+      border-bottom: 1px solid #c8d9ec;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: #55759d;
+      font-size: 9px;
+    }
+    td {
+      height: 38px;
+      padding: 0 10px;
+      border-bottom: 1px solid #d8e5f4;
+      font-weight: 850;
+      color: #0e3159;
+    }
+    .chip {
+      display: inline-flex;
+      height: 18px;
+      align-items: center;
+      border-radius: 4px;
+      padding: 0 7px;
+      background: #d7e7fb;
+      color: #285d97;
+      font-size: 9px;
+      font-weight: 950;
+    }
+    .mc-green { color: #0c8a3f; }
+    .mc-orange { color: #c46a00; }
+
+    .empty-shell {
+      height: 584px;
+      border: 1px solid #97b7dc;
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.82), rgba(255,255,255,.94)),
+        repeating-linear-gradient(0deg, rgba(20,89,157,.04), rgba(20,89,157,.04) 1px, transparent 1px, transparent 38px);
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 0;
+      overflow: hidden;
+    }
+    .prepare-canvas {
+      padding: 40px;
+      display: grid;
+      place-items: center;
+    }
+    .prepare-card {
+      width: 570px;
+      border: 1px solid #b7cde5;
+      border-radius: 8px;
+      background: rgba(255,255,255,.95);
+      box-shadow: var(--shadow);
+      padding: 26px;
+      position: relative;
+      overflow: hidden;
+    }
+    .prepare-card:before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      background: var(--amber);
+    }
+    .doc-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .doc-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      background: #edf5ff;
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+    .prepare-card h1 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.12;
+    }
+    .prepare-card p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 750;
+    }
+    .prepare-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      border: 1px solid var(--soft-line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 18px 0;
+    }
+    .prepare-meta div {
+      padding: 12px;
+      border-right: 1px solid var(--soft-line);
+      background: #fbfdff;
+    }
+    .prepare-meta div:last-child { border-right: 0; }
+    .prepare-meta span {
+      display: block;
+      color: #55759d;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      font-weight: 950;
+      margin-bottom: 6px;
+    }
+    .prepare-meta strong { font-size: 12px; }
+    .prepare-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+    }
+    .prepare-note {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .right-rail {
+      border-left: 1px solid var(--soft-line);
+      background: #f8fbff;
+      padding: 16px;
+    }
+    .rail-title {
+      font-size: 12px;
+      font-weight: 950;
+      margin-bottom: 10px;
+    }
+    .rail-step {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 9px;
+      padding: 10px 0;
+      border-bottom: 1px solid #e0ebf5;
+    }
+    .rail-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 950;
+      color: white;
+      background: #8aa9c9;
+    }
+    .rail-dot.on { background: var(--amber); }
+    .rail-step strong { font-size: 11px; }
+    .rail-step span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 750;
+      margin-top: 3px;
+      line-height: 1.3;
+    }
+
+    .hidden { display: none; }
+    .mode-switch {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid #c8d9ec;
+      border-radius: 8px;
+      background: rgba(255,255,255,.7);
+    }
+    .mode {
+      height: 30px;
+      border: 0;
+      border-radius: 6px;
+      padding: 0 12px;
+      background: transparent;
+      color: #47688c;
+      font-size: 11px;
+      font-weight: 950;
+    }
+    .mode.active { color: white; background: var(--blue); }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <header class="topbar">
+      <div class="brand">Análise Financeira <span>· Mercado Livre · período consultado pelo banco interno</span></div>
+      <div class="controls">
+        <div class="date">De 26/05/2026</div>
+        <strong style="color:#55759d;">→</strong>
+        <div class="date">Até 26/06/2026</div>
+        <div class="btn">⌕ Buscar</div>
+      </div>
+    </header>
+
+    <section class="command-strip">
+      <div class="history-btn">▦ Buscar histórico</div>
+      <div class="mode-switch">
+        <button class="mode active" data-state="ready">Pronto</button>
+        <button class="mode" data-state="prepare">Preparar período</button>
+        <button class="mode" data-state="cockpit">Central aberta</button>
+      </div>
+      <div class="health"><span><span class="pulse" style="display:inline-block;margin-right:8px;"></span>Última leitura: 4 min</span><b>Online</b></div>
+    </section>
+
+    <section id="ready">
+      <div class="layout">
+        <div>
+          <div class="dashboard-grid">
+            <article class="main-panel hero">
+              <div class="kicker">Vendas aprovadas</div>
+              <div class="amount">R$ 121.697,04</div>
+              <div class="sub">Faturamento ML R$ 126.077,25 · Cancel. R$ 4.380,21</div>
+              <div class="curve"></div>
+            </article>
+            <div>
+              <article class="main-panel margin-card">
+                <h3>Margem de contribuição</h3>
+                <div class="pct">19,4%</div>
+                <div class="tiny"><b style="color:#09213f;font-size:12px;">R$ 23.580,57</b> margem média no período</div>
+                <div class="spark"></div>
+              </article>
+              <article class="main-panel composition">
+                <div class="donut"></div>
+                <div class="legend">
+                  <div class="legend-row"><span><i class="mark" style="background:#0d3764"></i>Custo</span><b>46,1%</b></div>
+                  <div class="legend-row"><span><i class="mark" style="background:#14599d"></i>Imposto</span><b>8,5%</b></div>
+                  <div class="legend-row"><span><i class="mark" style="background:#8bb5dd"></i>Tarifa</span><b>10,9%</b></div>
+                  <div class="legend-row"><span><i class="mark" style="background:#7ca8d0"></i>Frete</span><b>15,2%</b></div>
+                  <div class="legend-row"><span><i class="mark" style="background:#128341"></i>MC</span><b>19,4%</b></div>
+                </div>
+              </article>
+            </div>
+            <div class="metrics">
+              <div class="metric"><div class="label">Custo + imposto</div><div class="num red">R$ 66.378,76</div><div class="tiny">Custo R$ 56.070,55 · Imp R$ 10.308,21</div></div>
+              <div class="metric"><div class="label">Tarifa ML</div><div class="num red">R$ 13.244,52</div><div class="tiny">10,5% do faturamento</div></div>
+              <div class="metric"><div class="label">Frete total</div><div class="num">R$ 23.558,48</div><div class="tiny">Compr R$ 5.066,21 · Vend R$ 18.492,27</div></div>
+              <div class="metric"><div class="label">Qtd vendas</div><div class="num">1.994</div><div class="tiny">2132 unid. · ticket R$ 61,03</div></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="side-panel">
+          <div class="side-head">
+            <div class="eyebrow">Central de relatórios</div>
+            <h2>O painel mostra só o que está pronto</h2>
+            <p>Pedidos grandes entram em uma fila limpa. O usuário acompanha por período, não por dia.</p>
+          </div>
+          <div class="report-card">
+            <div class="report-top"><div><div class="period">26/05 → 26/06</div><small>Aberto agora · dados completos no banco</small></div><span class="tag ready">Pronto</span></div>
+            <div class="progress"><div class="bar green"></div></div>
+            <div class="report-action"><span class="btn secondary">Atualizar visão</span></div>
+          </div>
+          <div class="report-card">
+            <div class="report-top"><div><div class="period">01/05 → 07/05</div><small>Solicitado às 08:42 · robô consolidando</small></div><span class="tag run">Preparando</span></div>
+            <div class="progress"><div class="bar"></div></div>
+          </div>
+          <div class="report-card">
+            <div class="report-top"><div><div class="period">Maio completo</div><small>Entrou na fila para processar à noite</small></div><span class="tag wait">Fila</span></div>
+            <div class="progress"><div class="bar blue"></div></div>
+          </div>
+          <div class="queue-footer"><span>2 relatórios em segundo plano. Nenhuma tela fica travada.</span><span class="btn">Abrir central</span></div>
+        </aside>
+
+        <div class="divider">▾</div>
+        <section class="table-panel">
+          <div class="table-head">
+            <div><div class="table-title">Vendas detalhadas</div><div class="table-sub">2052 resultados · custo, imposto, frete e margem</div></div>
+            <div class="controls"><span class="btn">+ Filtro</span><span class="btn">⚙ Colunas</span><span class="btn">↧ Exportar</span></div>
+          </div>
+          <table>
+            <thead><tr><th>Anúncio · SKU</th><th>Data</th><th>Frete</th><th>Valor un.</th><th>Qtd</th><th>Faturamento</th><th>Custo</th><th>Imposto</th><th>Tarifa</th><th>Frete comp.</th><th>Frete vend.</th><th>MC</th><th>MC %</th></tr></thead>
+            <tbody>
+              <tr><td>Motor De Partida Arranque Yamaha Neo At 115...</td><td>2026-05-24</td><td><span class="chip">FULL</span></td><td>76,26</td><td>1</td><td>80,25</td><td>31,00</td><td>6,77</td><td>5,98</td><td>4,99</td><td>8,05</td><td class="mc-green">23,46</td><td class="mc-green">30,76%</td></tr>
+              <tr><td>Disco De Freio Traseiro Cb250 F Cb250f...</td><td>2026-05-24</td><td><span class="chip">FULL</span></td><td>59,99</td><td>1</td><td>59,99</td><td>31,05</td><td>5,40</td><td>7,20</td><td>0,00</td><td>7,95</td><td class="mc-green">8,39</td><td class="mc-green">13,99%</td></tr>
+              <tr><td>Disco Freio Dianteiro Titan Fan Cargo Cg...</td><td>2026-05-25</td><td><span class="chip">FULL</span></td><td>56,08</td><td>1</td><td>71,07</td><td>30,00</td><td>5,05</td><td>6,73</td><td>14,99</td><td>7,95</td><td class="mc-green">6,35</td><td class="mc-orange">11,33%</td></tr>
+            </tbody>
+          </table>
+        </section>
+      </div>
+    </section>
+
+    <section id="prepare" class="hidden">
+      <div class="empty-shell">
+        <div class="prepare-canvas">
+          <article class="prepare-card">
+            <div class="doc-row">
+              <div class="doc-icon">▤</div>
+              <div>
+                <h1>Preparar este relatório?</h1>
+                <p>Este range ainda não está no banco. O sistema cria uma solicitação, processa em segundo plano e libera o resultado quando estiver completo.</p>
+              </div>
+            </div>
+            <div class="prepare-meta">
+              <div><span>Range</span><strong>01/05 → 07/05</strong></div>
+              <div><span>Prioridade</span><strong>Normal</strong></div>
+              <div><span>Uso da tela</span><strong>Não trava</strong></div>
+            </div>
+            <div class="prepare-actions">
+              <span class="prepare-note">Você pode sair da página. O relatório aparece na central quando ficar pronto.</span>
+              <div class="controls"><span class="btn secondary">Cancelar</span><span class="btn green">Preparar</span></div>
+            </div>
+          </article>
+        </div>
+        <aside class="right-rail">
+          <div class="rail-title">Como o robô trabalha</div>
+          <div class="rail-step"><div class="rail-dot on">1</div><div><strong>Cria solicitação</strong><span>Guarda o range pedido e evita duplicar trabalho.</span></div></div>
+          <div class="rail-step"><div class="rail-dot">2</div><div><strong>Carrega em blocos</strong><span>Pedidos, Billing e exceções com pausa e checkpoint.</span></div></div>
+          <div class="rail-step"><div class="rail-dot">3</div><div><strong>Libera o painel</strong><span>Quando pronto, o usuário abre como relatório normal.</span></div></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="cockpit" class="hidden">
+      <div class="empty-shell">
+        <div class="prepare-canvas">
+          <article class="prepare-card">
+            <div class="doc-row">
+              <div class="doc-icon">◷</div>
+              <div>
+                <h1>01/05 → 07/05 está em preparação</h1>
+                <p>O robô já processou 1.200 linhas e pausou no último checkpoint. A próxima janela continua automaticamente, sem repetir o que já foi salvo.</p>
+              </div>
+            </div>
+            <div class="progress" style="height:10px;margin:18px 0 8px;"><div class="bar" style="width:62%;"></div></div>
+            <div style="display:flex;justify-content:space-between;color:#5b7391;font-size:11px;font-weight:900;margin-bottom:18px;">
+              <span>Checkpoint 63135886884</span><span>62%</span>
+            </div>
+            <div class="prepare-actions">
+              <span class="prepare-note">Status visível por solicitação. Nada de listar dia por dia na tela principal.</span>
+              <div class="controls"><span class="btn secondary">Pausar</span><span class="btn amber">Retomar agora</span></div>
+            </div>
+          </article>
+        </div>
+        <aside class="right-rail">
+          <div class="rail-title">Fila de relatórios</div>
+          <div class="report-card" style="margin:0 0 10px;">
+            <div class="report-top"><div><div class="period">31/05 → 01/06</div><small>575 linhas salvas</small></div><span class="tag ready">Pronto</span></div>
+            <div class="report-action"><span class="btn">Abrir</span></div>
+          </div>
+          <div class="report-card" style="margin:0 0 10px;">
+            <div class="report-top"><div><div class="period">01/05 → 07/05</div><small>Em background</small></div><span class="tag run">Preparando</span></div>
+            <div class="progress"><div class="bar"></div></div>
+          </div>
+          <div class="report-card" style="margin:0;">
+            <div class="report-top"><div><div class="period">Maio completo</div><small>Aguardando janela</small></div><span class="tag wait">Fila</span></div>
+            <div class="progress"><div class="bar blue"></div></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const modes = document.querySelectorAll('.mode');
+    const states = {
+      ready: document.querySelector('#ready'),
+      prepare: document.querySelector('#prepare'),
+      cockpit: document.querySelector('#cockpit')
+    };
+
+    modes.forEach((mode) => {
+      mode.addEventListener('click', () => {
+        modes.forEach((m) => m.classList.remove('active'));
+        mode.classList.add('active');
+        Object.values(states).forEach((state) => state.classList.add('hidden'));
+        states[mode.dataset.state].classList.remove('hidden');
+      });
+    });
+  </script>
+</body>
+</html>

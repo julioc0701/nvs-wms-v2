@@ -156,6 +156,31 @@ class MLBillingPeriodLine(FinBase):
     synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
 
 
+class MLDailyCloseJob(FinBase):
+    __tablename__ = "ml_daily_close_jobs"
+    __table_args__ = (
+        UniqueConstraint("seller_id", "day", name="uq_daily_close_seller_day"),
+        Index("ix_daily_close_status", "status", "day"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")
+    phase: Mapped[str] = mapped_column(String(40), nullable=False, default="created")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
+    orders_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    billing_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    orders_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    billing_lines_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    billing_pages_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending_shipments: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class MLCanaryRun(FinBase):
     __tablename__ = "ml_canary_runs"
     __table_args__ = (Index("ix_canary_runs_seller_day", "seller_id", "day", "created_at"),)

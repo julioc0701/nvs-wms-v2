@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mockup - Financeiro ML Relatorios</title>
+  <style>
+    :root {
+      --bg: #eaf2fb;
+      --panel: #ffffff;
+      --panel-soft: #f6f9fd;
+      --line: #b9cde5;
+      --line-soft: #dbe7f4;
+      --navy: #123d6b;
+      --navy-2: #0c3158;
+      --blue: #185a9d;
+      --blue-2: #0f4e8d;
+      --green: #15803d;
+      --amber: #b45309;
+      --red: #c81e1e;
+      --text: #0b2442;
+      --muted: #547091;
+      --shadow: 0 14px 40px rgba(18, 61, 107, .14);
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .page {
+      width: 1200px;
+      min-height: 760px;
+      margin: 0 auto;
+      padding: 16px 32px 28px;
+    }
+
+    .topbar {
+      height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.92);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px 8px 16px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.8) inset;
+    }
+
+    .title { font-weight: 800; font-size: 12px; }
+    .crumb { color: var(--muted); font-weight: 600; margin-left: 6px; font-size: 11px; }
+    .controls { display: flex; align-items: center; gap: 6px; }
+    .datebox {
+      height: 32px;
+      min-width: 114px;
+      border: 1px solid #b7ccea;
+      border-radius: 5px;
+      background: #f6faff;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .btn {
+      height: 32px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      padding: 0 14px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #fff;
+      background: var(--blue);
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: default;
+      white-space: nowrap;
+    }
+    .btn.secondary {
+      color: var(--blue-2);
+      background: #fff;
+      border-color: #b7ccea;
+    }
+    .btn.ghost {
+      color: var(--text);
+      background: #eef5fd;
+      border-color: #c8d9ec;
+    }
+    .btn.green { background: var(--green); }
+
+    .below-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 10px 0 8px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      background: rgba(255,255,255,.55);
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      padding: 4px;
+    }
+    .tab {
+      height: 30px;
+      padding: 0 12px;
+      border-radius: 6px;
+      border: 0;
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--muted);
+      background: transparent;
+    }
+    .tab.active { color: white; background: var(--blue); }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      padding: 7px 10px;
+      border: 1px solid #c8d9ec;
+      background: #fff;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .card {
+      border: 1px solid #8eb1d8;
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .big-card {
+      height: 232px;
+      background: linear-gradient(180deg, #194a7e, #123a67);
+      color: white;
+      padding: 18px 17px;
+      position: relative;
+    }
+    .kicker {
+      text-transform: uppercase;
+      letter-spacing: 1.4px;
+      font-size: 9px;
+      font-weight: 900;
+      color: rgba(255,255,255,.76);
+    }
+    .amount {
+      font-size: 36px;
+      line-height: 1;
+      font-weight: 500;
+      letter-spacing: 1px;
+      margin: 12px 0 7px;
+    }
+    .subline {
+      color: rgba(255,255,255,.85);
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .wave {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 30px;
+      height: 76px;
+      border-bottom: 44px solid rgba(106, 168, 217, .3);
+      clip-path: polygon(0 45%, 12% 30%, 26% 18%, 42% 25%, 60% 55%, 75% 64%, 88% 52%, 100% 39%, 100% 100%, 0 100%);
+    }
+    .wave:before {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 33px;
+      border-top: 2px solid white;
+      transform: skewY(-8deg);
+    }
+    .mini-card {
+      height: 120px;
+      padding: 16px 16px 12px;
+    }
+    .mini-card .value {
+      font-size: 27px;
+      font-weight: 900;
+      color: var(--green);
+      margin-top: 2px;
+    }
+    .spark {
+      height: 48px;
+      margin-top: 12px;
+      border-bottom: 2px solid var(--blue);
+      clip-path: polygon(0 64%, 16% 48%, 28% 40%, 42% 39%, 56% 52%, 72% 62%, 84% 60%, 100% 30%, 100% 100%, 0 100%);
+      background: linear-gradient(180deg, rgba(24,90,157,.1), transparent);
+    }
+    .composition {
+      height: 152px;
+      margin-top: 8px;
+      padding: 20px 18px;
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+    .donut {
+      width: 68px;
+      height: 68px;
+      border-radius: 50%;
+      background: conic-gradient(#123d6b 0 34%, #1f78be 34% 55%, #7ba7d1 55% 74%, #0f7b3d 74% 100%);
+      position: relative;
+      flex: 0 0 auto;
+    }
+    .donut:after {
+      content: "19,4%\\A MC";
+      white-space: pre;
+      position: absolute;
+      inset: 15px;
+      border-radius: 50%;
+      background: white;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .legend {
+      flex: 1;
+      display: grid;
+      gap: 7px;
+      font-size: 10px;
+      color: var(--text);
+      font-weight: 700;
+    }
+    .legend-row { display: flex; align-items: center; justify-content: space-between; }
+    .mark { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-right: 7px; }
+
+    .metrics {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid #9dbade;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .metric {
+      min-height: 72px;
+      padding: 14px 14px;
+      border-right: 1px solid #c8d9ec;
+    }
+    .metric:last-child { border-right: 0; }
+    .metric .label {
+      color: #55759d;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-size: 9px;
+      font-weight: 900;
+    }
+    .metric .num {
+      margin-top: 8px;
+      font-size: 17px;
+      font-weight: 900;
+    }
+    .metric .num.red { color: var(--red); }
+    .metric .tiny {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    .divider {
+      text-align: center;
+      color: #84a8cb;
+      font-size: 24px;
+      line-height: 1;
+      padding: 10px 0 8px;
+    }
+
+    .table-card {
+      height: 190px;
+      border: 1px solid #b7ccea;
+      border-radius: 8px;
+      background: white;
+      overflow: hidden;
+    }
+    .table-head {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid #c8d9ec;
+    }
+    .table-title { font-size: 12px; font-weight: 900; }
+    .table-sub { margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 10px; }
+    th {
+      height: 28px;
+      text-transform: uppercase;
+      letter-spacing: .7px;
+      color: #55759d;
+      font-size: 9px;
+      text-align: left;
+      padding: 0 10px;
+      border-bottom: 1px solid #c8d9ec;
+    }
+    td {
+      height: 38px;
+      padding: 0 10px;
+      border-bottom: 1px solid #d8e5f4;
+      color: #0e3159;
+      font-weight: 700;
+    }
+    .chip {
+      display: inline-flex;
+      height: 18px;
+      align-items: center;
+      padding: 0 7px;
+      border-radius: 4px;
+      background: #d7e7fb;
+      color: #285d97;
+      font-size: 9px;
+      font-weight: 900;
+    }
+    .mc-green { color: #0c8a3f; }
+    .mc-orange { color: #c46a00; }
+
+    .request-panel {
+      height: 536px;
+      border: 1px solid #9dbade;
+      border-radius: 8px;
+      background: white;
+      display: grid;
+      place-items: center;
+      padding: 32px;
+    }
+    .request-box {
+      width: 520px;
+      border: 1px solid #c8d9ec;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #fff, #f7fbff);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .request-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: #e8f1fb;
+      color: var(--blue);
+      display: grid;
+      place-items: center;
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+    .request-title {
+      font-size: 21px;
+      line-height: 1.2;
+      font-weight: 900;
+      margin: 0 0 8px;
+    }
+    .request-copy {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      margin-bottom: 18px;
+    }
+    .request-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+    .request-meta div {
+      padding: 12px;
+      border-right: 1px solid var(--line-soft);
+      background: #fff;
+    }
+    .request-meta div:last-child { border-right: 0; }
+    .request-meta span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 900;
+      letter-spacing: .8px;
+      margin-bottom: 6px;
+    }
+    .request-meta strong { font-size: 13px; }
+    .actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+    .history-layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 10px;
+      align-items: start;
+    }
+    .history-drawer {
+      border: 1px solid #9dbade;
+      border-radius: 8px;
+      background: white;
+      min-height: 536px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .drawer-head {
+      padding: 15px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .drawer-head strong { font-size: 13px; }
+    .drawer-head span { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .jobs { padding: 10px; display: grid; gap: 8px; }
+    .job {
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .job-top { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+    .period { font-weight: 900; font-size: 12px; }
+    .job small { display: block; color: var(--muted); font-weight: 700; margin-top: 4px; }
+    .tag {
+      height: 22px;
+      border-radius: 999px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 900;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+    .ready { color: var(--green); background: #e9f7ee; border-color: #bce3c6; }
+    .running { color: var(--amber); background: #fff7e8; border-color: #f3d49b; }
+    .queue { color: #2563eb; background: #eaf2ff; border-color: #bdd5ff; }
+    .error { color: var(--red); background: #fff0f0; border-color: #f5c0c0; }
+    .progress {
+      height: 7px;
+      border-radius: 999px;
+      background: #edf2f7;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .bar { height: 100%; width: 62%; background: var(--amber); border-radius: inherit; }
+    .bar.green { width: 100%; background: var(--green); }
+    .bar.blue { width: 18%; background: #2563eb; }
+
+    .toast {
+      margin-top: 8px;
+      border: 1px solid #f3d49b;
+      background: #fff9ee;
+      color: #7a4b00;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <span class="title">Análise Financeira</span>
+        <span class="crumb">· Mercado Livre · 2052 vendas no período</span>
+      </div>
+      <div class="controls">
+        <span class="datebox">De 📅 26/05/2026</span>
+        <span style="color:#55759d;font-weight:900;">→</span>
+        <span class="datebox">Até 📅 26/06/2026</span>
+        <span class="btn">⌕ Buscar</span>
+      </div>
+    </header>
+
+    <section class="below-top">
+      <span class="btn">Buscar histórico</span>
+      <div class="tabs">
+        <button class="tab active" data-state="ready">Relatório pronto</button>
+        <button class="tab" data-state="missing">Período não preparado</button>
+        <button class="tab" data-state="history">Histórico aberto</button>
+      </div>
+      <span class="status-pill"><span class="dot"></span> Banco atualizado há 4 min</span>
+    </section>
+
+    <section id="ready-state">
+      <div class="grid">
+        <article class="card big-card">
+          <div class="kicker">Vendas aprovadas</div>
+          <div class="amount">R$ 121.697,04</div>
+          <div class="subline">Faturamento ML R$ 126.077,25 &nbsp;&nbsp; Cancel. R$ 4.380,21</div>
+          <div class="wave"></div>
+        </article>
+        <div>
+          <article class="card mini-card">
+            <div class="kicker" style="color:#55759d;">Margem de contribuição</div>
+            <div class="value">19,4%</div>
+            <div style="font-weight:900;font-size:12px;">R$ 23.580,57 <span style="font-weight:700;color:#6b86a6;font-size:10px;">margem média no período</span></div>
+            <div class="spark"></div>
+          </article>
+          <article class="card composition">
+            <div class="donut"></div>
+            <div class="legend">
+              <div class="legend-row"><span><i class="mark" style="background:#0c3158"></i>Custo</span><b>46,1%</b></div>
+              <div class="legend-row"><span><i class="mark" style="background:#1f78be"></i>Imposto</span><b>8,5%</b></div>
+              <div class="legend-row"><span><i class="mark" style="background:#7ba7d1"></i>Tarifa</span><b>10,9%</b></div>
+              <div class="legend-row"><span><i class="mark" style="background:#79a9d7"></i>Frete</span><b>15,2%</b></div>
+              <div class="legend-row"><span><i class="mark" style="background:#0f7b3d"></i>MC</span><b>19,4%</b></div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><div class="label">Custo + imposto</div><div class="num red">R$ 66.378,76</div><div class="tiny">Custo R$ 56.070,55 · Imp R$ 10.308,21</div></div>
+        <div class="metric"><div class="label">Tarifa ML</div><div class="num red">R$ 13.244,52</div><div class="tiny">10,5% do faturamento</div></div>
+        <div class="metric"><div class="label">Frete total</div><div class="num">R$ 23.558,48</div><div class="tiny">Compr R$ 5.066,21 · Vend R$ 18.492,27</div></div>
+        <div class="metric"><div class="label">Qtd vendas</div><div class="num">1.994</div><div class="tiny">2132 unid. · ticket R$ 61,03</div></div>
+      </div>
+
+      <div class="divider">▾</div>
+
+      <section class="table-card">
+        <div class="table-head">
+          <div><div class="table-title">Vendas detalhadas</div><div class="table-sub">2052 resultados · todas as colunas de custo, imposto, frete e margem</div></div>
+          <div class="controls"><span class="btn">+ Filtro</span><span class="btn">⚙ Colunas</span><span class="btn">↧ Exportar</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Anúncio · SKU</th><th>Data</th><th>Frete</th><th>Valor un.</th><th>Qtd</th><th>Faturamento</th><th>Custo</th><th>Imposto</th><th>Tarifa</th><th>Frete comp.</th><th>Frete vend.</th><th>MC</th><th>MC %</th></tr></thead>
+          <tbody>
+            <tr><td>Motor De Partida Arranque Yamaha Neo At 115...</td><td>2026-05-24</td><td><span class="chip">FULL</span></td><td>76,26</td><td>1</td><td>80,25</td><td>31,00</td><td>6,77</td><td>5,98</td><td>4,99</td><td>8,05</td><td class="mc-green">23,46</td><td class="mc-green">30,76%</td></tr>
+            <tr><td>Disco De Freio Traseiro Cb250 F Cb250f...</td><td>2026-05-24</td><td><span class="chip">FULL</span></td><td>59,99</td><td>1</td><td>59,99</td><td>31,05</td><td>5,40</td><td>7,20</td><td>0,00</td><td>7,95</td><td class="mc-green">8,39</td><td class="mc-green">13,99%</td></tr>
+            <tr><td>Disco Freio Dianteiro Titan Fan Cargo Cg...</td><td>2026-05-25</td><td><span class="chip">FULL</span></td><td>56,08</td><td>1</td><td>71,07</td><td>30,00</td><td>5,05</td><td>6,73</td><td>14,99</td><td>7,95</td><td class="mc-green">6,35</td><td class="mc-orange">11,33%</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </section>
+
+    <section id="missing-state" class="hidden">
+      <div class="request-panel">
+        <div class="request-box">
+          <div class="request-icon">↻</div>
+          <h1 class="request-title">Este período ainda não está preparado</h1>
+          <div class="request-copy">
+            O painel consulta apenas o banco interno. Para este range, o robô ainda precisa buscar e consolidar os dados do Mercado Livre em segundo plano.
+          </div>
+          <div class="request-meta">
+            <div><span>Período solicitado</span><strong>01/05/2026 → 07/05/2026</strong></div>
+            <div><span>Estimativa inicial</span><strong>Alguns minutos, sem travar a tela</strong></div>
+          </div>
+          <div class="actions">
+            <span class="btn secondary">Cancelar</span>
+            <span class="btn green">Preparar relatório</span>
+          </div>
+        </div>
+      </div>
+      <div class="toast">
+        <span>Relatório de 01/05 a 07/05 será processado em background. Você pode continuar usando o sistema.</span>
+        <span class="btn ghost">Ver histórico</span>
+      </div>
+    </section>
+
+    <section id="history-state" class="hidden">
+      <div class="history-layout">
+        <div>
+          <section class="table-card" style="height:536px;">
+            <div class="table-head">
+              <div><div class="table-title">Relatório financeiro</div><div class="table-sub">O período selecionado será aberto quando o status estiver pronto</div></div>
+              <div class="controls"><span class="btn secondary">Preparar outro período</span></div>
+            </div>
+            <div class="request-panel" style="height:482px;border:0;border-radius:0;box-shadow:none;">
+              <div class="request-box" style="width:460px;box-shadow:none;">
+                <div class="request-icon">⏱</div>
+                <h1 class="request-title">Relatório em preparação</h1>
+                <div class="request-copy">O robô está carregando pedidos, financeiro e exceções de frete. O resultado aparece aqui quando terminar.</div>
+                <div class="progress"><div class="bar"></div></div>
+                <div style="display:flex;justify-content:space-between;margin-top:8px;color:#6b7280;font-size:11px;font-weight:800;">
+                  <span>1.200 linhas processadas</span><span>62%</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <aside class="history-drawer">
+          <div class="drawer-head">
+            <div><strong>Buscar histórico</strong><br><span>Relatórios solicitados</span></div>
+            <span class="btn secondary">Fechar</span>
+          </div>
+          <div class="jobs">
+            <div class="job">
+              <div class="job-top"><div><div class="period">31/05/2026 → 01/06/2026</div><small>575 linhas salvas · pronto para abrir</small></div><span class="tag ready">Pronto</span></div>
+              <div class="progress"><div class="bar green"></div></div>
+              <div class="actions" style="margin-top:10px;"><span class="btn">Abrir</span></div>
+            </div>
+            <div class="job">
+              <div class="job-top"><div><div class="period">01/05/2026 → 07/05/2026</div><small>Rodando em background · checkpoint ativo</small></div><span class="tag running">Preparando</span></div>
+              <div class="progress"><div class="bar"></div></div>
+            </div>
+            <div class="job">
+              <div class="job-top"><div><div class="period">Maio/2026 completo</div><small>Aguardando janela do robô</small></div><span class="tag queue">Na fila</span></div>
+              <div class="progress"><div class="bar blue"></div></div>
+            </div>
+            <div class="job">
+              <div class="job-top"><div><div class="period">15/04/2026 → 20/04/2026</div><small>ML limitou chamadas. Retomar depois.</small></div><span class="tag error">Pausado</span></div>
+              <div class="actions" style="margin-top:10px;"><span class="btn secondary">Retomar</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    const states = {
+      ready: document.querySelector('#ready-state'),
+      missing: document.querySelector('#missing-state'),
+      history: document.querySelector('#history-state')
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        tabs.forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        Object.values(states).forEach((state) => state.classList.add('hidden'));
+        states[tab.dataset.state].classList.remove('hidden');
+      });
+    });
+  </script>
+</body>
+</html>
