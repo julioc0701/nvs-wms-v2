@@ -73,6 +73,7 @@ class BillingOrderDetailsCanaryResult:
     order_ids_found: list[int]
     shipping_ids_found: list[str]
     pack_ids_found: list[str]
+    shipping_total_by_order: dict[str, float]
     shipping_charge_lines: list[dict]
     error_message: str | None = None
 
@@ -85,6 +86,7 @@ class BillingOrderDetailsCanaryResult:
             "order_ids_found": self.order_ids_found,
             "shipping_ids_found": self.shipping_ids_found,
             "pack_ids_found": self.pack_ids_found,
+            "shipping_total_by_order": self.shipping_total_by_order,
             "shipping_charge_lines": self.shipping_charge_lines,
             "error_message": self.error_message,
         }
@@ -138,6 +140,7 @@ async def run_billing_order_details_canary(
             order_ids_found=[],
             shipping_ids_found=[],
             pack_ids_found=[],
+            shipping_total_by_order={},
             shipping_charge_lines=[],
             error_message="run sem snapshots para testar billing",
         )
@@ -156,6 +159,7 @@ async def run_billing_order_details_canary(
             order_ids_found=summary["order_ids_found"],
             shipping_ids_found=summary["shipping_ids_found"],
             pack_ids_found=summary["pack_ids_found"],
+            shipping_total_by_order=summary["shipping_total_by_order"],
             shipping_charge_lines=summary["shipping_charge_lines"],
             error_message=None,
         )
@@ -168,6 +172,7 @@ async def run_billing_order_details_canary(
             order_ids_found=[],
             shipping_ids_found=[],
             pack_ids_found=[],
+            shipping_total_by_order={},
             shipping_charge_lines=[],
             error_message=str(exc),
         )
@@ -180,6 +185,7 @@ async def run_billing_order_details_canary(
             order_ids_found=[],
             shipping_ids_found=[],
             pack_ids_found=[],
+            shipping_total_by_order={},
             shipping_charge_lines=[],
             error_message=f"{type(exc).__name__}: {str(exc)[:300]}",
         )
@@ -191,6 +197,7 @@ def _summarize_billing_order_details(payload: dict) -> dict:
     shipping_ids: set[str] = set()
     pack_ids: set[str] = set()
     shipping_lines: list[dict] = []
+    shipping_total_by_order: dict[str, float] = {}
 
     def walk(node):
         if isinstance(node, dict):
@@ -220,8 +227,9 @@ def _summarize_billing_order_details(payload: dict) -> dict:
                 or bool(shipping)
             )
             if charge and is_shipping:
+                line_order_ids = _order_ids_in(node)
                 shipping_lines.append({
-                    "order_ids": _order_ids_in(node),
+                    "order_ids": line_order_ids,
                     "shipping_id": str(shipping.get("shipping_id")) if shipping.get("shipping_id") is not None else None,
                     "pack_id": str(shipping.get("pack_id")) if shipping.get("pack_id") is not None else None,
                     "transaction_detail": charge.get("transaction_detail"),
@@ -230,6 +238,13 @@ def _summarize_billing_order_details(payload: dict) -> dict:
                     "detail_amount": charge.get("detail_amount"),
                     "marketplace": marketplace,
                 })
+                if marketplace == "SHIPPING":
+                    for order_id in line_order_ids:
+                        key = str(order_id)
+                        shipping_total_by_order[key] = round(
+                            shipping_total_by_order.get(key, 0) + float(charge.get("detail_amount") or 0),
+                            2,
+                        )
 
             for value in node.values():
                 walk(value)
@@ -243,6 +258,7 @@ def _summarize_billing_order_details(payload: dict) -> dict:
         "order_ids_found": sorted(order_ids),
         "shipping_ids_found": sorted(shipping_ids),
         "pack_ids_found": sorted(pack_ids),
+        "shipping_total_by_order": dict(sorted(shipping_total_by_order.items())),
         "shipping_charge_lines": shipping_lines[:20],
     }
 

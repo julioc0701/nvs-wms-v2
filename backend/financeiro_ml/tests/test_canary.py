@@ -241,6 +241,7 @@ async def test_billing_order_details_canary_summarizes_links(fin_db):
     assert result.order_ids_found == [101, 102]
     assert result.shipping_ids_found == ["5001"]
     assert result.pack_ids_found == ["7001"]
+    assert result.shipping_total_by_order == {"101": 8.05}
     assert result.shipping_charge_lines[0]["detail_amount"] == 8.05
     assert result.shipping_charge_lines[0]["order_ids"] == [101]
 
