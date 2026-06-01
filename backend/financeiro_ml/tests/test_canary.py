@@ -280,6 +280,30 @@ async def test_billing_order_ids_canary_uses_explicit_ids():
 
 
 @pytest.mark.asyncio
+async def test_probe_shipment_costs_summarizes_sender_cost():
+    from financeiro_ml.canary import probe_shipment_costs
+
+    class ShipmentCostClient:
+        async def _get(self, path):
+            assert path == "/shipments/5001/costs"
+            return {
+                "gross_amount": 20.94,
+                "senders": [{"cost": 7.95, "save": 1.0}],
+                "receiver": {"cost": 12.99, "save": 0},
+            }
+
+    result = await probe_shipment_costs(
+        client=ShipmentCostClient(),
+        entries=[{"order_id": 101, "shipment_id": "5001"}],
+        sleep_sec=0,
+    )
+
+    assert result.status == "ok"
+    assert result.results[0]["sender_cost"] == 7.95
+    assert result.results[0]["receiver_cost"] == 12.99
+
+
+@pytest.mark.asyncio
 async def test_process_canary_pending_marks_done(fin_db):
     db, m = fin_db
     from financeiro_ml.canary import process_canary_pending

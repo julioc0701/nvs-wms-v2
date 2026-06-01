@@ -710,6 +710,17 @@ class CanaryBillingOrderIdsParams(BaseModel):
     order_ids: list[int] = Field(min_length=1, max_length=20)
 
 
+class ShipmentCostProbeEntry(BaseModel):
+    order_id: int
+    shipment_id: int | str
+
+
+class ShipmentCostProbeParams(BaseModel):
+    seller_id: int
+    entries: list[ShipmentCostProbeEntry] = Field(min_length=1, max_length=10)
+    sleep_sec: float = Field(default=5, ge=0, le=30)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -768,6 +779,24 @@ async def canary_billing_order_ids(params: CanaryBillingOrderIdsParams,
         client=client,
         seller_id=params.seller_id,
         order_ids=params.order_ids,
+    )
+    return result.as_dict()
+
+
+@router.post("/_debug/canary/shipment-costs")
+async def canary_shipment_costs(params: ShipmentCostProbeParams,
+                                operator_id: int = Depends(require_master)):
+    """Canario para poucos /shipments/{id}/costs explicitos. Para no 429."""
+    from financeiro_ml.db import init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import probe_shipment_costs
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await probe_shipment_costs(
+        client=client,
+        entries=[entry.model_dump() for entry in params.entries],
+        sleep_sec=params.sleep_sec,
     )
     return result.as_dict()
 

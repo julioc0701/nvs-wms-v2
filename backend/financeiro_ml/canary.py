@@ -92,6 +92,24 @@ class BillingOrderDetailsCanaryResult:
         }
 
 
+@dataclass
+class ShipmentCostProbeResult:
+    status: str
+    processed: int
+    rate_limited: bool
+    results: list[dict]
+    error_message: str | None = None
+
+    def as_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "processed": self.processed,
+            "rate_limited": self.rate_limited,
+            "results": self.results,
+            "error_message": self.error_message,
+        }
+
+
 def _missing_flags(order: dict) -> list[str]:
     flags = []
     shipment_id = (order.get("shipping") or {}).get("id")
@@ -105,6 +123,74 @@ def _missing_flags(order: dict) -> list[str]:
     if shipment_id and shipping_cost == 0:
         flags.append("pending_shipping_cost")
     return flags
+
+
+async def probe_shipment_costs(
+    *,
+    client,
+    entries: list[dict],
+    sleep_sec: float = 5,
+) -> ShipmentCostProbeResult:
+    """Consulta poucos /shipments/{id}/costs explicitamente, com pausa."""
+    results = []
+    for index, entry in enumerate(entries):
+        order_id = int(entry["order_id"])
+        shipment_id = str(entry["shipment_id"])
+        try:
+            payload = await client._get(f"/shipments/{shipment_id}/costs")
+        except MLRateLimited as exc:
+            results.append({
+                "order_id": order_id,
+                "shipment_id": shipment_id,
+                "status": "rate_limited",
+                "error": str(exc),
+            })
+            return ShipmentCostProbeResult(
+                status="blocked_rate_limit",
+                processed=len(results),
+                rate_limited=True,
+                results=results,
+                error_message=str(exc),
+            )
+        except Exception as exc:
+            results.append({
+                "order_id": order_id,
+                "shipment_id": shipment_id,
+                "status": "failed",
+                "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            })
+        else:
+            results.append(_summarize_shipment_cost(order_id, shipment_id, payload))
+
+        if sleep_sec and index < len(entries) - 1:
+            await asyncio.sleep(sleep_sec)
+
+    return ShipmentCostProbeResult(
+        status="ok",
+        processed=len(results),
+        rate_limited=False,
+        results=results,
+    )
+
+
+def _summarize_shipment_cost(order_id: int, shipment_id: str, payload: dict) -> dict:
+    senders = payload.get("senders") or []
+    receiver = payload.get("receiver") or {}
+    sender_cost = 0.0
+    sender_save = 0.0
+    for sender in senders:
+        sender_cost += float(sender.get("cost") or 0)
+        sender_save += float(sender.get("save") or 0)
+    return {
+        "order_id": order_id,
+        "shipment_id": shipment_id,
+        "status": "ok",
+        "sender_cost": round(sender_cost, 2),
+        "sender_save": round(sender_save, 2),
+        "receiver_cost": float(receiver.get("cost") or 0),
+        "receiver_save": float(receiver.get("save") or 0),
+        "gross_amount": payload.get("gross_amount"),
+    }
 
 
 async def run_billing_order_details_canary(
