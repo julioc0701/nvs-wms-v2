@@ -54,17 +54,18 @@ def dv_mod11_codigo_barras(codigo_sem_dv: str) -> int:
     """Calcula o DV módulo 11 do código de barras (posição 5 do código de 44 dígitos).
 
     Recebe os 43 dígitos do código sem o DV. Multiplica cada dígito da DIREITA para a
-    ESQUERDA por pesos cíclicos 2,3,4,5,6,7,2,3,4,5,6,7,... Soma tudo. resto = soma % 11.
+    ESQUERDA por pesos cíclicos 2,3,4,5,6,7,8,9,2,3,4,5,6,7,8,9,... (padrão FEBRABAN,
+    pesos de 2 a 9). Soma tudo. resto = soma % 11.
     DV = 11 - resto. Se DV resultar em 0, 10 ou 11, retorna 1.
     """
     if len(codigo_sem_dv) != 43 or not codigo_sem_dv.isdigit():
         raise ValueError(
             f"DV mod 11 espera exatamente 43 dígitos, recebeu {len(codigo_sem_dv)}"
         )
-    pesos_ciclo = [2, 3, 4, 5, 6, 7]
+    pesos_ciclo = [2, 3, 4, 5, 6, 7, 8, 9]
     soma = 0
     for i, digito in enumerate(reversed(codigo_sem_dv)):
-        peso = pesos_ciclo[i % 6]
+        peso = pesos_ciclo[i % len(pesos_ciclo)]
         soma += int(digito) * peso
     resto = soma % 11
     dv = 11 - resto

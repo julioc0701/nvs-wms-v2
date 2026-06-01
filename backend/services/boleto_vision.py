@@ -6,15 +6,26 @@ Auto-detecta qual provider de IA está disponível no ambiente:
   3. OPENROUTER_API_KEY → roteamento aberto
 
 Override manual via env BOLETO_VISION_PROVIDER (gemini|groq|openrouter).
+
+ROTAÇÃO AUTOMÁTICA: fotos de boleto frequentemente vêm deitadas ou de cabeça
+pra baixo. O serviço tenta a imagem em 4 orientações (0°, 90°, 270°, 180°) e
+usa o DV (dígito verificador) do parser FEBRABAN como checksum para escolher
+a leitura correta — para na primeira rotação cujo DV bate.
 """
+import base64
 import json
 import os
 import re
 import httpx
 import logging
 from dataclasses import dataclass
+from io import BytesIO
 
 log = logging.getLogger(__name__)
+
+# Ordem das rotações testadas. 0° primeiro (foto já correta acerta em 1 chamada).
+# 90° costuma resolver fotos deitadas; 270° e 180° cobrem o resto.
+_ROTACOES = [0, 90, 270, 180]
 
 
 @dataclass
@@ -88,21 +99,41 @@ class BoletoVisionError(Exception):
     """Erro na chamada de visão (timeout, API key faltando, modelo recusou)."""
 
 
-async def extrair_linha_digitavel(foto_b64: str) -> BoletoVisionResult:
-    """Recebe uma foto em base64 e retorna BoletoVisionResult com linha + beneficiário.
-
-    Levanta BoletoVisionError se a linha digitável não puder ser identificada.
-    Beneficiário pode vir como None se a IA não conseguir extrair (não bloqueia).
-    """
-    provider, api_key, base_url, model = _detectar_provider()
-    log.info(f"[VISION] provider={provider} model={model}")
-
-    # Normaliza o base64: aceita tanto "data:image/jpeg;base64,..." quanto string pura
+def _normalizar_b64(foto_b64: str) -> bytes:
+    """Extrai os bytes da imagem a partir de base64 (com ou sem prefixo data:)."""
     if foto_b64.startswith("data:"):
-        data_url = foto_b64
-    else:
-        data_url = f"data:image/jpeg;base64,{foto_b64}"
+        foto_b64 = foto_b64.split(",", 1)[1]
+    return base64.b64decode(foto_b64)
 
+
+def _rotacionar_para_b64(raw: bytes, graus: int) -> str:
+    """Corrige orientação EXIF, rotaciona `graus` (anti-horário) e devolve base64 JPEG.
+
+    Se Pillow não estiver disponível, devolve o base64 original (fallback).
+    """
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        log.warning("[VISION] Pillow indisponível — usando imagem sem rotação")
+        return base64.b64encode(raw).decode()
+
+    img = Image.open(BytesIO(raw))
+    img = ImageOps.exif_transpose(img)  # corrige orientação automática de celular
+    if graus:
+        img = img.rotate(graus, expand=True)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=88)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+async def _chamar_modelo(b64: str, api_key: str, base_url: str, model: str) -> tuple[str, str | None] | None:
+    """Chama o modelo de visão UMA vez. Retorna (digitos, beneficiario) ou None.
+
+    Retorna None se o modelo respondeu NAO_ENCONTRADO ou JSON inválido (falha leve).
+    Levanta BoletoVisionError só em falhas duras (timeout, HTTP, chave).
+    """
     payload = {
         "model": model,
         "temperature": 0.0,
@@ -111,23 +142,16 @@ async def extrair_linha_digitavel(foto_b64: str) -> BoletoVisionResult:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": _PROMPT},
-                    {"type": "image_url", "image_url": {"url": data_url}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                 ],
             }
         ],
     }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
-            resp = await client.post(
-                f"{base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
+            resp = await client.post(f"{base_url}/chat/completions", headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
     except httpx.TimeoutException:
@@ -141,36 +165,80 @@ async def extrair_linha_digitavel(foto_b64: str) -> BoletoVisionResult:
     try:
         resposta = data["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, AttributeError):
-        raise BoletoVisionError("Resposta do modelo em formato inesperado")
+        return None
 
-    log.info(f"[VISION] resposta bruta: {resposta[:200]}")
-
-    # Extrai bloco JSON da resposta (modelo pode embrulhar em ```)
     bloco = re.search(r"\{.*\}", resposta, re.DOTALL)
     if not bloco:
-        raise BoletoVisionError("Modelo não retornou JSON válido")
-
+        return None
     try:
-        data = json.loads(bloco.group(0))
-    except json.JSONDecodeError as e:
-        raise BoletoVisionError(f"JSON inválido na resposta: {e}")
+        parsed_json = json.loads(bloco.group(0))
+    except json.JSONDecodeError:
+        return None
 
-    linha_raw = str(data.get("linha_digitavel", "")).strip()
-    benef_raw = str(data.get("beneficiario", "")).strip()
-
+    linha_raw = str(parsed_json.get("linha_digitavel", "")).strip()
+    benef_raw = str(parsed_json.get("beneficiario", "")).strip()
     if not linha_raw or "NAO_ENCONTRADO" in linha_raw.upper():
-        raise BoletoVisionError("Não foi possível identificar o boleto na foto")
+        return None
 
-    # Limpa separadores e valida
     digitos = re.sub(r"\D", "", linha_raw)
-    if len(digitos) != 47 and len(digitos) != 44:
-        raise BoletoVisionError(
-            f"Modelo retornou {len(digitos)} dígitos (esperado 47 ou 44)"
-        )
-
-    # Beneficiário é opcional — None se não veio ou veio com flag
     beneficiario = None
     if benef_raw and "NAO_ENCONTRADO" not in benef_raw.upper():
         beneficiario = benef_raw
+    return (digitos, beneficiario)
 
-    return BoletoVisionResult(linha_digitavel=digitos, beneficiario=beneficiario)
+
+async def extrair_linha_digitavel(foto_b64: str) -> BoletoVisionResult:
+    """Recebe foto em base64 e retorna BoletoVisionResult com linha + beneficiário.
+
+    Tenta a imagem em várias rotações (0°, 90°, 270°, 180°). Para cada leitura,
+    valida com o parser FEBRABAN e usa o DV como checksum:
+      - Se o DV bate → retorna imediatamente (leitura correta garantida)
+      - Senão guarda como fallback (44/47 dígitos, mas DV não confere)
+    Se nenhuma rotação produz leitura válida, levanta BoletoVisionError.
+    """
+    from services.boleto_parser import parse_boleto, BoletoInvalidoError
+
+    provider, api_key, base_url, model = _detectar_provider()
+    log.info(f"[VISION] provider={provider} model={model}")
+
+    raw = _normalizar_b64(foto_b64)
+    fallback: BoletoVisionResult | None = None
+
+    for graus in _ROTACOES:
+        b64 = _rotacionar_para_b64(raw, graus)
+        try:
+            res = await _chamar_modelo(b64, api_key, base_url, model)
+        except BoletoVisionError:
+            raise  # falha dura (timeout/HTTP/chave) aborta tudo
+        if not res:
+            log.info(f"[VISION] rotação {graus}°: nada reconhecido")
+            continue
+
+        digitos, beneficiario = res
+        if len(digitos) not in (44, 47):
+            log.info(f"[VISION] rotação {graus}°: {len(digitos)} dígitos (descarta)")
+            continue
+
+        try:
+            parsed = parse_boleto(digitos)
+        except BoletoInvalidoError:
+            log.info(f"[VISION] rotação {graus}°: parser rejeitou")
+            continue
+
+        if parsed.dv_ok:
+            log.info(f"[VISION] rotação {graus}°: DV OK ✓ (banco {parsed.banco})")
+            return BoletoVisionResult(linha_digitavel=digitos, beneficiario=beneficiario)
+
+        # DV não bate, mas tamanho ok — guarda como último recurso
+        if fallback is None:
+            log.info(f"[VISION] rotação {graus}°: DV não bate, guardando fallback")
+            fallback = BoletoVisionResult(linha_digitavel=digitos, beneficiario=beneficiario)
+
+    if fallback is not None:
+        log.info("[VISION] nenhuma rotação com DV válido — retornando melhor leitura")
+        return fallback
+
+    raise BoletoVisionError(
+        "Não foi possível ler o boleto. Tente uma foto mais nítida, "
+        "bem enquadrada e com boa iluminação."
+    )

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 
 # Código fictício válido (DV mod 11 = 5) usado nos testes
-CODIGO_BOLETO_VALIDO = "237" + "9" + "5" + "3380" + "0000010005" + ("0" * 25)
+CODIGO_BOLETO_VALIDO = "237" + "9" + "4" + "3380" + "0000010005" + ("0" * 25)
 
 
 @pytest.fixture(scope="session", autouse=True)

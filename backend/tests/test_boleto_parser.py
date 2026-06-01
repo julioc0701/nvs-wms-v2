@@ -48,26 +48,30 @@ def test_dv_mod11_todos_zeros_resulta_em_um():
 
 
 def test_dv_mod11_todos_uns():
-    """
-    43 dígitos '1', pesos cíclicos [2,3,4,5,6,7] R→L.
-    Cada ciclo de 6 pos: soma = 2+3+4+5+6+7 = 27.
-    7 ciclos completos (42 pos) + 1 pos extra (peso 2) = 7*27 + 2 = 191.
-    191 % 11 = 4; DV = 11 - 4 = 7.
-    """
+    """43 dígitos '1', pesos cíclicos FEBRABAN 2..9 R→L. DV resultante = 2."""
     from services.boleto_parser import dv_mod11_codigo_barras
-    assert dv_mod11_codigo_barras("1" * 43) == 7
+    assert dv_mod11_codigo_barras("1" * 43) == 2
 
 
 def test_dv_mod11_boleto_construido_manualmente():
     """
     Boleto fictício: banco=237, moeda=9, fator=3380, valor=0000010005, livre=25 zeros.
     Código sem DV: "2379" + "3380" + "0000010005" + ("0" * 25)
-    Cálculo manual produz soma = 171, resto = 6, DV = 5.
+    Com pesos FEBRABAN 2..9, o DV correto é 4.
     """
     from services.boleto_parser import dv_mod11_codigo_barras
     codigo_sem_dv = "2379" + "3380" + "0000010005" + ("0" * 25)
     assert len(codigo_sem_dv) == 43
-    assert dv_mod11_codigo_barras(codigo_sem_dv) == 5
+    assert dv_mod11_codigo_barras(codigo_sem_dv) == 4
+
+
+def test_dv_mod11_boleto_real_santander():
+    """Boleto Santander REAL (banco 033) com DV impresso = 4. Valida pesos 2..9."""
+    from services.boleto_parser import dv_mod11_codigo_barras
+    # código de barras: 0339 [4] 14730000294161 9335822400000005060600101
+    codigo_sem_dv = "0339" + "14730000294161" + "9335822400000005060600101"
+    assert len(codigo_sem_dv) == 43
+    assert dv_mod11_codigo_barras(codigo_sem_dv) == 4
 
 
 def test_dv_mod11_rejeita_tamanho_errado():
@@ -107,13 +111,13 @@ def test_fator_para_data_3380_no_futuro():
 
 
 def test_parse_boleto_a_partir_do_codigo_de_barras():
-    """Boleto fictício Bradesco com DV mod 11 = 5 (calculado no teste anterior)."""
+    """Boleto fictício banco 237 com DV mod 11 = 4 (pesos FEBRABAN 2..9)."""
     from datetime import date, timedelta
     from decimal import Decimal
     from services.boleto_parser import parse_boleto
 
-    # Banco=237, moeda=9, DV=5, fator=3380, valor=0000010005 (R$ 100,05), livre=25 zeros
-    codigo = "237" + "9" + "5" + "3380" + "0000010005" + ("0" * 25)
+    # Banco=237, moeda=9, DV=4, fator=3380, valor=0000010005 (R$ 100,05), livre=25 zeros
+    codigo = "237" + "9" + "4" + "3380" + "0000010005" + ("0" * 25)
     assert len(codigo) == 44
 
     r = parse_boleto(codigo)
@@ -123,37 +127,41 @@ def test_parse_boleto_a_partir_do_codigo_de_barras():
     assert r.vencimento == date(2025, 2, 22) + timedelta(days=2380)
     assert r.campo_livre == "0" * 25
     assert r.dv_ok is True
-    # Linha digitável tem 47 dígitos
     assert len(r.linha_digitavel) == 47
 
 
-def test_parse_boleto_a_partir_da_linha_digitavel():
-    """Linha digitável gerada a partir do mesmo código fictício acima.
-
-    Campos:
-      Campo 1 (banco_moeda + livre_1-5 + DV): "23790000 0" → DV mod10 de "237900000" = 9
-      Campo 2 (livre_6-15 + DV):              "0000000000 0"
-      Campo 3 (livre_16-25 + DV):             "0000000000 0"
-      DV geral: 5
-      Fator + valor: "3380 0000010005"
-    """
+def test_parse_boleto_santander_real():
+    """Boleto Santander REAL — confirma leitura completa + DV válido."""
+    from datetime import date
+    from decimal import Decimal
     from services.boleto_parser import parse_boleto
 
-    linha = "2379000009" + "00000000000" + "00000000000" + "5" + "33800000010005"
+    linha = "03399335822240000000050606001019414730000294161"
+    r = parse_boleto(linha)
+    assert r.banco == "033"
+    assert r.valor == Decimal("2941.61")
+    assert r.vencimento == date(2026, 6, 10)
+    assert r.dv_ok is True
+
+
+def test_parse_boleto_a_partir_da_linha_digitavel():
+    """Linha digitável do boleto Santander real → parseia com DV válido."""
+    from services.boleto_parser import parse_boleto
+
+    linha = "03399335822240000000050606001019414730000294161"
     assert len(linha) == 47
     r = parse_boleto(linha)
-    assert r.banco == "237"
+    assert r.banco == "033"
     assert r.dv_ok is True
 
 
 def test_parse_boleto_remove_espacos_e_pontos():
     from services.boleto_parser import parse_boleto
 
-    # Mesma linha "2379000009 00000000000 00000000000 5 33800000010005" formatada
-    # como aparece num boleto físico (47 dígitos no total).
-    linha_suja = "  23790.00009 00000.000000 00000.000000 5 33800000010005  "
+    # Boleto Santander real formatado como aparece impresso
+    linha_suja = "  03399.33582 22400.000000 50606.001019 4 14730000294161  "
     r = parse_boleto(linha_suja)
-    assert r.banco == "237"
+    assert r.banco == "033"
     assert r.dv_ok is True
 
 
