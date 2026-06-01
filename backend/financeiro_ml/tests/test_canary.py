@@ -175,6 +175,77 @@ def test_get_canary_run_summary(fin_db):
 
 
 @pytest.mark.asyncio
+async def test_billing_order_details_canary_summarizes_links(fin_db):
+    db, _ = fin_db
+    from financeiro_ml.canary import run_billing_order_details_canary
+    from financeiro_ml.models_v2 import MLCanaryRun, MLCanaryOrderSnapshot
+
+    class BillingClient:
+        async def get_billing_order_details(self, *, seller_id, order_ids):
+            assert seller_id == 1
+            assert order_ids == [101, 102]
+            return {
+                "total": 2,
+                "results": [{
+                    "order_id": 101,
+                    "payment_info": [{
+                        "details": [{
+                            "charge_info": {
+                                "transaction_detail": "Cargo por Mercado Envios",
+                                "detail_type": "CHARGE",
+                                "detail_sub_type": "CME",
+                                "detail_amount": 8.05,
+                            },
+                            "sales_info": [{"order_id": 101}],
+                            "shipping_info": {
+                                "shipping_id": "5001",
+                                "pack_id": "7001",
+                                "receiver_shipping_cost": 0,
+                            },
+                            "items_info": [{"order_id": 101, "item_id": "MLB101"}],
+                            "marketplace_info": {"marketplace": "SHIPPING"},
+                        }]
+                    }]
+                }, {
+                    "order_id": 102,
+                    "payment_info": [],
+                }],
+            }
+
+    s = db.FinSessionLocal()
+    try:
+        run = MLCanaryRun(seller_id=1, day=date(2026, 6, 1), status="ok")
+        s.add(run)
+        s.commit()
+        s.add(MLCanaryOrderSnapshot(
+            run_id=run.id, seller_id=1, order_id=101,
+            ingest_status="base_imported", raw_json="{}"))
+        s.add(MLCanaryOrderSnapshot(
+            run_id=run.id, seller_id=1, order_id=102,
+            ingest_status="base_imported", raw_json="{}"))
+        s.commit()
+        run_id = run.id
+    finally:
+        s.close()
+
+    result = await run_billing_order_details_canary(
+        session_factory=db.FinSessionLocal,
+        client=BillingClient(),
+        run_id=run_id,
+        seller_id=1,
+        max_orders=2,
+    )
+
+    assert result.status == "ok"
+    assert result.requested_orders == [101, 102]
+    assert result.order_ids_found == [101, 102]
+    assert result.shipping_ids_found == ["5001"]
+    assert result.pack_ids_found == ["7001"]
+    assert result.shipping_charge_lines[0]["detail_amount"] == 8.05
+    assert result.shipping_charge_lines[0]["order_ids"] == [101]
+
+
+@pytest.mark.asyncio
 async def test_process_canary_pending_marks_done(fin_db):
     db, m = fin_db
     from financeiro_ml.canary import process_canary_pending

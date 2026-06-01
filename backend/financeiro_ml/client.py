@@ -275,6 +275,18 @@ class MLClient:
             )
             return {"details": []}
 
+    async def get_billing_order_details(self, *, seller_id: int, order_ids: list[int]) -> dict:
+        """GET billing details filtrado por order_ids.
+
+        Usado como canario para validar se Billing Reports traz order_id/shipping_id
+        e linhas de frete sem varrer periodo inteiro.
+        """
+        params = {
+            "seller_id": seller_id,
+            "order_ids": ",".join(str(o) for o in order_ids),
+        }
+        return await self._get("/billing/integration/group/ML/order/details", params=params)
+
 
 def build_default_client(seller_id: int | None = None) -> MLClient:
     from financeiro_ml.db import FinSessionLocal

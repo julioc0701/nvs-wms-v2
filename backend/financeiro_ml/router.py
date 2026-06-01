@@ -700,6 +700,11 @@ class CanaryProcessPendingParams(BaseModel):
     sleep_sec: float = Field(default=0, ge=0, le=30)
 
 
+class CanaryBillingOrderDetailsParams(BaseModel):
+    seller_id: int
+    max_orders: int = Field(default=5, ge=1, le=20)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -720,6 +725,26 @@ async def canary_orders_search(params: CanaryOrdersSearchParams,
         seller_id=params.seller_id,
         day=params.data,
         max_pages=params.max_pages,
+    )
+    return result.as_dict()
+
+
+@router.post("/_debug/canary/{run_id}/billing-order-details")
+async def canary_billing_order_details(run_id: int, params: CanaryBillingOrderDetailsParams,
+                                       operator_id: int = Depends(require_master)):
+    """Canario billing: valida vinculo order_id/shipping_id sem chamar shipments."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import run_billing_order_details_canary
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await run_billing_order_details_canary(
+        session_factory=FinSessionLocal,
+        client=client,
+        run_id=run_id,
+        seller_id=params.seller_id,
+        max_orders=params.max_orders,
     )
     return result.as_dict()
 

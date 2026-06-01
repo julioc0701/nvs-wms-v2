@@ -64,6 +64,32 @@ class PendingCanaryResult:
         }
 
 
+@dataclass
+class BillingOrderDetailsCanaryResult:
+    run_id: int
+    status: str
+    requested_orders: list[int]
+    total_results: int
+    order_ids_found: list[int]
+    shipping_ids_found: list[str]
+    pack_ids_found: list[str]
+    shipping_charge_lines: list[dict]
+    error_message: str | None = None
+
+    def as_dict(self) -> dict:
+        return {
+            "run_id": self.run_id,
+            "status": self.status,
+            "requested_orders": self.requested_orders,
+            "total_results": self.total_results,
+            "order_ids_found": self.order_ids_found,
+            "shipping_ids_found": self.shipping_ids_found,
+            "pack_ids_found": self.pack_ids_found,
+            "shipping_charge_lines": self.shipping_charge_lines,
+            "error_message": self.error_message,
+        }
+
+
 def _missing_flags(order: dict) -> list[str]:
     flags = []
     shipment_id = (order.get("shipping") or {}).get("id")
@@ -77,6 +103,168 @@ def _missing_flags(order: dict) -> list[str]:
     if shipment_id and shipping_cost == 0:
         flags.append("pending_shipping_cost")
     return flags
+
+
+async def run_billing_order_details_canary(
+    *,
+    session_factory,
+    client,
+    run_id: int,
+    seller_id: int,
+    max_orders: int = 5,
+) -> BillingOrderDetailsCanaryResult:
+    """Consulta Billing Reports por poucos order_ids ja coletados no canario."""
+    from financeiro_ml.models_v2 import MLCanaryOrderSnapshot
+
+    s = session_factory()
+    try:
+        rows = (
+            s.query(MLCanaryOrderSnapshot.order_id)
+            .filter_by(run_id=run_id, seller_id=seller_id)
+            .order_by(MLCanaryOrderSnapshot.id.asc())
+            .limit(max_orders)
+            .all()
+        )
+    finally:
+        s.close()
+
+    order_ids = [int(r[0]) for r in rows]
+    if not order_ids:
+        return BillingOrderDetailsCanaryResult(
+            run_id=run_id,
+            status="empty",
+            requested_orders=[],
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_charge_lines=[],
+            error_message="run sem snapshots para testar billing",
+        )
+
+    try:
+        payload = await client.get_billing_order_details(
+            seller_id=seller_id,
+            order_ids=order_ids,
+        )
+        summary = _summarize_billing_order_details(payload)
+        return BillingOrderDetailsCanaryResult(
+            run_id=run_id,
+            status="ok",
+            requested_orders=order_ids,
+            total_results=summary["total_results"],
+            order_ids_found=summary["order_ids_found"],
+            shipping_ids_found=summary["shipping_ids_found"],
+            pack_ids_found=summary["pack_ids_found"],
+            shipping_charge_lines=summary["shipping_charge_lines"],
+            error_message=None,
+        )
+    except MLRateLimited as exc:
+        return BillingOrderDetailsCanaryResult(
+            run_id=run_id,
+            status="rate_limited",
+            requested_orders=order_ids,
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_charge_lines=[],
+            error_message=str(exc),
+        )
+    except Exception as exc:
+        return BillingOrderDetailsCanaryResult(
+            run_id=run_id,
+            status="failed",
+            requested_orders=order_ids,
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_charge_lines=[],
+            error_message=f"{type(exc).__name__}: {str(exc)[:300]}",
+        )
+
+
+def _summarize_billing_order_details(payload: dict) -> dict:
+    results = payload.get("results") or []
+    order_ids: set[int] = set()
+    shipping_ids: set[str] = set()
+    pack_ids: set[str] = set()
+    shipping_lines: list[dict] = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("order_id") is not None:
+                try:
+                    order_ids.add(int(node["order_id"]))
+                except (TypeError, ValueError):
+                    pass
+            if node.get("shipping_id") is not None:
+                shipping_ids.add(str(node["shipping_id"]))
+            if node.get("pack_id") is not None:
+                pack_ids.add(str(node["pack_id"]))
+
+            charge = node.get("charge_info") or {}
+            shipping = node.get("shipping_info") or {}
+            marketplace = (node.get("marketplace_info") or {}).get("marketplace")
+            text = " ".join(str(charge.get(k) or "") for k in (
+                "transaction_detail",
+                "detail_sub_type",
+                "concept_type",
+            )).lower()
+            is_shipping = (
+                "envio" in text
+                or "shipping" in text
+                or "frete" in text
+                or marketplace == "SHIPPING"
+                or bool(shipping)
+            )
+            if charge and is_shipping:
+                shipping_lines.append({
+                    "order_ids": _order_ids_in(node),
+                    "shipping_id": str(shipping.get("shipping_id")) if shipping.get("shipping_id") is not None else None,
+                    "pack_id": str(shipping.get("pack_id")) if shipping.get("pack_id") is not None else None,
+                    "transaction_detail": charge.get("transaction_detail"),
+                    "detail_type": charge.get("detail_type"),
+                    "detail_sub_type": charge.get("detail_sub_type"),
+                    "detail_amount": charge.get("detail_amount"),
+                    "marketplace": marketplace,
+                })
+
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(results)
+    return {
+        "total_results": payload.get("total") if payload.get("total") is not None else len(results),
+        "order_ids_found": sorted(order_ids),
+        "shipping_ids_found": sorted(shipping_ids),
+        "pack_ids_found": sorted(pack_ids),
+        "shipping_charge_lines": shipping_lines[:20],
+    }
+
+
+def _order_ids_in(node: dict) -> list[int]:
+    found: set[int] = set()
+
+    def walk(value):
+        if isinstance(value, dict):
+            if value.get("order_id") is not None:
+                try:
+                    found.add(int(value["order_id"]))
+                except (TypeError, ValueError):
+                    pass
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(node)
+    return sorted(found)
 
 
 def _status_for(flags: list[str]) -> str:
