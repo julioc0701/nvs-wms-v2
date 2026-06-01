@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 log = logging.getLogger(__name__)
 
 MARCADOR_SEM_ESTOQUE = "Sem Estoque"
+MARCADOR_AJUSTADO = "Gertrudez ajustou estoque"
 
 class TinyService:
     BASE_URL = "https://api.tiny.com.br/api2/"
@@ -74,6 +75,22 @@ class TinyService:
             "idPedido": str(id_pedido),
             "marcadores": marcadores_json,
         })
+
+    async def atualizar_estoque(self, id_produto: str, quantidade: str = "0", tipo: str = "B",
+                                observacoes: str = "Ajuste automatico separacao - sem estoque") -> Dict[str, Any]:
+        """Ajusta o estoque de um produto via produto.atualizar.estoque.php.
+        tipo='B' (Balanco) define o saldo absoluto. O campo 'estoque' vai como
+        string JSON serializada dentro do form body. Raise se erro."""
+        estoque_json = json.dumps(
+            {"estoque": {
+                "idProduto": str(id_produto),
+                "tipo": tipo,
+                "quantidade": str(quantidade),
+                "observacoes": observacoes,
+            }},
+            ensure_ascii=False
+        )
+        return await self._post("produto.atualizar.estoque.php", {"estoque": estoque_json})
 
     async def search_orders(self, pagina: int = 1, status: Optional[str] = None, data_inicial: Optional[str] = None, data_final: Optional[str] = None) -> Dict[str, Any]:
         """Busca pedidos de venda percorrendo as páginas se necessário."""

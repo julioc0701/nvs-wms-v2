@@ -24,8 +24,8 @@ from typing import Optional
 from sqlalchemy.orm import Session as DBSession
 
 from database import SessionLocal
-from models import TinySeparationStatus, TinySeparationHeader
-from services.tiny_service import TinyService, MARCADOR_SEM_ESTOQUE
+from models import TinySeparationStatus, TinySeparationHeader, TinyPickingListItem, TinyOrderItem
+from services.tiny_service import TinyService, MARCADOR_SEM_ESTOQUE, MARCADOR_AJUSTADO
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +100,66 @@ def _resolve_id_pedido(separation_id: str, db: DBSession) -> Optional[str]:
     return None
 
 
+def _get_shortage_skus(separation_id: str, db: DBSession) -> list:
+    """SKUs em falta (is_shortage) cujos itens consolidados incluem este separation_id.
+    A lista de picking consolida vários docs por SKU, então filtramos pelo doc."""
+    items = db.query(TinyPickingListItem).filter(
+        TinyPickingListItem.is_shortage == True  # noqa: E712
+    ).all()
+    skus = []
+    for it in items:
+        if not it.source_separation_ids or not it.sku:
+            continue
+        seps = [s.strip() for s in it.source_separation_ids.split(",")]
+        if separation_id in seps:
+            skus.append(it.sku)
+    return list(dict.fromkeys(skus))  # dedupe preservando ordem
+
+
+async def _resolve_id_produto(id_pedido: str, separation_id: str, sku: str,
+                              db: DBSession, service: TinyService) -> Optional[str]:
+    """Resolve o id_produto do Tiny a partir do SKU. Primeiro no espelho local
+    (tiny_order_items, já populado pelo robô de detalhe do pedido) — zero chamada
+    extra. Fallback: separacao.obter.php, que retorna idProduto por item."""
+    row = db.query(TinyOrderItem).filter(
+        TinyOrderItem.tiny_order_id == str(id_pedido),
+        TinyOrderItem.codigo == sku,
+    ).first()
+    if row and row.id_produto:
+        return str(row.id_produto)
+
+    try:
+        data = await service.get_separation_details(str(separation_id))
+        itens = data.get("separacao", {}).get("itens", []) if isinstance(data, dict) else []
+        for it in itens:
+            if it.get("codigo") == sku:
+                pid = it.get("idProduto") or it.get("id_produto")
+                if pid:
+                    return str(pid)
+    except Exception as exc:
+        log.warning(f"[MARKER_SYNC] fallback id_produto falhou sku={sku} sep={separation_id}: {exc}")
+    return None
+
+
+async def _adjust_and_mark(service: TinyService, id_pedido: str, separation_id: str, db: DBSession) -> None:
+    """Zera o estoque dos SKUs em falta deste doc e troca o marcador
+    'Sem Estoque' por 'Gertrudez ajustou estoque'. Itens com estoque não são tocados."""
+    skus = _get_shortage_skus(separation_id, db)
+    log.info(f"[MARKER_SYNC] ajuste estoque sep_id={separation_id} pedido={id_pedido} skus_falta={skus}")
+    for sku in skus:
+        id_produto = await _resolve_id_produto(id_pedido, separation_id, sku, db, service)
+        if not id_produto:
+            log.warning(f"[MARKER_SYNC] id_produto não resolvido sku={sku} pedido={id_pedido} — pula ajuste")
+            continue
+        await service.atualizar_estoque(id_produto)
+        log.info(f"[MARKER_SYNC] estoque zerado sku={sku} id_produto={id_produto} pedido={id_pedido}")
+        await asyncio.sleep(SLEEP_BETWEEN_CALLS)
+    # Troca marcador: remove o antigo (idempotente) e adiciona o de ajustado
+    await service.remover_marcador(id_pedido, MARCADOR_SEM_ESTOQUE)
+    await asyncio.sleep(SLEEP_BETWEEN_CALLS)
+    await service.adicionar_marcador(id_pedido, MARCADOR_AJUSTADO)
+
+
 async def _process_one(op: str, separation_id: str, token: str) -> None:
     """Processa uma operação. Atualiza TinySeparationStatus.marker_* com o resultado.
 
@@ -129,9 +189,15 @@ async def _process_one(op: str, separation_id: str, token: str) -> None:
         service = TinyService(token=token)
         try:
             if op == OP_ADD:
-                await service.adicionar_marcador(id_pedido)
+                # Doc entrou em sem_estoque: zera estoque dos itens em falta
+                # e troca o marcador 'Sem Estoque' por 'Gertrudez ajustou estoque'.
+                await _adjust_and_mark(service, id_pedido, separation_id, db)
             elif op == OP_REMOVE:
-                await service.remover_marcador(id_pedido)
+                # Doc saiu de sem_estoque (desfazer): limpa ambos marcadores.
+                # OBS: NÃO restaura o estoque zerado no Tiny (decisão pendente).
+                await service.remover_marcador(id_pedido, MARCADOR_SEM_ESTOQUE)
+                await asyncio.sleep(SLEEP_BETWEEN_CALLS)
+                await service.remover_marcador(id_pedido, MARCADOR_AJUSTADO)
             else:
                 raise ValueError(f"Operação desconhecida: {op}")
 
