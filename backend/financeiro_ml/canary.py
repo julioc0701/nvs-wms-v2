@@ -191,7 +191,82 @@ async def run_billing_order_details_canary(
         )
 
 
-def _summarize_billing_order_details(payload: dict) -> dict:
+async def run_billing_order_ids_canary(
+    *,
+    client,
+    seller_id: int,
+    order_ids: list[int],
+) -> BillingOrderDetailsCanaryResult:
+    """Consulta Billing Reports por order_ids explicitos."""
+    clean_order_ids = []
+    seen = set()
+    for order_id in order_ids:
+        oid = int(order_id)
+        if oid not in seen:
+            seen.add(oid)
+            clean_order_ids.append(oid)
+
+    if not clean_order_ids:
+        return BillingOrderDetailsCanaryResult(
+            run_id=0,
+            status="empty",
+            requested_orders=[],
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_total_by_order={},
+            shipping_charge_lines=[],
+            error_message="nenhum order_id informado",
+        )
+
+    try:
+        payload = await client.get_billing_order_details(
+            seller_id=seller_id,
+            order_ids=clean_order_ids,
+        )
+        summary = _summarize_billing_order_details(payload, max_lines=80)
+        return BillingOrderDetailsCanaryResult(
+            run_id=0,
+            status="ok",
+            requested_orders=clean_order_ids,
+            total_results=summary["total_results"],
+            order_ids_found=summary["order_ids_found"],
+            shipping_ids_found=summary["shipping_ids_found"],
+            pack_ids_found=summary["pack_ids_found"],
+            shipping_total_by_order=summary["shipping_total_by_order"],
+            shipping_charge_lines=summary["shipping_charge_lines"],
+            error_message=None,
+        )
+    except MLRateLimited as exc:
+        return BillingOrderDetailsCanaryResult(
+            run_id=0,
+            status="rate_limited",
+            requested_orders=clean_order_ids,
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_total_by_order={},
+            shipping_charge_lines=[],
+            error_message=str(exc),
+        )
+    except Exception as exc:
+        return BillingOrderDetailsCanaryResult(
+            run_id=0,
+            status="failed",
+            requested_orders=clean_order_ids,
+            total_results=0,
+            order_ids_found=[],
+            shipping_ids_found=[],
+            pack_ids_found=[],
+            shipping_total_by_order={},
+            shipping_charge_lines=[],
+            error_message=f"{type(exc).__name__}: {str(exc)[:300]}",
+        )
+
+
+def _summarize_billing_order_details(payload: dict, max_lines: int = 20) -> dict:
     results = payload.get("results") or []
     order_ids: set[int] = set()
     shipping_ids: set[str] = set()
@@ -259,7 +334,7 @@ def _summarize_billing_order_details(payload: dict) -> dict:
         "shipping_ids_found": sorted(shipping_ids),
         "pack_ids_found": sorted(pack_ids),
         "shipping_total_by_order": dict(sorted(shipping_total_by_order.items())),
-        "shipping_charge_lines": shipping_lines[:20],
+        "shipping_charge_lines": shipping_lines[:max_lines],
     }
 
 

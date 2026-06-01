@@ -705,6 +705,11 @@ class CanaryBillingOrderDetailsParams(BaseModel):
     max_orders: int = Field(default=5, ge=1, le=20)
 
 
+class CanaryBillingOrderIdsParams(BaseModel):
+    seller_id: int
+    order_ids: list[int] = Field(min_length=1, max_length=20)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -745,6 +750,24 @@ async def canary_billing_order_details(run_id: int, params: CanaryBillingOrderDe
         run_id=run_id,
         seller_id=params.seller_id,
         max_orders=params.max_orders,
+    )
+    return result.as_dict()
+
+
+@router.post("/_debug/canary/billing-order-ids")
+async def canary_billing_order_ids(params: CanaryBillingOrderIdsParams,
+                                   operator_id: int = Depends(require_master)):
+    """Canario billing para order_ids explicitos. Nao chama shipments."""
+    from financeiro_ml.db import init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import run_billing_order_ids_canary
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await run_billing_order_ids_canary(
+        client=client,
+        seller_id=params.seller_id,
+        order_ids=params.order_ids,
     )
     return result.as_dict()
 

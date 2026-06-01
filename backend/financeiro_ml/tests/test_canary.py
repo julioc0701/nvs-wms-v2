@@ -247,6 +247,39 @@ async def test_billing_order_details_canary_summarizes_links(fin_db):
 
 
 @pytest.mark.asyncio
+async def test_billing_order_ids_canary_uses_explicit_ids():
+    from financeiro_ml.canary import run_billing_order_ids_canary
+
+    class BillingClient:
+        async def get_billing_order_details(self, *, seller_id, order_ids):
+            assert seller_id == 1
+            assert order_ids == [102, 101]
+            return {
+                "total": 1,
+                "results": [{
+                    "order_id": 102,
+                    "charge_info": {
+                        "transaction_detail": "Tarifa de envio extra ou intermunicipal",
+                        "detail_amount": 15.5,
+                    },
+                    "sales_info": [{"order_id": 102}],
+                    "shipping_info": {"shipping_id": "5002"},
+                    "marketplace_info": {"marketplace": "SHIPPING"},
+                }],
+            }
+
+    result = await run_billing_order_ids_canary(
+        client=BillingClient(),
+        seller_id=1,
+        order_ids=[102, 101, 102],
+    )
+
+    assert result.status == "ok"
+    assert result.requested_orders == [102, 101]
+    assert result.shipping_total_by_order == {"102": 15.5}
+
+
+@pytest.mark.asyncio
 async def test_process_canary_pending_marks_done(fin_db):
     db, m = fin_db
     from financeiro_ml.canary import process_canary_pending
