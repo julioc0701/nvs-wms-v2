@@ -729,6 +729,18 @@ class BillingPeriodDetailsProbeParams(BaseModel):
     from_id: int = Field(default=0, ge=0)
 
 
+class BillingPeriodJobCreateParams(BaseModel):
+    seller_id: int
+    key: str
+    document_type: str = "BILL"
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class BillingPeriodJobRunParams(BaseModel):
+    seller_id: int
+    max_pages: int = Field(default=3, ge=1, le=50)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -750,6 +762,58 @@ async def canary_orders_search(params: CanaryOrdersSearchParams,
         day=params.data,
         max_pages=params.max_pages,
     )
+    return result.as_dict()
+
+
+@router.post("/_debug/billing-period/jobs")
+async def create_billing_period_job_endpoint(params: BillingPeriodJobCreateParams,
+                                             operator_id: int = Depends(require_master)):
+    """Cria job controlado para baixar Billing por periodo com checkpoint."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.billing_period import create_billing_period_job
+
+    init_fin_db()
+    job_id = create_billing_period_job(
+        FinSessionLocal,
+        seller_id=params.seller_id,
+        period_key=params.key,
+        document_type=params.document_type,
+        limit=params.limit,
+    )
+    return {"job_id": job_id}
+
+
+@router.get("/_debug/billing-period/jobs/{job_id}")
+async def get_billing_period_job_endpoint(job_id: int,
+                                          operator_id: int = Depends(require_master)):
+    """Consulta progresso do job de Billing por periodo."""
+    from financeiro_ml.db import FinSessionLocal
+    from financeiro_ml.billing_period import get_billing_period_job
+
+    prog = get_billing_period_job(FinSessionLocal, job_id)
+    if prog is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return prog
+
+
+@router.post("/_debug/billing-period/jobs/{job_id}/run")
+async def run_billing_period_job_endpoint(job_id: int, params: BillingPeriodJobRunParams,
+                                          operator_id: int = Depends(require_master)):
+    """Processa poucas paginas do Billing e salva checkpoint para retomar depois."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.billing_period import run_billing_period_job
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await run_billing_period_job(
+        FinSessionLocal,
+        client=client,
+        job_id=job_id,
+        max_pages=params.max_pages,
+    )
+    if result.status == "not_found":
+        raise HTTPException(status_code=404, detail="job não encontrado")
     return result.as_dict()
 
 

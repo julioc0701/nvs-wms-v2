@@ -109,6 +109,53 @@ class MLBackfillJob(FinBase):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class MLBillingPeriodJob(FinBase):
+    __tablename__ = "ml_billing_period_jobs"
+    __table_args__ = (
+        Index("ix_billing_period_jobs_status", "status", "created_at"),
+        Index("ix_billing_period_jobs_seller_key", "seller_id", "period_key"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_key: Mapped[str] = mapped_column(String(20), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(20), nullable=False, default="BILL")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    limit: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    next_from_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pages_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lines_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_results: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MLBillingPeriodLine(FinBase):
+    __tablename__ = "ml_billing_period_lines"
+    __table_args__ = (
+        PrimaryKeyConstraint("seller_id", "detail_id"),
+        Index("ix_billing_lines_period", "seller_id", "period_key", "document_type"),
+        Index("ix_billing_lines_order", "seller_id", "order_id"),
+        Index("ix_billing_lines_shipment", "seller_id", "shipment_id"),
+    )
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    detail_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    period_key: Mapped[str] = mapped_column(String(20), nullable=False)
+    document_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    creation_date_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    transaction_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    detail_sub_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    detail_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    marketplace: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    order_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    shipment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_json: Mapped[str] = mapped_column(Text, nullable=False)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class MLCanaryRun(FinBase):
     __tablename__ = "ml_canary_runs"
     __table_args__ = (Index("ix_canary_runs_seller_day", "seller_id", "day", "created_at"),)
