@@ -13,7 +13,7 @@ class FakeBillingClient:
                 "last_id": 20,
                 "results": [
                     _line(10, order_id=1001, shipment_id=5001, amount=12.34),
-                    _line(20, order_id=1002, shipment_id=5002, amount=9.87),
+                    _line(20, order_id=1002, shipment_id=5002, amount=9.87, as_lists=True),
                 ],
             }
         return {
@@ -25,8 +25,8 @@ class FakeBillingClient:
         }
 
 
-def _line(detail_id, *, order_id, shipment_id, amount):
-    return {
+def _line(detail_id, *, order_id, shipment_id, amount, as_lists=False):
+    row = {
         "charge_info": {
             "detail_id": detail_id,
             "creation_date_time": "2026-06-01T10:00:00",
@@ -39,6 +39,10 @@ def _line(detail_id, *, order_id, shipment_id, amount):
         "shipping_info": {"shipment_id": shipment_id},
         "marketplace_info": {"marketplace": "SHIPPING"},
     }
+    if as_lists:
+        row["sales_info"] = [row["sales_info"]]
+        row["shipping_info"] = [row["shipping_info"]]
+    return row
 
 
 @pytest.mark.asyncio
@@ -97,5 +101,7 @@ async def test_billing_period_job_runs_with_checkpoint(fin_db):
         assert [line.detail_id for line in lines] == [10, 20, 30]
         assert lines[0].order_id == 1001
         assert lines[0].shipment_id == 5001
+        assert lines[1].order_id == 1002
+        assert lines[1].shipment_id == 5002
     finally:
         s.close()

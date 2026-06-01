@@ -353,11 +353,12 @@ def _save_billing_lines(
 
 
 def _extract_order_id(raw: dict[str, Any]) -> int | None:
-    sales = raw.get("sales_info") or {}
+    sales = _first_mapping(raw.get("sales_info"))
+    items = _first_mapping(raw.get("items_info"))
     candidates = [
         sales.get("order_id"),
         sales.get("sale_id"),
-        (raw.get("items_info") or {}).get("order_id"),
+        items.get("order_id"),
     ]
     for value in candidates:
         parsed = _as_int(value, None)
@@ -367,12 +368,22 @@ def _extract_order_id(raw: dict[str, Any]) -> int | None:
 
 
 def _extract_shipment_id(raw: dict[str, Any]) -> int | None:
-    shipping = raw.get("shipping_info") or {}
+    shipping = _first_mapping(raw.get("shipping_info"))
     for value in [shipping.get("shipment_id"), shipping.get("shipping_id")]:
         parsed = _as_int(value, None)
         if parsed is not None:
             return parsed
     return None
+
+
+def _first_mapping(value) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                return item
+    return {}
 
 
 def _last_detail_id(rows: list[dict[str, Any]]) -> int | None:
