@@ -287,6 +287,22 @@ class MLClient:
         }
         return await self._get("/billing/integration/group/ML/order/details", params=params)
 
+    async def get_billing_period_details(
+        self,
+        *,
+        key: str,
+        document_type: str = "BILL",
+        limit: int = 100,
+        from_id: int = 0,
+    ) -> dict:
+        """GET billing details por periodo, com paginacao por from_id."""
+        params = {
+            "document_type": document_type,
+            "limit": limit,
+            "from_id": from_id,
+        }
+        return await self._get(f"/billing/integration/periods/key/{key}/group/ML/details", params=params)
+
 
 def build_default_client(seller_id: int | None = None) -> MLClient:
     from financeiro_ml.db import FinSessionLocal

@@ -304,6 +304,35 @@ async def test_probe_shipment_costs_summarizes_sender_cost():
 
 
 @pytest.mark.asyncio
+async def test_probe_billing_period_details_returns_page_summary():
+    from financeiro_ml.canary import probe_billing_period_details
+
+    class BillingPeriodClient:
+        async def get_billing_period_details(self, *, key, document_type, limit, from_id):
+            assert key == "2026-06-01"
+            assert document_type == "BILL"
+            assert limit == 10
+            assert from_id == 0
+            return {
+                "total": 2,
+                "last_id": 123,
+                "results": [{"id": 122}, {"id": 123}],
+            }
+
+    result = await probe_billing_period_details(
+        client=BillingPeriodClient(),
+        key="2026-06-01",
+        limit=10,
+        from_id=0,
+    )
+
+    assert result.status == "ok"
+    assert result.total_results == 2
+    assert result.next_from_id == 123
+    assert result.sample_count == 2
+
+
+@pytest.mark.asyncio
 async def test_process_canary_pending_marks_done(fin_db):
     db, m = fin_db
     from financeiro_ml.canary import process_canary_pending

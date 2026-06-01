@@ -721,6 +721,14 @@ class ShipmentCostProbeParams(BaseModel):
     sleep_sec: float = Field(default=5, ge=0, le=30)
 
 
+class BillingPeriodDetailsProbeParams(BaseModel):
+    seller_id: int
+    key: str
+    document_type: str = "BILL"
+    limit: int = Field(default=100, ge=1, le=1000)
+    from_id: int = Field(default=0, ge=0)
+
+
 @router.post("/_debug/canary/orders-search")
 async def canary_orders_search(params: CanaryOrdersSearchParams,
                                operator_id: int = Depends(require_master)):
@@ -779,6 +787,26 @@ async def canary_billing_order_ids(params: CanaryBillingOrderIdsParams,
         client=client,
         seller_id=params.seller_id,
         order_ids=params.order_ids,
+    )
+    return result.as_dict()
+
+
+@router.post("/_debug/canary/billing-period-details")
+async def canary_billing_period_details(params: BillingPeriodDetailsProbeParams,
+                                        operator_id: int = Depends(require_master)):
+    """Canario: uma pagina de Billing details por periodo. Nao faz loop."""
+    from financeiro_ml.db import init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import probe_billing_period_details
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await probe_billing_period_details(
+        client=client,
+        key=params.key,
+        document_type=params.document_type,
+        limit=params.limit,
+        from_id=params.from_id,
     )
     return result.as_dict()
 

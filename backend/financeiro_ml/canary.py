@@ -110,6 +110,32 @@ class ShipmentCostProbeResult:
         }
 
 
+@dataclass
+class BillingPeriodDetailsProbeResult:
+    status: str
+    key: str
+    limit: int
+    from_id: int
+    total_results: int | None
+    next_from_id: int | None
+    sample_count: int
+    raw: dict | None
+    error_message: str | None = None
+
+    def as_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "key": self.key,
+            "limit": self.limit,
+            "from_id": self.from_id,
+            "total_results": self.total_results,
+            "next_from_id": self.next_from_id,
+            "sample_count": self.sample_count,
+            "raw": self.raw,
+            "error_message": self.error_message,
+        }
+
+
 def _missing_flags(order: dict) -> list[str]:
     flags = []
     shipment_id = (order.get("shipping") or {}).get("id")
@@ -123,6 +149,66 @@ def _missing_flags(order: dict) -> list[str]:
     if shipment_id and shipping_cost == 0:
         flags.append("pending_shipping_cost")
     return flags
+
+
+async def probe_billing_period_details(
+    *,
+    client,
+    key: str,
+    document_type: str = "BILL",
+    limit: int = 100,
+    from_id: int = 0,
+) -> BillingPeriodDetailsProbeResult:
+    """Consulta uma pagina de Billing details por periodo."""
+    try:
+        payload = await client.get_billing_period_details(
+            key=key,
+            document_type=document_type,
+            limit=limit,
+            from_id=from_id,
+        )
+    except MLRateLimited as exc:
+        return BillingPeriodDetailsProbeResult(
+            status="rate_limited",
+            key=key,
+            limit=limit,
+            from_id=from_id,
+            total_results=None,
+            next_from_id=None,
+            sample_count=0,
+            raw=None,
+            error_message=str(exc),
+        )
+    except Exception as exc:
+        return BillingPeriodDetailsProbeResult(
+            status="failed",
+            key=key,
+            limit=limit,
+            from_id=from_id,
+            total_results=None,
+            next_from_id=None,
+            sample_count=0,
+            raw=None,
+            error_message=f"{type(exc).__name__}: {str(exc)[:300]}",
+        )
+
+    results = payload.get("results") or []
+    next_from_id = payload.get("last_id")
+    if next_from_id in (None, 0) and results:
+        last = results[-1]
+        if isinstance(last, dict):
+            next_from_id = last.get("id") or last.get("detail_id")
+
+    return BillingPeriodDetailsProbeResult(
+        status="ok",
+        key=key,
+        limit=limit,
+        from_id=from_id,
+        total_results=payload.get("total"),
+        next_from_id=next_from_id,
+        sample_count=len(results),
+        raw=payload,
+    )
 
 
 async def probe_shipment_costs(
