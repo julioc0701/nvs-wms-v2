@@ -109,6 +109,60 @@ class MLBackfillJob(FinBase):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class MLCanaryRun(FinBase):
+    __tablename__ = "ml_canary_runs"
+    __table_args__ = (Index("ix_canary_runs_seller_day", "seller_id", "day", "created_at"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    orders_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pages_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending_shipments: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending_discounts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pending_shipping_costs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MLCanaryOrderSnapshot(FinBase):
+    __tablename__ = "ml_canary_order_snapshots"
+    __table_args__ = (
+        UniqueConstraint("run_id", "order_id", name="uq_canary_snapshot_run_order"),
+        Index("ix_canary_snapshot_run", "run_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    shipment_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    order_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    ingest_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    missing_flags: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    raw_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MLCanaryPendingTask(FinBase):
+    __tablename__ = "ml_canary_pending_tasks"
+    __table_args__ = (
+        UniqueConstraint("run_id", "kind", "ref_id", name="uq_canary_task_run_kind_ref"),
+        Index("ix_canary_tasks_status", "status", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    seller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    ref_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class MLSellerLock(FinBase):
     __tablename__ = "ml_seller_lock"
     seller_id: Mapped[int] = mapped_column(Integer, primary_key=True)

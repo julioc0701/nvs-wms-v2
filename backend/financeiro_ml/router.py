@@ -688,6 +688,77 @@ class ProbeSearchParams(BaseModel):
     data: str  # YYYY-MM-DD
 
 
+class CanaryOrdersSearchParams(BaseModel):
+    seller_id: int
+    data: date
+    max_pages: int = Field(default=20, ge=1, le=40)
+
+
+class CanaryProcessPendingParams(BaseModel):
+    seller_id: int
+    max_tasks: int = Field(default=5, ge=1, le=10)
+    sleep_sec: float = Field(default=0, ge=0, le=30)
+
+
+@router.post("/_debug/canary/orders-search")
+async def canary_orders_search(params: CanaryOrdersSearchParams,
+                               operator_id: int = Depends(require_master)):
+    """Canario V2 Light: chama apenas /orders/search por data.
+
+    Nao chama shipments/costs e nao alimenta o cache do painel. Grava snapshots
+    isolados + pendencias para medir o fluxo sem contaminar margem financeira.
+    """
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import run_orders_search_canary
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await run_orders_search_canary(
+        session_factory=FinSessionLocal,
+        client=client,
+        seller_id=params.seller_id,
+        day=params.data,
+        max_pages=params.max_pages,
+    )
+    return result.as_dict()
+
+
+@router.post("/_debug/canary/{run_id}/process-pending")
+async def canary_process_pending(run_id: int, params: CanaryProcessPendingParams,
+                                 operator_id: int = Depends(require_master)):
+    """Canario V2 Light: processa poucas pendencias, uma por vez.
+
+    Para no primeiro 429. Nao roda automaticamente.
+    """
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.client import build_default_client
+    from financeiro_ml.canary import process_canary_pending
+
+    init_fin_db()
+    client = build_default_client(seller_id=params.seller_id)
+    result = await process_canary_pending(
+        session_factory=FinSessionLocal,
+        client=client,
+        run_id=run_id,
+        max_tasks=params.max_tasks,
+        sleep_sec=params.sleep_sec,
+    )
+    return result.as_dict()
+
+
+@router.get("/_debug/canary/{run_id}")
+async def get_canary(run_id: int, operator_id: int = Depends(require_master)):
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.canary import get_canary_run
+
+    init_fin_db()
+    result = get_canary_run(FinSessionLocal, run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="canario nao encontrado")
+    return result
+
+
 @router.post("/_debug/probe-search")
 async def probe_search(params: ProbeSearchParams, operator_id: int = Depends(require_master)):
     """Fase 0b da investigação 429: 1 chamada CRUA a /orders/search (limit=1, SEM
