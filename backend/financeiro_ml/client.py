@@ -300,6 +300,8 @@ class MLClient:
             "document_type": document_type,
             "limit": limit,
             "from_id": from_id,
+            "sort_by": "ID",
+            "order_by": "ASC",
         }
         return await self._get(f"/billing/integration/periods/key/{key}/group/ML/details", params=params)
 
