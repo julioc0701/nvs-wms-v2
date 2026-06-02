@@ -241,6 +241,65 @@ def test_daily_close_reconciliation_audit_counts_billing_matches(fin_db):
     assert result["shipments_to_probe_sample"] == [9102]
 
 
+def test_billing_linkage_audit_finds_candidate_paths_in_raw_json(fin_db):
+    db, m = fin_db
+    from financeiro_ml.billing_reconciliation import audit_billing_linkage_fields
+
+    s = db.FinSessionLocal()
+    try:
+        daily = m.MLDailyCloseJob(
+            seller_id=1,
+            day=date(2026, 6, 1),
+            status="consolidated",
+            phase="consolidated",
+            orders_run_id=10,
+            billing_job_id=20,
+        )
+        billing_job = m.MLBillingPeriodJob(
+            id=20,
+            seller_id=1,
+            period_key="2026-06-01",
+            document_type="BILL",
+            status="done",
+            limit=100,
+        )
+        s.add_all([daily, billing_job])
+        s.flush()
+        s.add_all([
+            m.MLCanaryOrderSnapshot(
+                run_id=10,
+                seller_id=1,
+                order_id=101,
+                shipment_id=9101,
+                order_status="paid",
+                ingest_status="snapshot",
+                missing_flags="[]",
+                raw_json="{}",
+            ),
+            m.MLBillingPeriodLine(
+                seller_id=1,
+                detail_id=500,
+                period_key="2026-06-01",
+                document_type="BILL",
+                detail_amount=8.05,
+                order_id=999,
+                shipment_id=9999,
+                raw_json='{"sales_info":{"real_order_id":"101"},"shipping_info":{"real_shipment_id":"9101"},"charge_info":{"detail_id":500}}',
+            ),
+        ])
+        s.commit()
+        job_id = daily.id
+    finally:
+        s.close()
+
+    result = audit_billing_linkage_fields(db.FinSessionLocal, job_id=job_id)
+
+    assert result["stored_order_id_overlap_count"] == 0
+    assert result["stored_shipment_id_overlap_count"] == 0
+    assert result["order_candidate_paths"][0]["path"] == "sales_info.real_order_id"
+    assert result["shipment_candidate_paths"][0]["path"] == "shipping_info.real_shipment_id"
+
+
 def test_daily_close_order_id_diff_compares_excel_reference(fin_db):
     db, m = fin_db
     from financeiro_ml.billing_reconciliation import compare_daily_close_order_ids

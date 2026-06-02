@@ -174,6 +174,127 @@ def compare_daily_close_order_ids(
         s.close()
 
 
+def audit_billing_linkage_fields(session_factory, *, job_id: int, sample_limit: int = 20) -> dict | None:
+    """Procura no raw_json do Billing quais campos batem com pedidos/fretes salvos.
+
+    Nao chama ML. Serve para descobrir se o vinculo esta em outro path do JSON
+    ou se as linhas de Billing baixadas nao pertencem ao universo do job.
+    """
+    from financeiro_ml.models_v2 import (
+        MLBillingPeriodJob,
+        MLBillingPeriodLine,
+        MLCanaryOrderSnapshot,
+        MLDailyCloseJob,
+    )
+
+    s = session_factory()
+    try:
+        job = s.query(MLDailyCloseJob).filter_by(id=job_id).first()
+        if job is None:
+            return None
+
+        orders = []
+        if job.orders_run_id:
+            orders = (
+                s.query(MLCanaryOrderSnapshot)
+                .filter_by(run_id=job.orders_run_id, seller_id=job.seller_id)
+                .all()
+            )
+        order_ids = {int(row.order_id) for row in orders if row.order_id is not None}
+        shipment_ids = {int(row.shipment_id) for row in orders if row.shipment_id is not None}
+
+        billing_job = None
+        if job.billing_job_id:
+            billing_job = s.query(MLBillingPeriodJob).filter_by(id=job.billing_job_id).first()
+
+        billing_query = s.query(MLBillingPeriodLine).filter_by(seller_id=job.seller_id)
+        if billing_job is not None:
+            billing_query = billing_query.filter_by(
+                period_key=billing_job.period_key,
+                document_type=billing_job.document_type,
+            )
+        billing_lines = billing_query.all()
+
+        path_stats: dict[str, dict[str, Any]] = {}
+        line_samples = []
+        extracted_order_values = set()
+        extracted_shipment_values = set()
+
+        for line in billing_lines:
+            if line.order_id is not None:
+                extracted_order_values.add(int(line.order_id))
+            if line.shipment_id is not None:
+                extracted_shipment_values.add(int(line.shipment_id))
+
+            raw = _safe_json_dict(line.raw_json)
+            if len(line_samples) < sample_limit:
+                line_samples.append(_billing_line_sample(line, raw))
+
+            for path, value in _flatten_json(raw):
+                parsed = _normalize_order_id(value)
+                if parsed is None:
+                    continue
+                stat = path_stats.setdefault(path, {
+                    "path": path,
+                    "numeric_values_count": 0,
+                    "order_matches": 0,
+                    "shipment_matches": 0,
+                    "sample_values": [],
+                })
+                stat["numeric_values_count"] += 1
+                if parsed in order_ids:
+                    stat["order_matches"] += 1
+                if parsed in shipment_ids:
+                    stat["shipment_matches"] += 1
+                if len(stat["sample_values"]) < 5:
+                    stat["sample_values"].append(parsed)
+
+        order_candidate_paths = sorted(
+            [stat for stat in path_stats.values() if stat["order_matches"] > 0],
+            key=lambda item: item["order_matches"],
+            reverse=True,
+        )
+        shipment_candidate_paths = sorted(
+            [stat for stat in path_stats.values() if stat["shipment_matches"] > 0],
+            key=lambda item: item["shipment_matches"],
+            reverse=True,
+        )
+
+        extracted_order_overlap = sorted(extracted_order_values & order_ids)
+        extracted_shipment_overlap = sorted(extracted_shipment_values & shipment_ids)
+
+        return {
+            "job_id": job.id,
+            "seller_id": job.seller_id,
+            "day": job.day.isoformat() if job.day else None,
+            "orders_run_id": job.orders_run_id,
+            "billing_job_id": job.billing_job_id,
+            "billing_status": billing_job.status if billing_job else None,
+            "billing_period_key": billing_job.period_key if billing_job else None,
+            "orders_total": len(order_ids),
+            "shipments_total": len(shipment_ids),
+            "billing_lines_total": len(billing_lines),
+            "stored_order_id_values_count": len(extracted_order_values),
+            "stored_shipment_id_values_count": len(extracted_shipment_values),
+            "stored_order_id_overlap_count": len(extracted_order_overlap),
+            "stored_shipment_id_overlap_count": len(extracted_shipment_overlap),
+            "stored_order_id_overlap_sample": extracted_order_overlap[:sample_limit],
+            "stored_shipment_id_overlap_sample": extracted_shipment_overlap[:sample_limit],
+            "order_candidate_paths": order_candidate_paths[:sample_limit],
+            "shipment_candidate_paths": shipment_candidate_paths[:sample_limit],
+            "billing_line_samples": line_samples,
+            "diagnosis": _billing_linkage_diagnosis(
+                len(billing_lines),
+                len(extracted_order_overlap),
+                len(extracted_shipment_overlap),
+                order_candidate_paths,
+                shipment_candidate_paths,
+            ),
+        }
+    finally:
+        s.close()
+
+
 def _safe_json_list(value: str | None) -> list[str]:
     if not value:
         return []
@@ -212,6 +333,48 @@ def _safe_json_dict(value: str | None) -> dict:
     return {}
 
 
+def _flatten_json(value: Any, prefix: str = ""):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            yield from _flatten_json(child, path)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            path = f"{prefix}[]" if prefix else "[]"
+            yield from _flatten_json(child, path)
+            if index >= 20:
+                break
+    else:
+        yield prefix, value
+
+
+def _billing_line_sample(line: Any, raw: dict) -> dict:
+    charge = raw.get("charge_info") or {}
+    sales = raw.get("sales_info")
+    shipping = raw.get("shipping_info")
+    items = raw.get("items_info")
+    return {
+        "detail_id": int(line.detail_id),
+        "stored_order_id": int(line.order_id) if line.order_id else None,
+        "stored_shipment_id": int(line.shipment_id) if line.shipment_id else None,
+        "detail_type": line.detail_type,
+        "detail_sub_type": line.detail_sub_type,
+        "detail_amount": str(line.detail_amount) if line.detail_amount is not None else None,
+        "transaction_detail": line.transaction_detail,
+        "charge_info": {
+            "detail_id": charge.get("detail_id"),
+            "creation_date_time": charge.get("creation_date_time"),
+            "transaction_detail": charge.get("transaction_detail"),
+            "detail_type": charge.get("detail_type"),
+            "detail_sub_type": charge.get("detail_sub_type"),
+            "detail_amount": charge.get("detail_amount"),
+        },
+        "sales_info": sales,
+        "shipping_info": shipping,
+        "items_info": items,
+    }
+
+
 def _normalize_order_id(value: int | str | None) -> int | None:
     if value is None:
         return None
@@ -234,6 +397,22 @@ def _order_id_diff_diagnosis(only_ml_count: int, only_reference_count: int) -> s
     if only_ml_count == 0 and only_reference_count > 0:
         return "Excel tem pedidos que o robo nao capturou; investigar filtro de data/status."
     return "Ha diferenca dos dois lados; investigar horario da exportacao e criterio de status/data."
+
+
+def _billing_linkage_diagnosis(
+    billing_lines_count: int,
+    stored_order_overlap_count: int,
+    stored_shipment_overlap_count: int,
+    order_candidate_paths: list[dict],
+    shipment_candidate_paths: list[dict],
+) -> str:
+    if billing_lines_count == 0:
+        return "Nao ha linhas de Billing salvas para auditar."
+    if stored_order_overlap_count or stored_shipment_overlap_count:
+        return "Os campos armazenados ja batem com pedidos/fretes; a conciliacao deve usar esses indices."
+    if order_candidate_paths or shipment_candidate_paths:
+        return "O vinculo existe no raw_json em outro campo; ajustar extrator do Billing."
+    return "Nenhum campo do Billing salvo bate com os pedidos/fretes do job; provavel periodo/cursor de Billing incorreto ou lancamentos fora do dia."
 
 
 def _recommendation(missing_orders: int, shipments_to_probe: list[int]) -> str:

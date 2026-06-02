@@ -850,6 +850,25 @@ async def audit_daily_close_job_endpoint(job_id: int,
     return result
 
 
+@router.get("/_debug/daily-close/jobs/{job_id}/billing-linkage")
+async def audit_daily_close_billing_linkage_endpoint(job_id: int,
+                                                     sample_limit: int = 20,
+                                                     operator_id: int = Depends(require_master)):
+    """Audita campos do Billing salvo contra pedidos/fretes do job. Nao chama ML."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.billing_reconciliation import audit_billing_linkage_fields
+
+    init_fin_db()
+    result = audit_billing_linkage_fields(
+        FinSessionLocal,
+        job_id=job_id,
+        sample_limit=max(1, min(sample_limit, 100)),
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return result
+
+
 @router.post("/_debug/daily-close/jobs/{job_id}/order-id-diff")
 async def diff_daily_close_order_ids_endpoint(job_id: int,
                                               params: DailyCloseOrderIdDiffParams,
