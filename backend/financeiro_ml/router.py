@@ -747,7 +747,7 @@ class DailyCloseRunParams(BaseModel):
     day: date | None = None
     max_order_pages: int = Field(default=40, ge=1, le=80)
     orders_search_lookback_days: int = Field(default=1, ge=0, le=7)
-    billing_pages_per_cycle: int = Field(default=5, ge=1, le=20)
+    billing_pages_per_cycle: int = Field(default=1, ge=1, le=20)
     billing_sleep_sec: float = Field(default=2, ge=0, le=30)
     cooldown_min: int = Field(default=30, ge=1, le=240)
     force_orders: bool = False

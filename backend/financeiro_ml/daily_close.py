@@ -130,7 +130,7 @@ async def run_daily_close_cycle(
     day: date,
     max_order_pages: int = 40,
     orders_search_lookback_days: int = 1,
-    billing_pages_per_cycle: int = 5,
+    billing_pages_per_cycle: int = 1,
     billing_sleep_sec: float = 2,
     cooldown_min: int = 30,
     force_orders: bool = False,
@@ -310,7 +310,7 @@ async def daily_close_loop(session_factory, *, client_factory, stop_event: async
                         day=target_day,
                         max_order_pages=int(os.getenv("ML_DAILY_ORDER_MAX_PAGES", "40")),
                         orders_search_lookback_days=int(os.getenv("ML_DAILY_ORDER_LOOKBACK_DAYS", "1")),
-                        billing_pages_per_cycle=int(os.getenv("ML_BILLING_PAGES_PER_CYCLE", "5")),
+                        billing_pages_per_cycle=int(os.getenv("ML_BILLING_PAGES_PER_CYCLE", "1")),
                         billing_sleep_sec=float(os.getenv("ML_BILLING_SLEEP_SEC", "2")),
                         cooldown_min=int(os.getenv("ML_429_COOLDOWN_MIN", "30")),
                     )
