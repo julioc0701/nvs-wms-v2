@@ -235,7 +235,7 @@ def test_daily_close_order_id_diff_compares_excel_reference(fin_db):
                 order_status="paid",
                 ingest_status="snapshot",
                 missing_flags="[]",
-                raw_json="{}",
+                raw_json='{"date_created":"2026-06-01T00:10:00.000-03:00","date_closed":"2026-06-01T00:12:00.000-03:00","date_last_updated":"2026-06-01T00:13:00.000-03:00","status":"paid"}',
             ),
         ])
         s.commit()
@@ -253,4 +253,6 @@ def test_daily_close_order_id_diff_compares_excel_reference(fin_db):
     assert result["reference_orders_count"] == 2
     assert result["matched_count"] == 1
     assert result["only_ml_sample"] == [102]
+    assert result["only_ml_details_sample"][0]["date_created"] == "2026-06-01T00:10:00.000-03:00"
+    assert result["only_ml_details_sample"][0]["date_last_updated"] == "2026-06-01T00:13:00.000-03:00"
     assert result["only_reference_sample"] == [103]

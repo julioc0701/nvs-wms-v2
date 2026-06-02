@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import asyncio
+import os
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from financeiro_ml.client import MLRateLimited
 
@@ -549,8 +551,13 @@ async def run_orders_search_canary(
     seller_id: int,
     day: date,
     max_pages: int = 20,
+    search_lookback_days: int = 1,
 ) -> OrdersSearchCanaryResult:
-    """Busca um dia via /orders/search e registra pendencias sem chamar shipments."""
+    """Busca pedidos e salva apenas os que pertencem ao dia financeiro alvo.
+
+    O ML filtra /orders/search por date_created, mas o painel financeiro/MT usa
+    a data efetiva da venda: date_closed/pagamento aprovado em America/Sao_Paulo.
+    """
     from financeiro_ml.models_v2 import (
         MLCanaryRun,
         MLCanaryOrderSnapshot,
@@ -566,7 +573,7 @@ async def run_orders_search_canary(
     finally:
         s.close()
 
-    day_start = datetime.combine(day, time.min)
+    day_start = datetime.combine(day - timedelta(days=max(0, search_lookback_days)), time.min)
     day_end = datetime.combine(day, time.max)
     orders_count = 0
     pages_count = 0
@@ -594,6 +601,7 @@ async def run_orders_search_canary(
                 session_factory=session_factory,
                 run_id=run_id,
                 seller_id=seller_id,
+                target_day=day,
                 orders=results,
                 seen_order_ids=seen_order_ids,
                 pending_shipments=pending_shipments,
@@ -644,6 +652,7 @@ def _persist_page(
     session_factory,
     run_id: int,
     seller_id: int,
+    target_day: date,
     orders: list[dict],
     seen_order_ids: set[str],
     pending_shipments: set[str],
@@ -656,6 +665,8 @@ def _persist_page(
     try:
         persisted_count = 0
         for order in orders:
+            if _financial_day_for_order(order) != target_day:
+                continue
             order_ref = str(order["id"])
             if order_ref in seen_order_ids:
                 continue
@@ -706,6 +717,39 @@ def _persist_page(
         return persisted_count
     finally:
         s.close()
+
+
+def _financial_day_for_order(order: dict) -> date | None:
+    """Dia financeiro do pedido em Sao Paulo.
+
+    Preferimos date_closed porque representa venda confirmada/paga. Se o ML nao
+    mandar, usamos payment.date_approved e por ultimo date_created.
+    """
+    tz = ZoneInfo(os.getenv("ML_DAILY_CLOSE_TIMEZONE", "America/Sao_Paulo"))
+    value = order.get("date_closed") or _first_payment_approved_at(order) or order.get("date_created")
+    dt = _parse_ml_datetime(value)
+    return dt.astimezone(tz).date() if dt else None
+
+
+def _first_payment_approved_at(order: dict) -> str | None:
+    for payment in order.get("payments") or []:
+        approved_at = payment.get("date_approved") or payment.get("date_paid")
+        if approved_at:
+            return approved_at
+    return None
+
+
+def _parse_ml_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = value.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=ZoneInfo(os.getenv("ML_DAILY_CLOSE_TIMEZONE", "America/Sao_Paulo")))
+    return dt
 
 
 def _finish_run(

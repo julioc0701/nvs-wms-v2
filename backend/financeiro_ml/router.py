@@ -746,9 +746,11 @@ class DailyCloseRunParams(BaseModel):
     seller_id: int
     day: date | None = None
     max_order_pages: int = Field(default=40, ge=1, le=80)
+    orders_search_lookback_days: int = Field(default=1, ge=0, le=7)
     billing_pages_per_cycle: int = Field(default=5, ge=1, le=20)
     billing_sleep_sec: float = Field(default=2, ge=0, le=30)
     cooldown_min: int = Field(default=30, ge=1, le=240)
+    force_orders: bool = False
 
 
 class DailyCloseOrderIdDiffParams(BaseModel):
@@ -797,9 +799,11 @@ async def run_daily_close_endpoint(params: DailyCloseRunParams,
         seller_id=params.seller_id,
         day=target_day,
         max_order_pages=params.max_order_pages,
+        orders_search_lookback_days=params.orders_search_lookback_days,
         billing_pages_per_cycle=params.billing_pages_per_cycle,
         billing_sleep_sec=params.billing_sleep_sec,
         cooldown_min=params.cooldown_min,
+        force_orders=params.force_orders,
     )
     return result.as_dict()
 

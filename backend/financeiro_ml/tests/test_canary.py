@@ -20,20 +20,28 @@ class FakeClient:
         raise AssertionError("canario orders-search nao deve chamar shipment costs")
 
 
-def _order(order_id, shipment_id=None, tags=None, shipping_cost=12.5):
+def _order(
+    order_id,
+    shipment_id=None,
+    tags=None,
+    shipping_cost=12.5,
+    date_created="2026-06-01T10:00:00.000-03:00",
+    date_closed=None,
+):
     return {
         "id": order_id,
         "status": "paid",
         "tags": tags or [],
         "shipping": {"id": shipment_id} if shipment_id else {},
-        "payments": [{"shipping_cost": shipping_cost}],
+        "payments": [{"shipping_cost": shipping_cost, "date_approved": date_closed}],
         "order_items": [{
             "item": {"id": f"MLB{order_id}", "title": "Item", "seller_sku": f"SKU{order_id}"},
             "unit_price": 100,
             "quantity": 1,
             "sale_fee": 10,
         }],
-        "date_created": "2026-06-01T10:00:00.000-03:00",
+        "date_created": date_created,
+        "date_closed": date_closed,
     }
 
 
@@ -119,6 +127,50 @@ async def test_orders_search_canary_ignores_duplicate_orders_across_pages(fin_db
             ("shipping_cost", "5001"),
             ("discount", "101"),
         }
+    finally:
+        s.close()
+
+
+@pytest.mark.asyncio
+async def test_orders_search_canary_filters_by_financial_day_in_sao_paulo(fin_db):
+    db, m = fin_db
+    from financeiro_ml.canary import run_orders_search_canary
+
+    client = FakeClient([
+        {"results": [
+            _order(
+                101,
+                date_created="2026-05-31T11:27:05.000-04:00",
+                date_closed="2026-06-01T15:20:30.000-04:00",
+            ),
+            _order(
+                102,
+                date_created="2026-05-31T22:00:00.000-04:00",
+                date_closed="2026-05-31T22:10:00.000-04:00",
+            ),
+            _order(
+                103,
+                date_created="2026-05-31T23:06:42.000-04:00",
+                date_closed="2026-05-31T23:06:46.000-04:00",
+            ),
+        ]},
+        {"results": []},
+    ])
+
+    result = await run_orders_search_canary(
+        session_factory=db.FinSessionLocal,
+        client=client,
+        seller_id=1,
+        day=date(2026, 5, 31),
+        max_pages=5,
+    )
+
+    assert result.orders_count == 1
+
+    s = db.FinSessionLocal()
+    try:
+        rows = s.query(m.MLCanaryOrderSnapshot).all()
+        assert [row.order_id for row in rows] == [102]
     finally:
         s.close()
 

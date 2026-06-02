@@ -129,9 +129,11 @@ async def run_daily_close_cycle(
     seller_id: int,
     day: date,
     max_order_pages: int = 40,
+    orders_search_lookback_days: int = 1,
     billing_pages_per_cycle: int = 5,
     billing_sleep_sec: float = 2,
     cooldown_min: int = 30,
+    force_orders: bool = False,
 ) -> DailyCloseCycleResult:
     job_id = create_or_get_daily_close_job(session_factory, seller_id=seller_id, day=day)
     job = _load_job(session_factory, job_id)
@@ -139,8 +141,23 @@ async def run_daily_close_cycle(
         raise RuntimeError("daily close job nao encontrado")
 
     now = datetime.utcnow()
-    if job["next_retry_at"] and job["next_retry_at"] > now:
+    if job["next_retry_at"] and job["next_retry_at"] > now and not force_orders:
         return _result_from_job(job, status=job["status"], phase=job["phase"])
+
+    if force_orders:
+        _update_job_fields(
+            session_factory,
+            job_id,
+            orders_run_id=None,
+            orders_count=0,
+            pending_shipments=0,
+            status="pending",
+            phase="created",
+            finished_at=None,
+            error_message=None,
+            next_retry_at=None,
+        )
+        job = _load_job(session_factory, job_id)
 
     _mark_job(session_factory, job_id, status="running", phase="orders")
 
@@ -153,6 +170,7 @@ async def run_daily_close_cycle(
             seller_id=seller_id,
             day=day,
             max_pages=max_order_pages,
+            search_lookback_days=orders_search_lookback_days,
         )
         if orders_result.status in {"rate_limited", "failed"}:
             _pause_job(
@@ -258,6 +276,7 @@ async def daily_close_loop(session_factory, *, client_factory, stop_event: async
                         seller_id=seller_id,
                         day=target_day,
                         max_order_pages=int(os.getenv("ML_DAILY_ORDER_MAX_PAGES", "40")),
+                        orders_search_lookback_days=int(os.getenv("ML_DAILY_ORDER_LOOKBACK_DAYS", "1")),
                         billing_pages_per_cycle=int(os.getenv("ML_BILLING_PAGES_PER_CYCLE", "5")),
                         billing_sleep_sec=float(os.getenv("ML_BILLING_SLEEP_SEC", "2")),
                         cooldown_min=int(os.getenv("ML_429_COOLDOWN_MIN", "30")),

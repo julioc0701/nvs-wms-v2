@@ -132,14 +132,15 @@ def compare_daily_close_order_ids(
         if job is None:
             return None
 
-        ml_ids: set[int] = set()
+        ml_snapshots_by_id: dict[int, Any] = {}
         if job.orders_run_id:
             rows = (
-                s.query(MLCanaryOrderSnapshot.order_id)
+                s.query(MLCanaryOrderSnapshot)
                 .filter_by(run_id=job.orders_run_id, seller_id=job.seller_id)
                 .all()
             )
-            ml_ids = {int(row[0]) for row in rows if row[0] is not None}
+            ml_snapshots_by_id = {int(row.order_id): row for row in rows if row.order_id is not None}
+        ml_ids = set(ml_snapshots_by_id.keys())
 
         reference_ids = {_normalize_order_id(value) for value in reference_order_ids}
         reference_ids.discard(None)
@@ -160,6 +161,11 @@ def compare_daily_close_order_ids(
             "only_ml_count": len(only_ml),
             "only_reference_count": len(only_reference),
             "only_ml_sample": only_ml[:sample_limit],
+            "only_ml_details_sample": [
+                _snapshot_order_timing(ml_snapshots_by_id[order_id])
+                for order_id in only_ml[:sample_limit]
+                if order_id in ml_snapshots_by_id
+            ],
             "only_reference_sample": only_reference[:sample_limit],
             "matched_sample": matched[:sample_limit],
             "diagnosis": _order_id_diff_diagnosis(len(only_ml), len(only_reference)),
@@ -178,6 +184,32 @@ def _safe_json_list(value: str | None) -> list[str]:
     except Exception:
         return []
     return []
+
+
+def _snapshot_order_timing(snapshot: Any) -> dict:
+    raw = _safe_json_dict(snapshot.raw_json)
+    return {
+        "order_id": int(snapshot.order_id),
+        "shipment_id": int(snapshot.shipment_id) if snapshot.shipment_id else None,
+        "status": raw.get("status") or snapshot.order_status,
+        "date_created": raw.get("date_created"),
+        "date_closed": raw.get("date_closed"),
+        "date_last_updated": raw.get("date_last_updated"),
+        "date_cancelled": raw.get("date_cancelled"),
+        "tags": raw.get("tags") or [],
+    }
+
+
+def _safe_json_dict(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        return {}
+    return {}
 
 
 def _normalize_order_id(value: int | str | None) -> int | None:
