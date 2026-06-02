@@ -131,6 +131,46 @@ def test_daily_close_period_key_and_yesterday(monkeypatch):
     assert yesterday_brt(now) == date(2026, 6, 2)
 
 
+@pytest.mark.asyncio
+async def test_daily_close_force_orders_creates_new_orders_run(fin_db):
+    db, m = fin_db
+    from financeiro_ml.daily_close import run_daily_close_cycle
+
+    first = await run_daily_close_cycle(
+        db.FinSessionLocal,
+        client=FakeDailyClient(),
+        seller_id=1,
+        day=date(2026, 6, 1),
+        billing_pages_per_cycle=1,
+        billing_sleep_sec=0,
+    )
+    s = db.FinSessionLocal()
+    try:
+        first_orders_run_id = s.query(m.MLDailyCloseJob).filter_by(id=first.job_id).first().orders_run_id
+    finally:
+        s.close()
+
+    second = await run_daily_close_cycle(
+        db.FinSessionLocal,
+        client=FakeDailyClient(),
+        seller_id=1,
+        day=date(2026, 6, 1),
+        billing_pages_per_cycle=1,
+        billing_sleep_sec=0,
+        force_orders=True,
+    )
+
+    s = db.FinSessionLocal()
+    try:
+        job = s.query(m.MLDailyCloseJob).filter_by(id=first.job_id).first()
+        assert second.job_id == first.job_id
+        assert job.orders_run_id is not None
+        assert job.orders_run_id != first_orders_run_id
+        assert s.query(m.MLCanaryRun).count() == 2
+    finally:
+        s.close()
+
+
 def test_daily_close_reconciliation_audit_counts_billing_matches(fin_db):
     db, m = fin_db
     from financeiro_ml.billing_reconciliation import audit_daily_close_reconciliation

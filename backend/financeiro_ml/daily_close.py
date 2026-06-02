@@ -374,7 +374,12 @@ def _update_job_fields(session_factory, job_id: int, **fields) -> None:
         job = s.query(MLDailyCloseJob).filter_by(id=job_id).first()
         if job:
             for key, value in fields.items():
-                if value is not None or key in {"finished_at", "next_retry_at", "error_message"}:
+                if value is not None or key in {
+                    "orders_run_id",
+                    "finished_at",
+                    "next_retry_at",
+                    "error_message",
+                }:
                     setattr(job, key, value)
             job.updated_at = datetime.utcnow()
             s.commit()
