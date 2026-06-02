@@ -411,3 +411,141 @@ def test_daily_close_order_id_diff_compares_excel_reference(fin_db):
     assert result["only_ml_details_sample"][0]["date_created"] == "2026-06-01T00:10:00.000-03:00"
     assert result["only_ml_details_sample"][0]["date_last_updated"] == "2026-06-01T00:13:00.000-03:00"
     assert result["only_reference_sample"] == [103]
+
+
+def test_publish_daily_close_to_cache_feeds_resumo(fin_db):
+    db, m = fin_db
+    from financeiro_ml.daily_close_publish import publish_daily_close_to_cache
+    from financeiro_ml.router import FilterParams, get_resumo
+
+    raw_order = {
+        "id": 101,
+        "status": "paid",
+        "date_created": "2026-06-01T10:00:00.000-03:00",
+        "date_closed": "2026-06-01T10:05:00.000-03:00",
+        "date_last_updated": "2026-06-01T10:06:00.000-03:00",
+        "shipping": {"id": 9101, "logistic_type": "fulfillment", "mode": "me2"},
+        "payments": [{"shipping_cost": 4.99}],
+        "order_items": [{
+            "item": {
+                "id": "MLB101",
+                "title": "Item 101",
+                "seller_sku": "SKU101",
+                "listing_type_id": "gold_special",
+            },
+            "unit_price": 100,
+            "quantity": 1,
+            "sale_fee": 10,
+        }],
+    }
+
+    s = db.FinSessionLocal()
+    try:
+        daily = m.MLDailyCloseJob(
+            seller_id=1,
+            day=date(2026, 6, 1),
+            status="consolidated",
+            phase="consolidated",
+            orders_run_id=10,
+            billing_job_id=20,
+            orders_count=1,
+        )
+        billing_job = m.MLBillingPeriodJob(
+            id=20,
+            seller_id=1,
+            period_key="2026-06-01",
+            document_type="ORDER_DETAILS",
+            status="done",
+            limit=100,
+        )
+        s.add_all([daily, billing_job])
+        s.flush()
+        s.add(m.MLCanaryOrderSnapshot(
+            run_id=10,
+            seller_id=1,
+            order_id=101,
+            shipment_id=9101,
+            order_status="paid",
+            ingest_status="snapshot",
+            missing_flags="[]",
+            raw_json=json_dumps(raw_order),
+        ))
+        s.add(m.MLBillingPeriodLine(
+            seller_id=1,
+            detail_id=500,
+            period_key="2026-06-01",
+            document_type="ORDER_DETAILS",
+            detail_amount=12.94,
+            detail_type="CHARGE",
+            detail_sub_type="CFFE",
+            transaction_detail="Tarifa de envio extra ou intermunicipal",
+            order_id=101,
+            shipment_id=9101,
+            raw_json=json_dumps({
+                "charge_info": {"detail_id": 500, "detail_amount": 12.94},
+                "sales_info": [{"order_id": 101}],
+                "shipping_info": {"shipping_id": "9101", "receiver_shipping_cost": 4.99},
+                "marketplace_info": {"marketplace": "SHIPPING"},
+            }),
+        ))
+        s.commit()
+        job_id = daily.id
+    finally:
+        s.close()
+
+    result = publish_daily_close_to_cache(db.FinSessionLocal, job_id=job_id)
+
+    assert result.status == "published"
+    assert result.orders_published == 1
+    assert result.items_published == 1
+
+    s = db.FinSessionLocal()
+    try:
+        order = s.query(m.MLOrderCache).filter_by(seller_id=1, order_id=101).one()
+        assert str(order.frete_vendedor) == "12.94"
+        assert str(order.frete_comprador) == "4.99"
+        assert s.query(m.MLOrderItemCache).filter_by(seller_id=1, order_id=101).count() == 1
+        day_status = s.query(m.MLDaySyncStatus).filter_by(seller_id=1, day=date(2026, 6, 1)).one()
+        assert day_status.status == "ok"
+    finally:
+        s.close()
+
+    import asyncio
+    payload = asyncio.run(get_resumo(
+        FilterParams(seller_id=1, data_inicio=date(2026, 6, 1), data_fim=date(2026, 6, 1)),
+        operator_id=1,
+    ))
+    assert payload["cards"]["qtd_vendas_aprovadas"] == 1
+    assert payload["cards"]["frete_vendedor_total"] == 12.94
+
+
+def test_publish_daily_close_to_cache_blocks_partial_job(fin_db):
+    db, m = fin_db
+    from financeiro_ml.daily_close_publish import publish_daily_close_to_cache
+
+    s = db.FinSessionLocal()
+    try:
+        daily = m.MLDailyCloseJob(
+            seller_id=1,
+            day=date(2026, 6, 1),
+            status="running",
+            phase="billing",
+            orders_run_id=10,
+            billing_job_id=20,
+            orders_count=1,
+        )
+        s.add(daily)
+        s.flush()
+        job_id = daily.id
+        s.commit()
+    finally:
+        s.close()
+
+    result = publish_daily_close_to_cache(db.FinSessionLocal, job_id=job_id)
+
+    assert result.status == "blocked"
+
+
+def json_dumps(value):
+    import json
+    return json.dumps(value)

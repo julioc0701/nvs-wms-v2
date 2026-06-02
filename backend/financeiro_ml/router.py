@@ -871,6 +871,18 @@ async def audit_daily_close_billing_linkage_endpoint(job_id: int,
     return result
 
 
+@router.post("/_debug/daily-close/jobs/{job_id}/publish-cache")
+async def publish_daily_close_cache_endpoint(job_id: int,
+                                             operator_id: int = Depends(require_master)):
+    """Publica fechamento consolidado no cache lido pelo painel."""
+    from financeiro_ml.db import FinSessionLocal, init_fin_db
+    from financeiro_ml.daily_close_publish import publish_daily_close_to_cache
+
+    init_fin_db()
+    result = publish_daily_close_to_cache(FinSessionLocal, job_id=job_id)
+    return result.as_dict()
+
+
 @router.post("/_debug/daily-close/jobs/{job_id}/order-id-diff")
 async def diff_daily_close_order_ids_endpoint(job_id: int,
                                               params: DailyCloseOrderIdDiffParams,
