@@ -219,6 +219,143 @@ async def run_billing_period_job(
         )
 
 
+async def run_billing_order_details_job(
+    session_factory,
+    *,
+    client,
+    job_id: int,
+    order_ids: list[int],
+    chunk_size: int = 50,
+    max_chunks: int = 3,
+    sleep_sec: float = 0,
+) -> BillingPeriodRunResult:
+    """Baixa Billing filtrado por pedidos, com checkpoint por indice da lista.
+
+    O endpoint por order_ids evita varrer o periodo mensal inteiro e mantem o
+    vinculo financeiro diretamente ligado aos pedidos capturados no fechamento.
+    """
+    job = _load_job(session_factory, job_id)
+    if job is None:
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status="not_found",
+            pages_processed=0,
+            lines_processed=0,
+            next_from_id=0,
+            total_results=None,
+            error_message="job nao encontrado",
+        )
+    if job["status"] == "done":
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status="done",
+            pages_processed=0,
+            lines_processed=0,
+            next_from_id=job["next_from_id"],
+            total_results=len(order_ids),
+        )
+    if not order_ids:
+        _finish_job(session_factory, job_id, status="done", total_results=0)
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status="done",
+            pages_processed=0,
+            lines_processed=0,
+            next_from_id=0,
+            total_results=0,
+        )
+
+    _mark_job_running(session_factory, job_id)
+    pages_processed = 0
+    lines_processed = 0
+    next_index = max(0, int(job["next_from_id"] or 0))
+    total_results = len(order_ids)
+
+    try:
+        for _ in range(max_chunks):
+            if next_index >= len(order_ids):
+                _finish_job(session_factory, job_id, status="done", total_results=total_results)
+                return BillingPeriodRunResult(
+                    job_id=job_id,
+                    status="done",
+                    pages_processed=pages_processed,
+                    lines_processed=lines_processed,
+                    next_from_id=next_index,
+                    total_results=total_results,
+                )
+
+            chunk = order_ids[next_index: next_index + chunk_size]
+            payload = await client.get_billing_order_details(
+                seller_id=job["seller_id"],
+                order_ids=chunk,
+            )
+            rows = _flatten_order_detail_results(payload)
+            saved = _save_billing_lines(
+                session_factory,
+                seller_id=job["seller_id"],
+                period_key=job["period_key"],
+                document_type=job["document_type"],
+                rows=rows,
+            )
+            pages_processed += 1
+            lines_processed += saved
+            next_index += len(chunk)
+            _bump_job(
+                session_factory,
+                job_id,
+                next_from_id=next_index,
+                pages_delta=1,
+                lines_delta=saved,
+                total_results=total_results,
+            )
+
+            if next_index >= len(order_ids):
+                _finish_job(session_factory, job_id, status="done", total_results=total_results)
+                return BillingPeriodRunResult(
+                    job_id=job_id,
+                    status="done",
+                    pages_processed=pages_processed,
+                    lines_processed=lines_processed,
+                    next_from_id=next_index,
+                    total_results=total_results,
+                )
+
+            if sleep_sec > 0 and next_index < len(order_ids):
+                await asyncio.sleep(sleep_sec)
+
+        current = _load_job(session_factory, job_id)
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status=current["status"] if current else "running",
+            pages_processed=pages_processed,
+            lines_processed=lines_processed,
+            next_from_id=next_index,
+            total_results=total_results,
+        )
+    except MLRateLimited as exc:
+        _set_job_error(session_factory, job_id, status="rate_limited", error="429 Too Many Requests")
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status="rate_limited",
+            pages_processed=pages_processed,
+            lines_processed=lines_processed,
+            next_from_id=next_index,
+            total_results=total_results,
+            error_message=str(exc),
+        )
+    except Exception as exc:
+        _set_job_error(session_factory, job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
+        return BillingPeriodRunResult(
+            job_id=job_id,
+            status="failed",
+            pages_processed=pages_processed,
+            lines_processed=lines_processed,
+            next_from_id=next_index,
+            total_results=total_results,
+            error_message=str(exc),
+        )
+
+
 def _load_job(session_factory, job_id: int) -> dict | None:
     from financeiro_ml.models_v2 import MLBillingPeriodJob
 
@@ -356,6 +493,31 @@ def _save_billing_lines(
         return saved
     finally:
         s.close()
+
+
+def _flatten_order_detail_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for order_row in payload.get("results") or []:
+        if not isinstance(order_row, dict):
+            continue
+        order_id = _as_int(order_row.get("order_id"), None)
+        for detail in order_row.get("details") or []:
+            if not isinstance(detail, dict):
+                continue
+            row = dict(detail)
+            if order_id is not None and not _extract_order_id(row):
+                sales_info = row.get("sales_info")
+                if isinstance(sales_info, list) and sales_info:
+                    row["sales_info"] = [dict(sales_info[0], order_id=order_id)]
+                elif isinstance(sales_info, dict):
+                    row["sales_info"] = dict(sales_info, order_id=order_id)
+                else:
+                    row["sales_info"] = {"order_id": order_id}
+            row["_billing_order_id"] = order_id
+            row["_payment_info"] = order_row.get("payment_info")
+            row["_sale_fee"] = order_row.get("sale_fee")
+            rows.append(row)
+    return rows
 
 
 def _extract_order_id(raw: dict[str, Any]) -> int | None:

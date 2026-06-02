@@ -134,6 +134,7 @@ async def run_daily_close_cycle(
     billing_sleep_sec: float = 2,
     cooldown_min: int = 30,
     force_orders: bool = False,
+    force_billing: bool = False,
 ) -> DailyCloseCycleResult:
     job_id = create_or_get_daily_close_job(session_factory, seller_id=seller_id, day=day)
     job = _load_job(session_factory, job_id)
@@ -145,11 +146,15 @@ async def run_daily_close_cycle(
         return _result_from_job(job, status=job["status"], phase=job["phase"])
 
     if force_orders:
+        force_billing = True
         _update_job_fields(
             session_factory,
             job_id,
             orders_run_id=None,
+            billing_job_id=None,
             orders_count=0,
+            billing_lines_done=0,
+            billing_pages_done=0,
             pending_shipments=0,
             status="pending",
             phase="created",
@@ -193,14 +198,30 @@ async def run_daily_close_cycle(
         job = _load_job(session_factory, job_id)
 
     billing_job_id = job["billing_job_id"]
+    if force_billing and billing_job_id:
+        _update_job_fields(
+            session_factory,
+            job_id,
+            billing_job_id=None,
+            billing_lines_done=0,
+            billing_pages_done=0,
+            status="running",
+            phase="billing",
+            error_message=None,
+            finished_at=None,
+            next_retry_at=None,
+        )
+        job = _load_job(session_factory, job_id)
+        billing_job_id = None
+
     if not billing_job_id:
         from financeiro_ml.billing_period import create_billing_period_job
 
         billing_job_id = create_billing_period_job(
             session_factory,
             seller_id=seller_id,
-            period_key=period_key_for(day),
-            document_type="BILL",
+            period_key=day.isoformat(),
+            document_type="ORDER_DETAILS",
             limit=int(os.getenv("ML_BILLING_PAGE_LIMIT", "100")),
         )
         _update_job_fields(
@@ -211,13 +232,16 @@ async def run_daily_close_cycle(
             phase="billing",
         )
 
-    from financeiro_ml.billing_period import get_billing_period_job, run_billing_period_job
+    from financeiro_ml.billing_period import get_billing_period_job, run_billing_order_details_job
 
-    billing_result = await run_billing_period_job(
+    order_ids = _order_ids_for_run(session_factory, int(job["orders_run_id"]))
+    billing_result = await run_billing_order_details_job(
         session_factory,
         client=client,
         job_id=billing_job_id,
-        max_pages=billing_pages_per_cycle,
+        order_ids=order_ids,
+        chunk_size=int(os.getenv("ML_BILLING_ORDER_CHUNK_SIZE", "50")),
+        max_chunks=billing_pages_per_cycle,
         sleep_sec=billing_sleep_sec,
     )
     billing_status = get_billing_period_job(session_factory, billing_job_id) or {}
@@ -238,10 +262,19 @@ async def run_daily_close_cycle(
             error_message=billing_result.error_message,
         )
     else:
-        # Billing completo fecha a primeira versao do D-1. Cruzamento/excecoes entram
-        # como fase posterior; ate la, orders+billing ja ficam persistidos.
-        final_status = "consolidated" if billing_result.status == "done" else "running"
-        final_phase = "consolidated" if billing_result.status == "done" else "billing"
+        final_status = "running"
+        final_phase = "billing"
+        finished_at = None
+        error_message = None
+        if billing_result.status == "done":
+            if _billing_has_order_overlap(session_factory, job_id):
+                final_status = "consolidated"
+                final_phase = "consolidated"
+                finished_at = datetime.utcnow()
+            else:
+                final_status = "paused"
+                final_phase = "billing_mismatch"
+                error_message = "Billing finalizado sem vinculo com os pedidos do dia; revisar endpoint/periodo antes de consolidar."
         _update_job_fields(
             session_factory,
             job_id,
@@ -249,8 +282,8 @@ async def run_daily_close_cycle(
             phase=final_phase,
             billing_pages_done=int(billing_status.get("pages_done") or 0),
             billing_lines_done=int(billing_status.get("lines_done") or 0),
-            finished_at=datetime.utcnow() if final_status == "consolidated" else None,
-            error_message=None,
+            finished_at=finished_at,
+            error_message=error_message,
             next_retry_at=None,
         )
 
@@ -376,6 +409,7 @@ def _update_job_fields(session_factory, job_id: int, **fields) -> None:
             for key, value in fields.items():
                 if value is not None or key in {
                     "orders_run_id",
+                    "billing_job_id",
                     "finished_at",
                     "next_retry_at",
                     "error_message",
@@ -402,3 +436,30 @@ def _result_from_job(job: dict, *, status: str | None = None, phase: str | None 
         next_retry_at=job["next_retry_at"],
         error_message=job["error_message"],
     )
+
+
+def _order_ids_for_run(session_factory, run_id: int) -> list[int]:
+    from financeiro_ml.models_v2 import MLCanaryOrderSnapshot
+
+    s = session_factory()
+    try:
+        rows = (
+            s.query(MLCanaryOrderSnapshot.order_id)
+            .filter_by(run_id=run_id)
+            .order_by(MLCanaryOrderSnapshot.order_id)
+            .all()
+        )
+        return [int(row[0]) for row in rows if row[0] is not None]
+    finally:
+        s.close()
+
+
+def _billing_has_order_overlap(session_factory, job_id: int) -> bool:
+    from financeiro_ml.billing_reconciliation import audit_daily_close_reconciliation
+
+    audit = audit_daily_close_reconciliation(session_factory, job_id=job_id)
+    if not audit:
+        return False
+    if int(audit.get("orders_total") or 0) == 0:
+        return True
+    return int(audit.get("matched_orders") or 0) > 0

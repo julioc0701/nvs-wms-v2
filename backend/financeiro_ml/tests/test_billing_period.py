@@ -30,6 +30,20 @@ class FakeBillingClient:
             "results": [],
         }
 
+    async def get_billing_order_details(self, *, seller_id, order_ids):
+        self.calls.append(("order_details", seller_id, tuple(order_ids)))
+        return {
+            "results": [
+                {
+                    "order_id": order_id,
+                    "details": [
+                        _line(order_id + 10000, order_id=order_id, shipment_id=order_id + 20000, amount=7.89)
+                    ],
+                }
+                for order_id in order_ids
+            ]
+        }
+
 
 def _line(detail_id, *, order_id, shipment_id, amount, as_lists=False):
     row = {
@@ -121,5 +135,67 @@ async def test_billing_period_job_runs_with_checkpoint(fin_db):
         assert lines[0].shipment_id == 5001
         assert lines[1].order_id == 1002
         assert lines[1].shipment_id == 5002
+    finally:
+        s.close()
+
+
+@pytest.mark.asyncio
+async def test_billing_order_details_job_runs_in_chunks(fin_db):
+    db, m = fin_db
+    from financeiro_ml.billing_period import (
+        create_billing_period_job,
+        get_billing_period_job,
+        run_billing_order_details_job,
+    )
+
+    job_id = create_billing_period_job(
+        db.FinSessionLocal,
+        seller_id=1,
+        period_key="2026-06-01",
+        document_type="ORDER_DETAILS",
+        limit=100,
+    )
+
+    client = FakeBillingClient()
+    first = await run_billing_order_details_job(
+        db.FinSessionLocal,
+        client=client,
+        job_id=job_id,
+        order_ids=[101, 102, 103],
+        chunk_size=2,
+        max_chunks=1,
+    )
+
+    assert first.status == "running"
+    assert first.lines_processed == 2
+    assert first.next_from_id == 2
+
+    second = await run_billing_order_details_job(
+        db.FinSessionLocal,
+        client=client,
+        job_id=job_id,
+        order_ids=[101, 102, 103],
+        chunk_size=2,
+        max_chunks=1,
+    )
+
+    assert second.status == "done"
+    assert second.lines_processed == 1
+    assert second.next_from_id == 3
+    assert client.calls[-2:] == [
+        ("order_details", 1, (101, 102)),
+        ("order_details", 1, (103,)),
+    ]
+
+    status = get_billing_period_job(db.FinSessionLocal, job_id)
+    assert status["status"] == "done"
+    assert status["pages_done"] == 2
+    assert status["lines_done"] == 3
+
+    s = db.FinSessionLocal()
+    try:
+        lines = s.query(m.MLBillingPeriodLine).order_by(m.MLBillingPeriodLine.order_id).all()
+        assert [line.order_id for line in lines] == [101, 102, 103]
+        assert [line.shipment_id for line in lines] == [20101, 20102, 20103]
     finally:
         s.close()

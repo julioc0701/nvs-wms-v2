@@ -22,6 +22,18 @@ class FakeDailyClient:
             "results": [_billing_line(10), _billing_line(20)] if from_id == 0 else [],
         }
 
+    async def get_billing_order_details(self, *, seller_id, order_ids):
+        self.billing_calls.append(("order_details", seller_id, tuple(order_ids)))
+        return {
+            "results": [
+                {
+                    "order_id": order_id,
+                    "details": [_billing_line(order_id + 10000, order_id=order_id)],
+                }
+                for order_id in order_ids
+            ]
+        }
+
 
 class RateLimitedOrdersClient:
     async def search_orders(self, **kwargs):
@@ -46,7 +58,7 @@ def _order(order_id):
     }
 
 
-def _billing_line(detail_id):
+def _billing_line(detail_id, *, order_id=101):
     return {
         "charge_info": {
             "detail_id": detail_id,
@@ -56,8 +68,8 @@ def _billing_line(detail_id):
             "detail_type": "CHARGE",
             "detail_sub_type": "CME",
         },
-        "sales_info": {"order_id": 101},
-        "shipping_info": {"shipment_id": 9101},
+        "sales_info": {"order_id": order_id},
+        "shipping_info": {"shipment_id": order_id + 9000},
         "marketplace_info": {"marketplace": "SHIPPING"},
     }
 
@@ -77,8 +89,8 @@ async def test_daily_close_cycle_persists_orders_and_billing(fin_db):
         billing_sleep_sec=0,
     )
 
-    assert result.status == "running"
-    assert result.phase == "billing"
+    assert result.status == "consolidated"
+    assert result.phase == "consolidated"
     assert result.orders_count == 2
     assert result.billing_job_id is not None
     assert result.billing_pages_done == 1
@@ -91,6 +103,9 @@ async def test_daily_close_cycle_persists_orders_and_billing(fin_db):
         assert job.billing_job_id is not None
         assert s.query(m.MLCanaryOrderSnapshot).count() == 2
         assert s.query(m.MLBillingPeriodLine).count() == 2
+        billing_job = s.query(m.MLBillingPeriodJob).filter_by(id=job.billing_job_id).first()
+        assert billing_job.period_key == "2026-06-01"
+        assert billing_job.document_type == "ORDER_DETAILS"
     finally:
         s.close()
 
@@ -129,6 +144,47 @@ def test_daily_close_period_key_and_yesterday(monkeypatch):
     assert period_key_for(date(2026, 6, 2)) == "2026-06-01"
     now = datetime(2026, 6, 3, 3, 0, tzinfo=ZoneInfo("America/Sao_Paulo"))
     assert yesterday_brt(now) == date(2026, 6, 2)
+
+
+@pytest.mark.asyncio
+async def test_daily_close_force_orders_clears_stale_billing_job(fin_db):
+    db, m = fin_db
+    from financeiro_ml.daily_close import run_daily_close_cycle
+
+    first = await run_daily_close_cycle(
+        db.FinSessionLocal,
+        client=FakeDailyClient(),
+        seller_id=1,
+        day=date(2026, 6, 1),
+        billing_pages_per_cycle=1,
+        billing_sleep_sec=0,
+    )
+
+    s = db.FinSessionLocal()
+    try:
+        stale_billing_job_id = first.billing_job_id
+        assert stale_billing_job_id is not None
+    finally:
+        s.close()
+
+    second = await run_daily_close_cycle(
+        db.FinSessionLocal,
+        client=FakeDailyClient(),
+        seller_id=1,
+        day=date(2026, 6, 1),
+        billing_pages_per_cycle=1,
+        billing_sleep_sec=0,
+        force_orders=True,
+    )
+
+    s = db.FinSessionLocal()
+    try:
+        job = s.query(m.MLDailyCloseJob).filter_by(id=first.job_id).first()
+        assert second.billing_job_id != stale_billing_job_id
+        assert job.billing_job_id == second.billing_job_id
+        assert job.status == "consolidated"
+    finally:
+        s.close()
 
 
 @pytest.mark.asyncio

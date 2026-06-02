@@ -751,6 +751,7 @@ class DailyCloseRunParams(BaseModel):
     billing_sleep_sec: float = Field(default=2, ge=0, le=30)
     cooldown_min: int = Field(default=30, ge=1, le=240)
     force_orders: bool = False
+    force_billing: bool = False
 
 
 class DailyCloseOrderIdDiffParams(BaseModel):
@@ -804,6 +805,7 @@ async def run_daily_close_endpoint(params: DailyCloseRunParams,
         billing_sleep_sec=params.billing_sleep_sec,
         cooldown_min=params.cooldown_min,
         force_orders=params.force_orders,
+        force_billing=params.force_billing,
     )
     return result.as_dict()
 
